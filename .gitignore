@@ -1,0 +1,3 @@
+/test/**
+/dataset/**
+**/__pycache__/**

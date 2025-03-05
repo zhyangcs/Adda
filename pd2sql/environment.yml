@@ -1,0 +1,14 @@
+name: pandas-to-sql-dev
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  # required
+  - setuptools
+  - python=3.7
+  - numpy>=1.19
+  - pandas>=1.1
+  # testing
+  - pytest>=5.0.1
+  - sqlalchemy
+

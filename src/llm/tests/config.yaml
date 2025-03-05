@@ -1,0 +1,96 @@
+task_config:
+  titanic:
+    task_name: titanic
+    task_type: classify
+    target_col: survived
+  heart:
+    task_name: heart
+    task_type: classify
+    target_col: tenyearchd
+  adult:
+    task_name: adult
+    task_type: classify
+    target_col: income
+  bank:
+    task_name: bank
+    task_type: classify
+    target_col: predict_col
+  diabetes:
+    task_name: diabetes
+    task_type: classify
+    target_col: outcome
+  bar_pass:
+    task_name: bar_pass
+    task_type: classify
+    target_col: pass_bar
+  electricity:
+    task_name: electricity
+    task_type: classify
+    target_col: class
+  labor:
+    task_name: labor
+    task_type: classify
+    target_col: class
+  hepatitis:
+    task_name: hepatitis
+    task_type: classify
+    target_col: class
+  hepatitis_kaggle:
+    task_name: hepatitis_kaggle
+    task_type: classify
+    target_col: class
+  bike:
+    task_name: bike
+    task_type: regression
+    target_col: count
+  abalone:
+    task_name: abalone
+    task_type: regression
+    target_col: rings
+  boston_house:
+    task_name: boston_house
+    task_type: regression
+    target_col: medv
+  airfoil:
+    task_name: airfoil
+    task_type: regression
+    target_col: scaled_sound_pressure
+  house_sale:
+    task_name: house_sale
+    task_type: regression
+    target_col: price
+  medical:
+    task_name: medical
+    task_type: regression
+    target_col: average_medicare_payments
+  wine_quality:
+    task_name: wine_quality
+    task_type: regression
+    target_col: quality
+  tallo:
+    task_name: tallo
+    task_type: regression
+    target_col: height_m
+  cholesterol:
+    task_name: cholesterol
+    task_type: regression
+    target_col: chol
+  purchase:
+    task_name: purchase
+    task_type: regression
+    target_col: purchase
+
+method_config:
+  caafe:
+    need_preprocess: False
+  smartfeat:
+    need_preprocess: False
+  autofeat:
+    need_preprocess: True
+  adda:
+    need_preprocess: False
+  autosk:
+    need_preprocess: False
+  raw:
+    need_preprocess: True
+
