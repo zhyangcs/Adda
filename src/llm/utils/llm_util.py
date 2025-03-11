@@ -24,6 +24,7 @@ def send_prompt(role_prompt:str, user_prompt:str, model:str = default_model, tes
         time.sleep(1)
         return
     client = OpenAI(
+        base_url=openai_base_url,
         api_key=openai_api_key
     )
     messages = []
@@ -71,6 +72,7 @@ def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_m
         return
     
     client = OpenAI(
+        base_url=openai_base_url,
         api_key=openai_api_key
     )
     messages = []

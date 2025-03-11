@@ -459,7 +459,7 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             with open(code_path, "w") as f:
                 f.write("import pandas as pd\n")
                 f.write("import psycopg2\n")
-                f.write(f"conn = psycopg2.connect(dbname='{pg_db}', user='{pg_user}', port=5431)\n")
+                f.write(f"conn = psycopg2.connect(dbname='{pg_db}', user='{pg_user}', port={pg_port})\n")
                 f.write('df = pd.read_sql(\"SELECT * FROM %s LIMIT 500\", conn)\n' %(self.tb_name))
                 f.write(node.whole_code)
             self.pipes[idx].code_path = code_path

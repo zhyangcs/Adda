@@ -335,7 +335,7 @@ def get_reformatted_code(code: list[str], var_name: str, table_name: str, target
     for line in code:
         if 'read_csv' in line:
             formatted_code.append("import psycopg2\n")
-            formatted_code.append(f"conn = psycopg2.connect(dbname='{pg_db}', user='{pg_user}', port=5431)\n")
+            formatted_code.append(f"conn = psycopg2.connect(dbname='{pg_db}', user='{pg_user}', port={pg_port})\n")
             formatted_code.append("%s = pd.read_sql('select * from %s %s', conn)\n" %(var_name, f"{table_name}_train", limit_str))
         elif 'read_sql' in line:
             # delete the limit sequence
