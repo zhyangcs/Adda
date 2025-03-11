@@ -123,10 +123,10 @@ RETURNS float AS $$
     
     if '{task_type}' == 'classify':
         y_pred = model.predict_proba(X_test)[:, 1]
-        return roc_auc_score(y_true, y_pred)
+        return float(roc_auc_score(y_true, y_pred))
     else:
         y_pred = model.predict(X_test)
-        return 1-np.sum(np.abs(y_true - y_pred))/np.sum(np.abs(y_true - np.mean(y_true)))
+        return float(1-np.sum(np.abs(y_true - y_pred))/np.sum(np.abs(y_true - np.mean(y_true))))
 $$ LANGUAGE plpython3u;"""
         print(termcolor.colored(udf_template, "yellow"))
 
