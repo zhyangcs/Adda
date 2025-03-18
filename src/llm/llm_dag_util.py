@@ -41,16 +41,17 @@ warnings.filterwarnings("ignore")
 
 @dataclasses.dataclass
 class DRAWNODE():
-    node_id: int
-    task_code: str
-    score: float
-    exec_time: float
+    """DAG可视化节点数据结构"""
+    node_id: int          # 节点唯一标识
+    task_code: str        # 特征生成代码
+    score: float          # 节点评估分数
+    exec_time: float      # 执行耗时
     
     def __hash__(self):
         return hash(self.node_id)
 
         
-        
+# RAG计算相似度的嵌入向量模型设置        
 config = AutoConfig.from_pretrained(rag_model_id_or_path, trust_remote_code=True)
 config.use_sdpa = True
 config.use_flash_attn = False
@@ -59,7 +60,27 @@ emb_model.eval()
 emb_tokenizer = AutoTokenizer.from_pretrained(rag_model_id_or_path, trust_remote_code=True)   
  
 class LLMDagConstructor():
+    """LLM驱动的特征工程DAG构造器
+    
+    核心功能：
+    - 管理特征生成的有向无环图(DAG)
+    - 执行A*搜索算法生成特征
+    - 评估特征节点性能
+    - 与NLAgent/CodeAgent交互生成自然语言描述和代码
+    """
+    
     def __init__(self, task_type:str, eval_model_type:str, beam_limit:int = 6, async_mode:bool = False, do_feature_selection:bool = False, boost_training:bool = False, high_order_num:int = 2, token_limit:int = 800):
+        """
+        参数:
+            task_type: 任务类型(分类/回归)
+            eval_model_type: 评估模型类型(RF/XGB等)
+            beam_limit: 搜索宽度限制
+            async_mode: 是否启用异步执行模式
+            do_feature_selection: 是否执行特征选择
+            boost_training: 是否启用加速训练模式
+            high_order_num: 高阶特征生成阶数
+            token_limit: LLM的token限制
+        """
         self.node_id = global_node_id
         self.column_info = {}
         self.boost_training = boost_training
@@ -86,7 +107,19 @@ class LLMDagConstructor():
         
         
     def init_task_params(self, data_agenda:list[str], data_desc:list[str], target_col:str, tb_name:str = None, csv_path:str = None, do_unfinished:bool = False, task_name:str = None):
-        # whether continue the unfinished part
+        """
+        初始化任务参数（参考test_util.py的TestDir类）
+        
+        参数:
+            data_agenda: 数据列描述列表
+            data_desc: 数据集总体描述 
+            target_col: 目标列名
+            tb_name: 数据库表名
+            csv_path: 数据文件路径
+            do_unfinished: 是否继续未完成任务
+            task_name: 任务名称
+        """
+        # 数据预处理逻辑
         if not do_unfinished:
             self.target_col = target_col
             self.task_desc = "".join(data_desc)
@@ -120,6 +153,13 @@ class LLMDagConstructor():
             self.pre_idx = 0
         
     def generate_emb(self, node):
+        """生成节点操作的嵌入向量（使用Hugging Face模型）
+        
+        实现要点：
+        1. 使用最后token池化策略
+        2. 支持左填充处理
+        3. 进行L2归一化
+        """
         def last_token_pool(last_hidden_states: torch.Tensor,
                         attention_mask: torch.Tensor) -> torch.Tensor:
             left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
@@ -148,6 +188,14 @@ class LLMDagConstructor():
         return node
         
     def task_to_features(self, cur_node:LLMDAGNODE, cur_step_idx:int = 0):
+        """将任务描述转换为特征节点（核心生成逻辑）
+        
+        实现流程：
+        1. NLAgent生成特征描述
+        2. CodeAgent生成可执行代码
+        3. 复杂度检查与代码分割
+        4. DAG节点添加与可视化
+        """
         def gen_code_node(next_node):
             try:
                 could_exec_code = code_agent.feature_to_code(next_node)
@@ -221,32 +269,45 @@ class LLMDagConstructor():
         return next_states_with_code
  
     def draw_current(self, idx:int = 0):
+        """DAG可视化方法
+        
+        功能：
+        1. 将内存中的特征工程DAG转换为可视化图形
+        2. 保存当前特征生成流程的快照
+        3. 展示节点评估分数和执行耗时等关键指标
+        
+        参数：
+        idx -- 用于区分不同阶段的绘图序号（默认0）
+        """
         if hasattr(self, 'task_name'):
-            # draw the current graph only with the attribute of New Feature Name and the score
-            # 1. transform each LLMDAGNODE to DRAWNODE
+            # 数据结构转换：将LLMDAGNODE转换为轻量级绘图节点
             draw_nodes = nx.DiGraph()
-            nodes_map = dict()
+            nodes_map = dict()  # 原始节点到绘图节点的映射
 
+            # 节点转换（保留核心元数据）
             for node in self.dag.nodes:
-                new_node = DRAWNODE(node.node_id, node.task_code, node.final_score, node.exec_time)
+                new_node = DRAWNODE(
+                    node_id=node.node_id,
+                    task_code=node.task_code,
+                    score=node.final_score,
+                    exec_time=node.exec_time
+                )
                 nodes_map[node] = new_node
                 draw_nodes.add_node(new_node)
             
+            # 边关系重建
             for edge in self.dag.edges:
                 draw_nodes.add_edge(nodes_map[edge[0]], nodes_map[edge[1]])
                 
-            # 2. draw the graph to terminal
-            nx.draw(draw_nodes, with_labels=True, font_weight='bold')
-            agraph = to_agraph(draw_nodes)
-            agraph.graph_attr['rankdir'] = 'LR'
-            agraph.layout('dot')
-            
-            dir_path = os.path.join(test_save_path, self.task_name, "graph")
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
+            # 图形渲染配置
+            agraph = to_agraph(draw_nodes)  # 转换为Graphviz对象
+            agraph.graph_attr['rankdir'] = 'LR'  # 从左到右布局
+            agraph.layout(prog='dot')  # 使用层次布局算法
 
-            
-            agraph.draw(os.path.join(dir_path, f"current_graph_{idx}.png"))
+            # 持久化存储
+            dir_path = os.path.join(test_save_path, self.task_name, "graph")
+            os.makedirs(dir_path, exist_ok=True)  # 自动创建目录
+            agraph.draw(os.path.join(dir_path, f"current_graph_{idx}.png"))  # 保存为PNG
             
     def python2c_code(code, input_feature, output_feature) -> str:
         prompt_str = f"""{APPLY_PYTHON2C_PROMPT.format(python_code = code, input_feature = input_feature, output_feature = output_feature)}\n"""
@@ -315,32 +376,51 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         self.node_id = src.llm.llm_dag_node.global_node_id
         
     def astar_k_step(self, step_num:int, data_agenda:list[str] = None, data_desc:list[str] = None, target_col:str = None, tb_name:str=None, csv_path:str=None, do_unfinished:bool = False, task_name:str = None):
+        """A*算法多步执行入口函数
+        参数:
+            step_num: 需要执行的搜索步数（节点扩展次数）
+            data_agenda: 数据列描述列表
+            data_desc: 数据集总体描述
+            target_col: 目标列名
+            tb_name: 数据库表名
+            csv_path: 数据文件路径
+            do_unfinished: 是否继续未完成任务
+            task_name: 任务名称
+        """
+        # 初始化A*搜索类型
         self.search_type = "ASTAR"
+        # 同步全局节点ID（用于节点唯一标识）
         src.llm.llm_dag_node.global_node_id = self.node_id
         
+        # 初始化任务参数（数据加载/预处理）
         self.init_task_params(data_agenda, data_desc, target_col, tb_name, csv_path, do_unfinished, task_name)
+        # 新建任务时初始化优先队列
         if not do_unfinished:
             self.cur_states = []
-            heapq.heappush(self.cur_states, self.root)
-            self.pre_states = self.cur_states.copy()
+            heapq.heappush(self.cur_states, self.root)  # 使用最小堆实现优先队列
+            self.pre_states = self.cur_states.copy()  # 保存前序状态用于恢复
         
-        # current do not consider async mode in astar    
+        # 设置当前搜索状态（异步模式暂不支持）
         self.cur_states = self.pre_states
+        # 获取断点续做起始索引
         start_idx = self.pre_idx
         if start_idx != 0:
             print(f"current states is reload: {self.finish}, {start_idx}")
-            self.draw_current(-20)
+            self.draw_current(-20)  # 绘制当前DAG状态（调试用）
+            
+        # 主循环：执行指定步数的节点扩展
         for i in range(start_idx, step_num, 1):
-            self.astar_one_step(i)
-            self.draw_current(-1*i)
-            # save the current states as the api would sometime fail down because the network error.
-            self.pre_idx = i + 1
+            self.astar_one_step(i)          # 单步A*搜索
+            self.draw_current(-1*i)         # 可视化当前状态
+            self.pre_idx = i + 1            # 更新进度标识
+            
+            # 持久化当前状态（防止意外中断）
             with open(os.path.join(proj_path, "src", "cur_states.pkl"), "wb") as f:
                 pickle.dump(self, f)
                 
-        # set the whole code for each node
+        # 后处理：生成最终特征代码
         self.compute_best_code()
-        self.finish = True
+        self.finish = True  # 标记任务完成
         
     def async_task_to_features(self, cur_node:LLMDAGNODE, cur_feature_idx:int, next_states):
         cur_next_states = self.task_to_features(cur_node, cur_feature_idx)
