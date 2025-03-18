@@ -312,11 +312,10 @@ class AddaConnector:
         return tree
     
     def _get_feature_name(self, task_code: str) -> str:
-        """从代码中提取特征名称（参考llm_dag_node.py的列解析逻辑）"""
-        # 匹配类似 df['new_feature'] 的模式
+        """严格提取单个特征名称"""
         pattern = r"df\['([^']+)'\]"
-        matches = re.findall(pattern, task_code)
-        return ", ".join(matches) if matches else "Unnamed_Feature"
+        match = re.search(pattern, task_code)
+        return match.group(1) if match else "Unnamed_Feature"
     
     def _infer_op_type(self, task_code: str) -> str:
         """推断操作类型（参考llm_dag_util.py的代码分析逻辑）"""
