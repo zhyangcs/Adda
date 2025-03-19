@@ -98,6 +98,9 @@ def gen_model():
         #     return jsonify({"status": "fail", "message": "没有选择特征"})
         # TODO: 可能gen_model有更复杂的逻辑，比如需要选择特征，或者需要选择模型，这里暂时先这样处理
         
+        if not adda.llm_dag_constructor:
+            return jsonify({"status": "fail", "message": "任务未初始化，请先点击Check Format"})
+        
         success, message, model_bytes = adda.generate_model(selected_node_ids)
         
         if success:
@@ -137,10 +140,40 @@ def clear_task():
     except Exception as e:
         return jsonify({"status": "fail", "message": str(e)})
 
+@app.route('/auto-step/', methods=['POST'])
+def auto_step():
+    try:
+        if not adda.llm_dag_constructor or adda.llm_dag_constructor.finish:
+            return jsonify({"status": "fail", "message": "任务未启动或已完成"})
+            
+        # 单步执行（正确方式）
+        for i in range(3):  # 分步执行避免清空状态 TODO: 这里的循环实际无用
+            adda.llm_dag_constructor.astar_one_step(i)
+        
+        return jsonify({
+            "status": "success",
+            "tree": adda._convert_dag_to_tree(),
+            "finished": adda.llm_dag_constructor.finish
+        })
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)})
+
 # 添加获取通知列表的接口（如果前端需要）
 @app.route('/get-notifications/', methods=['GET'])
 def get_notifications():
     return jsonify({"notifications": notifications})
+
+@app.route('/check-task-status/', methods=['POST'])
+def check_task_status():
+    try:
+        if not hasattr(adda, 'llm_dag_constructor') or adda.llm_dag_constructor is None:
+            return jsonify({
+                "status": "fail",
+                "message": "请先点击Check Format按钮初始化任务"
+            })
+        return jsonify({"status": "success", "initialized": True})
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 

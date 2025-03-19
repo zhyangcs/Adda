@@ -252,7 +252,7 @@
 
             <!-- 使用gap-4控制按钮间距 -->
             <div class="d-flex flex-column align-items-center w-100 gap-4 button-container">
-                <button class="btn w-75 fw-bold fs-4 start">Start</button>
+                <button class="btn w-75 fw-bold fs-4 start" onclick="run_auto_pipeline()">Start</button>
                 <button class="btn w-75 fw-bold fs-4 end" onclick="stop_task()">End</button>
                 <button class="btn w-75 fw-bold fs-4 clear" onclick="clear_task()">Clear</button>
                 <button class="btn w-75 fw-bold fs-6 download">DownLoad Model</button>
@@ -953,6 +953,59 @@
                 document.getElementById("currentFeatures").innerHTML = "No features selected (click node for choose/delete)";
             } catch (error) {
                 console.error('Error:', error);
+            }
+        }
+
+        async function run_auto_pipeline() {
+            try {
+                // 检查任务是否初始化
+                const statusRes = await fetch('/check-task-status/', {method: 'POST'});
+                const statusData = await statusRes.json();
+                
+                if(statusData.status !== 'success' || !statusData.initialized) {
+                    dataInfoProxy.unshift({
+                        notice_description: "请先点击Check Format按钮初始化任务",
+                        notice_type: "fail"
+                    });
+                    return;
+                }
+
+                // 自动执行流程
+                let finished = false;
+                while(!finished) {
+                    const stepRes = await fetch('/auto-step/', {method: 'POST'});
+                    const stepData = await stepRes.json();
+                    
+                    if(stepData.tree) {
+                        renderTree(stepData.tree);
+                    }
+                    
+                    if(stepData.status === 'fail') {
+                        dataInfoProxy.unshift({
+                            notice_description: `自动流程出错: ${stepData.message}`,
+                            notice_type: "fail"
+                        });
+                        break;
+                    }
+                    
+                    finished = stepData.finished;
+                    
+                    // 安全机制
+                    if(!finished && stepData.tree?.node_info?.length > 50) {
+                        dataInfoProxy.unshift({
+                            notice_description: "安全机制触发：特征节点超过50个，已停止流程",
+                            notice_type: "warning"
+                        });
+                        break;
+                    }
+                }
+                
+                await fetch('/stop-task/', {method: 'POST'});
+            } catch(e) {
+                dataInfoProxy.unshift({
+                    notice_description: `自动化流程失败: ${e.message}`,
+                    notice_type: "fail"
+                });
             }
         }
     </script>

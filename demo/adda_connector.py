@@ -152,7 +152,7 @@ class AddaConnector:
             
             self.llm_dag_constructor.draw_current(-1*self.count_idx)
             
-            # 持久化当前状态（防止意外中断）
+            # 每次执行后保存状态（与test_util.py逻辑一致）
             with open(os.path.join(proj_path, "src", "cur_states.pkl"), "wb") as f:
                 pickle.dump(self.llm_dag_constructor, f)
             
@@ -258,7 +258,7 @@ class AddaConnector:
             """停止任务，计算最佳特征工程节点（astar_k_step后处理逻辑）"""
             # 计算最佳特征工程节点
             self.llm_dag_constructor.compute_best_code()
-            self.llm_dag_constructor.finish = True
+            self.llm_dag_constructor.finish = True  # 仅标记完成，不重置实例
         
             """停止当前任务（参考test_util.py的状态保存逻辑）"""
             # 保存当前状态（与test_util.py第87行逻辑一致）
