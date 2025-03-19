@@ -187,23 +187,24 @@ class AddaConnector:
             if not self.llm_dag_constructor:
                 return False, "No active task, please start a task first", None
             
-            # 直接使用特征节点完整数据（包含已编码的目标列）
+            # 合并所有选中节点的特征
+            selected_nodes = [n for n in self.llm_dag_constructor.dag.nodes 
+                            if n.node_id in selected_node_ids]
+            
+            # 按DAG层级排序确保特征叠加顺序
+            dag = self.llm_dag_constructor.dag
+            root_node = next(n for n in dag.nodes if isinstance(n, LLMDAGNODE) and dag.in_degree(n) == 0)
+            sorted_nodes = sorted(selected_nodes, key=lambda n: len(nx.shortest_path(dag, root_node, n)))
+            
+            # 合并特征并去重
+            merged_df = pd.concat([n.out_cur_df for n in sorted_nodes], axis=1)
+            merged_df = merged_df.loc[:,~merged_df.columns.duplicated()]
+            
+            # 处理目标列
             target_col = self.llm_dag_constructor.target_col
-            feature_node = next(n for n in self.llm_dag_constructor.dag.nodes if n.node_id in selected_node_ids)
-            # 检查是否包含编码后的目标列（如 survived_Label）
             encoded_target = f"{target_col}_Label"
-            merged_df = feature_node.out_cur_df.copy()
             if encoded_target in merged_df:
                 merged_df = merged_df.rename(columns={encoded_target: target_col})
-            # 合并所有选中节点的特征
-            # selected_nodes = [n for n in self.llm_dag_constructor.dag.nodes 
-            #                 if n.node_id in selected_node_ids]
-            # # 获取DAG中的实际根节点
-            # dag = self.llm_dag_constructor.dag
-            # root_node = next(n for n in dag.nodes if dag.in_degree(n) == 0)
-            # sorted_nodes = sorted(selected_nodes, key=lambda n: nx.dag_longest_path_length(dag, root_node, n))
-            # merged_df = pd.concat([n.out_cur_df for n in sorted_nodes], axis=1)
-            # merged_df = merged_df.loc[:,~merged_df.columns.duplicated()]
             
             # 调用核心评估方法
             score, _, _ = self.llm_dag_constructor.get_scores(merged_df)
