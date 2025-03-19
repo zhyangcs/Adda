@@ -94,8 +94,9 @@ def gen_model():
         data = json.loads(request.data)
         selected_node_ids = data.get('selectedNodeIds', [])
         
-        if not selected_node_ids:
-            return jsonify({"status": "fail", "message": "没有选择特征"})
+        # if not selected_node_ids:
+        #     return jsonify({"status": "fail", "message": "没有选择特征"})
+        # TODO: 可能gen_model有更复杂的逻辑，比如需要选择特征，或者需要选择模型，这里暂时先这样处理
         
         success, message, model_bytes = adda.generate_model(selected_node_ids)
         
@@ -117,6 +118,22 @@ def gen_model():
             )
         else:
             return jsonify({"status": "fail", "message": message})
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)})
+
+@app.route('/stop-task/', methods=['POST'])
+def stop_task():
+    try:
+        success, message = adda.stop_task()
+        return jsonify({"status": "success" if success else "fail", "message": message})
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)})
+
+@app.route('/clear-task/', methods=['POST'])
+def clear_task():
+    try:
+        success, message = adda.clear_task()
+        return jsonify({"status": "success" if success else "fail", "message": message})
     except Exception as e:
         return jsonify({"status": "fail", "message": str(e)})
 

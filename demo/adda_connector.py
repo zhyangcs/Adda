@@ -7,6 +7,7 @@ import json
 from collections import deque
 import pandas as pd
 import networkx as nx
+import shutil
 
 # 添加项目根目录到Python路径（确保能访问src目录下的模块）
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -218,29 +219,74 @@ class AddaConnector:
             return False, f"Error testing performance: {str(e)}", None
     
     def generate_model(self, selected_node_ids):
-        """生成并返回模型"""
+        """生成真实模型（基于LLMDagConstructor的最佳代码）"""
         try:
             if not self.llm_dag_constructor:
-                return False, "No active task, please start a task first", None
-                
-            # 调用Adda系统生成模型
-            # TODO: 替换为实际调用
-            # 例如：从llm_dag_constructor获取模型
+                return False, "No active task", None
             
-            # 模拟模型生成
-            # 根据选择的特征训练模型
-            if not selected_node_ids:
-                return False, "No features selected", None
-                
-            # 使用RandomForestClassifier作为示例
-            from sklearn.ensemble import RandomForestClassifier
-            self.current_model = RandomForestClassifier(n_estimators=100)
+            if not self.llm_dag_constructor.finish:
+                return False, "Task is not finished", None
+
+            # 获取最佳特征工程管道（参考llm_dag_util.py 487-527行）
+            # best_code = self.llm_dag_constructor.get_best_code()
             
-            # 序列化模型
-            model_bytes = pickle.dumps(self.current_model)
+            # if not best_code:
+            #     return False, "No valid features generated", None
+        
+
+            # 获取完整特征工程代码
+            # feature_pipeline = "\n".join([
+            #     self.llm_dag_constructor.fetch_code_from_leaf(best_node),
+            #     best_node.whole_code
+            # ])
+            
+            # 序列化模型和特征管道（参考test_util.py状态保存逻辑）
+            # model_bytes = pickle.dumps({
+            #     'model': self.llm_dag_constructor.eval_model,
+            #     'feature_pipeline': feature_pipeline
+            # })
+            model_bytes = pickle.dumps(self.llm_dag_constructor)
+            
             return True, "Model generated successfully", model_bytes
         except Exception as e:
             return False, f"Error generating model: {str(e)}", None
+    
+    def stop_task(self):
+        
+        if self.llm_dag_constructor:
+            
+            """停止任务，计算最佳特征工程节点（astar_k_step后处理逻辑）"""
+            # 计算最佳特征工程节点
+            self.llm_dag_constructor.compute_best_code()
+            self.llm_dag_constructor.finish = True
+        
+            """停止当前任务（参考test_util.py的状态保存逻辑）"""
+            # 保存当前状态（与test_util.py第87行逻辑一致）
+            task_path = os.path.join(test_save_path, self.llm_dag_constructor.task_name)
+            os.makedirs(task_path, exist_ok=True)
+            with open(os.path.join(task_path, "cur_states.pkl"), "wb") as f:
+                pickle.dump(self.llm_dag_constructor, f)
+            
+            # 重置任务状态
+            # self.llm_dag_constructor = None TODO: 注意，为了使用户在停止任务后可以继续使用model下载功能，这里不会重置任务状态
+            # 被设计为只有在使用clear按钮时才会重置任务状态
+            self.current_tree = None 
+            return True, "任务已停止并保存"
+        
+        return False, "没有活动任务可停止"
+    
+    def clear_task(self):
+        """完全清除任务状态（参考__init__初始化逻辑）"""
+        if self.llm_dag_constructor:
+            # 删除保存的状态文件（与test_util.py清理逻辑一致）
+            task_path = os.path.join(test_save_path, self.llm_dag_constructor.task_name)
+            if os.path.exists(task_path):
+                shutil.rmtree(task_path)
+            
+            # 完全重置状态
+            self.__init__()  # 重新初始化实例
+            return True, "任务已清除并重置"
+        return False, "没有活动任务可清除"
     
     def _convert_dag_to_tree(self):
         """

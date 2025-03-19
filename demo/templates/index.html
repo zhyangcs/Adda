@@ -253,8 +253,8 @@
             <!-- 使用gap-4控制按钮间距 -->
             <div class="d-flex flex-column align-items-center w-100 gap-4 button-container">
                 <button class="btn w-75 fw-bold fs-4 start">Start</button>
-                <button class="btn w-75 fw-bold fs-4 end">End</button>
-                <button class="btn w-75 fw-bold fs-4 clear">Clear</button>
+                <button class="btn w-75 fw-bold fs-4 end" onclick="stop_task()">End</button>
+                <button class="btn w-75 fw-bold fs-4 clear" onclick="clear_task()">Clear</button>
                 <button class="btn w-75 fw-bold fs-6 download">DownLoad Model</button>
             </div>
         </nav>
@@ -926,6 +926,35 @@
                 notice_type: "success"
             });
         });
+
+        async function stop_task() {
+            try {
+                const response = await fetch('/stop-task/', {method: 'POST'});
+                const data = await response.json();
+                dataInfoProxy.unshift({
+                    notice_description: data.message,
+                    notice_type: data.status === 'success' ? 'success' : 'fail'
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function clear_task() {
+            try {
+                const response = await fetch('/clear-task/', {method: 'POST'});
+                const data = await response.json();
+                dataInfoProxy.unshift({
+                    notice_description: data.message,
+                    notice_type: data.status === 'success' ? 'success' : 'fail'
+                });
+                // 清空前端的特征树显示
+                d3.select("#treeContainer").selectAll("*").remove();
+                document.getElementById("currentFeatures").innerHTML = "No features selected (click node for choose/delete)";
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
     </script>
 </body>
 
