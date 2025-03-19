@@ -5,6 +5,8 @@ import pickle
 import re
 import json
 from collections import deque
+import pandas as pd
+import networkx as nx
 
 # 添加项目根目录到Python路径（确保能访问src目录下的模块）
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,7 +33,7 @@ class AddaConnector:
             "parent_child_relations": [],
             "node_info": [{
                 "node_id": 1,
-                "feature_name": "Root",
+                "feature_name": "All original features",
                 "task_code": "# Initializing...",
                 "op_type": "root",
                 "score": 0.0,
@@ -180,21 +182,37 @@ class AddaConnector:
             return False, f"Error generating feature: {str(e)}", None
     
     def test_performance(self, selected_node_ids):
-        """测试选定特征的性能"""
+        """测试选定特征的性能（真实评估逻辑）"""
         try:
             if not self.llm_dag_constructor:
                 return False, "No active task, please start a task first", None
-                
-            # 调用Adda系统评估性能
-            # TODO: 替换为实际调用
-            # 例如：从llm_dag_constructor获取性能分数
             
-            # 模拟计算性能分数
-            performance = 0.85 + (len(selected_node_ids) * 0.01)
-            if performance > 0.95:
-                performance = 0.95
-                
-            return True, f"{performance:.4f}", None
+            # 直接使用特征节点完整数据（包含已编码的目标列）
+            target_col = self.llm_dag_constructor.target_col
+            feature_node = next(n for n in self.llm_dag_constructor.dag.nodes if n.node_id in selected_node_ids)
+            # 检查是否包含编码后的目标列（如 survived_Label）
+            encoded_target = f"{target_col}_Label"
+            merged_df = feature_node.out_cur_df.copy()
+            if encoded_target in merged_df:
+                merged_df = merged_df.rename(columns={encoded_target: target_col})
+            # 合并所有选中节点的特征
+            # selected_nodes = [n for n in self.llm_dag_constructor.dag.nodes 
+            #                 if n.node_id in selected_node_ids]
+            # # 获取DAG中的实际根节点
+            # dag = self.llm_dag_constructor.dag
+            # root_node = next(n for n in dag.nodes if dag.in_degree(n) == 0)
+            # sorted_nodes = sorted(selected_nodes, key=lambda n: nx.dag_longest_path_length(dag, root_node, n))
+            # merged_df = pd.concat([n.out_cur_df for n in sorted_nodes], axis=1)
+            # merged_df = merged_df.loc[:,~merged_df.columns.duplicated()]
+            
+            # 调用核心评估方法
+            score, _, _ = self.llm_dag_constructor.get_scores(merged_df)
+            
+            # 根据任务类型格式化结果
+            task_type = self.llm_dag_constructor.task_type
+            metric = "AUC" if task_type == "classify" else "1-RAE"
+            return True, f"{metric}: {score:.4f}", None
+            
         except Exception as e:
             return False, f"Error testing performance: {str(e)}", None
     
@@ -260,7 +278,7 @@ class AddaConnector:
             "parent_child_relations": [],
             "node_info": [{
                 "node_id": 1,
-                "feature_name": "Root",
+                "feature_name": "All original features",
                 "task_code": "# Root node",
                 "op_type": "root",
                 "score": 0.0,

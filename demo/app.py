@@ -69,6 +69,9 @@ def test_performance():
         data = json.loads(request.data)
         selected_node_ids = data.get('selectedNodeIds', [])
         
+        # 获取任务配置信息
+        task_type = adda.llm_dag_constructor.task_type if adda.llm_dag_constructor else "unknown"
+        
         if not selected_node_ids:
             return jsonify({"status": "fail", "message": "没有选择特征"})
         
