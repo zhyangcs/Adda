@@ -25,3 +25,8 @@ default_model = "gpt-4o"
 pg_user = "myuser"
 pg_db = "mydb"
 pg_port = 5432
+
+def update_llm_model(model):
+    global default_model
+    default_model = model
+    print(f"LLM model updated to: {default_model}")

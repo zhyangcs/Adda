@@ -26,6 +26,10 @@ def check_format():
     try:
         success, message, tree_data = adda.start_task(task_description, dataset, model)
         
+        from src.env import update_llm_model
+        if model:
+            update_llm_model(model)
+        
         if success:
             notifications.append({
                 "notice_description": f"任务启动成功: {task_description[:30]}..., 数据集: {dataset}, 模型: {model}",
