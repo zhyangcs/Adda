@@ -85,6 +85,28 @@ if __name__ == "__main__":
         # pipeCtor.multipipe_tree_ctor(polisher.nodeid2OpTypeEnum)
         polisher.multi_pipe_schedule_v2(args.storage_attr_num, row_num)
     
+    # 在生成SQL代码前添加表创建逻辑
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS model_table (
+        tb_name TEXT,
+        model_type TEXT,
+        path TEXT UNIQUE,
+        version SERIAL,
+        PRIMARY KEY (tb_name, model_type, version)
+    );
+    """
+    cursor = conn.cursor()
+    cursor.execute(create_table_sql)
+    
+    # 级联删除
+    cursor.execute(f"""
+        DELETE FROM model_table 
+        WHERE tb_name = '{db_tb_name}' 
+        AND model_type = '{args.model_type}'
+    """)
+    os.system(f"rm -f {model_store_path}/{db_tb_name}_{args.model_type}_*.pkl")  # 清理旧模型文件
+    conn.commit()
+    
     auc_answer = polisher.generate_sql()
     speed_record = polisher.speed_record
     task_time.append(speed_record["sql"][0])

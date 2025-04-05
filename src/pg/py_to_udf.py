@@ -8,6 +8,7 @@ from src.template.temp_udfc import *
 from src.pg.compile_utils import *
 from src.env import *
 from src.llm.utils.common_utils import *
+import time
 
 prefix_sep = '''
 RETURNS text[] AS $$
@@ -61,6 +62,7 @@ RETURNS text AS $$
     import os
     import pickle
     import numpy as np
+    import time
     # from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
     {modeltype2importcode(model_type, task_type)}
     df = pd.DataFrame(input, columns = [{','.join(list(map(lambda x: "'"+x+"'", in_attrs)))}])
@@ -75,6 +77,7 @@ RETURNS text AS $$
     # get id of model
     cur_models = os.listdir('{model_store_path}')
     cur_id = max([int(model[:-4].split('_')[-1]) for model in cur_models]) + 1 if cur_models else 0
+    # cur_id = int(time.time() * 1000) + os.getpid()
     
     model_name = f"{model_name}_{model_type}_{{cur_id}}.pkl"
     model_path = os.path.join('{model_store_path}', model_name)
@@ -86,6 +89,7 @@ $$ LANGUAGE plpython3u;"""
 
         cte1 = "tmp_res_store"
         call_udf1 = f"select {model_type}_train(array(select row({','.join(in_attrs)})::train_input from {cur_table_name})) as model_path"
+        # call_udf2 = f"insert into model_table(tb_name, model_type, path) select '{model_name}', '{model_type}', model_path from {cte1} limit 1"
         call_udf2 = f"insert into model_table(tb_name, model_type, path) select '{model_name}', '{model_type}', model_path from {cte1} limit 1"
         return sql_type + udf_template, (call_udf1, call_udf2), (cte1, "")
 
@@ -313,7 +317,7 @@ LANGUAGE C STRICT;\n"""
         sql_type += tmp
         
         predict_tb = "predict_tb"
-        call_udf = "select (%s(array(select row(%s)::predict_input_%s from %s), (select data from models where name = '%s'))) as predict\n" %(udf_name, ','.join(in_attrs), seq, cur_table_name, model_name)
+        call_udf = "select (%s(array(select row(%s)::predict_input_%s from %s), (select path from model_table where tb_name = '%s' and model_type = '%s'))) as predict\n" %(udf_name, ','.join(in_attrs), seq, cur_table_name, model_name, model_type)
         call_udf2 = "select (unnest(predict)).* from %s" %(predict_tb)
         
         return sql_type + reg_udf, (call_udf, call_udf2), (predict_tb, "")

@@ -218,7 +218,15 @@ class PythonPolisher:
             best_pipe_idx = scores.index(max(scores))
         else:
             cursor = get_conn().cursor()
-            delete_sql = f"delete from model_table where tb_name = '{self.tb_prefix}' and model_type = '{self.model_type}'"
+            # delete_sql = f"delete from model_table where tb_name = '{self.tb_prefix}' and model_type = '{self.model_type}'"
+            delete_sql = f"""
+            DO $$ 
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'model_table') THEN
+                    DELETE FROM model_table WHERE tb_name = '{self.tb_prefix}' AND model_type = '{self.model_type}';
+                END IF;
+            END $$;
+            """
             print(delete_sql)
             cursor.execute(delete_sql)
             scores = [0] * len(self.pipes)
