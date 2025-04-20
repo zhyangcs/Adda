@@ -20,8 +20,8 @@ alpha = math.sqrt(2) / 1000.0 # w in the paper
 
 # rag_model_id_or_path = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 rag_model_id_or_path = "Qwen/Qwen2-0.5B-Instruct"
-openai_api_key = "sk-qC4pmgaIQuCgMqBROVLYMMv9ZuHDeJQafeZeLfWAqxJQaahO"
-openai_base_url = "https://chatapi.littlewheat.com/v1"
+openai_api_key = "sk-YIkcYQ4PqHhKPyJf7sE8NQALxRwRrix2VXglnXOpkkheP7dY"
+openai_base_url = "https://api.nuwaapi.com/v1"
 default_model = "gpt-4o"
 pg_user = "myuser"
 pg_db = "mydb"
