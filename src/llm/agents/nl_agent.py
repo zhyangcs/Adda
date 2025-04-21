@@ -101,13 +101,25 @@ class NLAgent():
                 
                 # print(termcolor.colored(f"{whole_prompt}\n Total token: {token_num(whole_prompt)}, Current Token Limitation {token_limit}", "grey"))
                 
-                # high_order_model = "gpt-4-turbo"
-                num_to_generate = 3 if high_order else send_num * 2
+                # ---------------------------------------------------------------------------------
+                # # high_order_model = "gpt-4-turbo"
+                # num_to_generate = 3 if high_order else send_num * 2
+                num_to_generate = 3
                 responses = asyncio.run(generate_features_autogen(whole_prompt, n=num_to_generate))
                 print(termcolor.colored(responses, "green"))
                 
+                # high_order_model = "gpt-4-turbo"
+                # responses = send_prompt_n("", whole_prompt, n = 3 if high_order else send_num * 2)
+                # print(termcolor.colored(responses, "green"))
+                # ---------------------------------------------------------------------------------
+                
                 cur_attr_set = set()
                 for response in responses:
+                    # Defensive check: Skip if response is None to prevent AttributeError
+                    if response is None:
+                        print(termcolor.colored("Warning: Encountered None in responses list, skipping.", "magenta"))
+                        continue 
+                        
                     parsed_response = NLAgent.parse_nl_comma(response, NLAgent.high_order_feature_pre_list if high_order else NLAgent.normal_feature_pre_list)
                     
                     if parsed_response != "":
