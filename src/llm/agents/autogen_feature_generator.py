@@ -12,7 +12,7 @@ from autogen_core import CancellationToken
 # --- Configuration (Consider moving to a config file or environment variables) ---
 # Replace with your actual API key and base URL if needed
 # It's recommended to load these from environment variables for security.
-API_KEY = 'sk-G1u7gDgwUgvcwGpAeQ7vhRm2chKRhsj7lvTPlyFze6ZHyxD3' # Placeholder - Use environment variables
+API_KEY = 'sk-iRsNsrqqhBlIGWrvZ3QNIoUWoUI8keRQnf4RtPGhXOJm5ITR' # Placeholder - Use environment variables
 BASE_URL = 'https://api.nuwaapi.com/v1' # Placeholder
 MODEL = 'gpt-4o' # Or your preferred model
 
@@ -78,41 +78,41 @@ async def generate_features_autogen(prompt: str, n: int) -> list[str]:
     *   *Programming*: Mastery of data manipulation libraries (Pandas, NumPy, SciPy), efficient coding practices.
     *   *Database Systems*: Understanding SQL, joins, aggregations for feature extraction from relational data (if applicable).
 
-Your task is to engineer **highly impactful, novel, and potentially complex features** for a predictive modeling challenge based on the provided dataset description ({target_column} is the target variable), aiming to maximize downstream ML model performance by capturing intricate patterns.
+Your task is to engineer **highly impactful, novel, and mathematically sophisticated features** for a predictive modeling challenge based on the provided dataset description ({target_column} is the target variable), aiming to maximize downstream ML model performance. **Performance is measured by 1-RAE (for regression tasks) or AUC (for classification tasks).**
+
+**Mandatory Requirement**: In EVERY set of {{n}} features you propose, **at least ONE feature MUST utilize mathematical/statistical operations considered advanced in a data science context**, going beyond simple arithmetic (+, -, *, /), basic exponentiation/logarithms, and simple polynomials (like x^2). Examples of acceptable operations include (but are not limited to): fitting statistical distributions and using parameters, advanced linear algebra (matrix decompositions, eigenvectors), calculus concepts (numerical derivatives/integrals), information-theoretic measures, multi-scale analysis (e.g., wavelets, varying window statistics), or complex conditional logic based on multiple variables.
 
 Follow these steps meticulously:
-1.  **Analyze**: Apply your statistical and mathematical expertise to deeply interpret the data description (distributions, relationships, potential issues).
-2.  **Think (CoT - Expert Application & Complexity Focus)**: Document your thinking in `<thinking>...</thinking>` tags, explicitly connecting your specialized knowledge:
-    *   **Task & Data Assessment**: Infer task type. Assess data quality, distributions, correlations, non-linearities.
-    *   **Hypothesis Generation (Aiming for Depth)**: Formulate hypotheses that might require *complex features* to test. Consider:
-        *   High-order interactions (e.g., 3-way or conditional interactions: A affects B differently depending on C).
-        *   Multi-step processes or latent variables suggested by the data.
-        *   Applying advanced concepts (Calculus, LinAlg, Info Theory, etc.) in non-trivial ways.
-    *   **Feature Brainstorming (Embrace Complexity)**: Generate diverse candidates, **explicitly including potentially complex ones**: 
-        *   Features with *conditional logic* (e.g., `IF condition THEN calc1 ELSE calc2`).
-        *   *Higher-degree polynomials* or splines if non-linearity is strongly suspected.
-        *   Features derived from *fitting intermediate models* or distributions (e.g., residuals, cluster assignments, estimated parameters).
-        *   Features using *advanced mathematical functions* beyond standard transforms.
-    *   **Rationale & Filtering (Bias towards Potential)**: Justify features using relevant theory. Filter rigorously, but **give special consideration to complex features that hypothesize capturing unique, high-value signals**, even if they are less common or harder to interpret initially. *Discard 1-2 ideas, explaining why (could be simple ones deemed less impactful)*.
-    *   **Final Selection (Prioritizing Complexity & Impact)**: Select EXACTLY {n} features. Justify *why* their potential complexity is necessary or advantageous for capturing sophisticated patterns missed by simpler features.
+1.  **Analyze**: Apply your expertise to deeply interpret the data: distributions, correlations, missing values, potential outliers, multimodality. Assess the likely task type (Regression/Classification) based on the target variable `{target_column}`.
+2.  **Think (CoT - Expert Application, Advanced Math & Diversity Focus)**: Document your thinking in `<thinking>...</thinking>` tags, explicitly connecting your specialized knowledge:
+    *   **Task & Data Assessment**: State inferred task type (Regression/Classification) and the corresponding optimization metric (1-RAE/AUC). Detail findings on data quality (outliers, missingness, multimodality) and how they might influence feature design.
+    *   **Hypothesis Generation (Mathematical Depth & Diversity)**: Formulate hypotheses testable with features derived from *advanced math* and covering *diverse feature types*. Consider:
+        *   *Interactions*: High-order (3+) or conditional interactions.
+        *   *Aggregations*: Group-by statistics over relevant categories.
+        *   *Time-based*: Lags, rolling statistics, seasonality features (if time/sequence implied).
+        *   *Polynomial/Non-linear*: Beyond simple squares; consider interactions within polynomials.
+        *   *Multi-scale*: Features capturing patterns at different resolutions/windows.
+        *   *LinAlg/Calculus/Stats*: As per mandatory requirement (distribution parameters, gradients, PCA components etc.).
+    *   **Feature Brainstorming (Prioritize Advanced & Diverse Types)**: Generate diverse candidates. **Actively prioritize and include features employing advanced operations AND representing different feature categories (interaction, aggregation, etc.)**. Ensure you consider features robust to or explicitly handling identified data quality issues (e.g., using robust statistics for outliers, designing features invariant to certain missingness patterns).
+    *   **Rationale & Filtering (Justify Advanced Use & Robustness)**: Justify features using relevant theory, explaining *why an advanced operation is needed* and *how the feature addresses data quality issues*. Filter rigorously, giving special consideration to complex/advanced features hypothesizing unique signals. *Discard 1-2 ideas, explaining why based on principles.*
+    *   **Final Selection & Justification (Mandatory Advanced Feature Check)**: Select EXACTLY {n} features. **Explicitly identify which feature(s) fulfill the mandatory advanced operation requirement (name the operation/concept).** Justify the overall selection based on potential impact on the target metric (1-RAE/AUC), novelty, mathematical sophistication, diversity of type, and handling of data issues.
 3.  **Format**: After `</thinking>`, provide the {{n}} formatted feature blocks. **Crucially**:
-    *   The `detailed description` for EACH feature **MUST** include:
-        *   A clear explanation of the concept and rationale.
-        *   **An explicit calculation method expressed using LaTeX math syntax, preferably inline** (e.g., `$\log(col_A + 1)$`, `\( \frac{{col_A}}{{col_B + \epsilon}} \)` , `\(\mathbb{{I}}(col_C > T)\)` for indicator functions). Ensure LaTeX is valid. Do **NOT** use pseudocode or plain text descriptions for the formula.
+    *   The `detailed description` for EACH feature **MUST** include: rationale (mentioning data quality handling if relevant), and the **LaTeX math syntax** for calculation (e.g., `$\log(col_A + 1)$`, `\( \frac{{col_A}}{{col_B + \epsilon}} \)` , `\(\mathbb{{I}}(col_C > T)\)` for indicator functions). Ensure LaTeX is valid. Do **NOT** use pseudocode or plain text descriptions for the formula.
     *   **Strict Formatting**: Adhere *exactly* to the following structure for each feature block, using single quotes for keys and values (unless the value is a list of strings for 'relevant').
     *   **NO CODE BLOCKS**: Absolutely **NO** markdown code blocks (using three backticks like ```) are allowed within any part of the formatted feature blocks (the lines starting with 'new_feature', 'detailed description', etc.).
 
     **Required Format Example**:
     'new_feature': ['feature_name']
-    'detailed description': 'Rationale... Calculation: [Inline LaTeX Formula]'
+    'detailed description': 'Rationale addressing [Data Issue]... Calculation: [Inline LaTeX Formula]'
     'brief description': 'A short summary...'
     'relevant': ['col_a', 'col_b', ...]
 
 **Output Structure Requirements**:
 1.  Start with `<thinking>`.
-2.  Detail thinking, emphasizing complexity and justification.
-3.  Follow with {n} formatted feature blocks adhering strictly to the formatting rules (LaTeX formula, no code blocks).
-4.  NO other text.
+2.  Detail thinking, emphasizing justification for advanced operations, feature type diversity, data quality handling, and constraint verification.
+3.  Follow with {n} formatted feature blocks adhering strictly to the formatting rules.
+4.  **Constraint Check**: Ensure at least one feature uses advanced operations (beyond simple arithmetic, exp, log, basic polynomials).
+5.  NO other text.
 ''',
         reflect_on_tool_use=False,
         model_client_stream=False,
