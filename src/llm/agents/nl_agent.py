@@ -1,6 +1,8 @@
+import asyncio
 from src.llm.utils.llm_util import *
 from src.llm.llm_dag_node import *
 from src.llm.utils.prompt import *
+from .autogen_feature_generator import generate_features_autogen
 
 class NLAgent():
     normal_feature_pre_list = ["new_feature", "detailed description", "brief description", "relevant"]
@@ -100,7 +102,8 @@ class NLAgent():
                 # print(termcolor.colored(f"{whole_prompt}\n Total token: {token_num(whole_prompt)}, Current Token Limitation {token_limit}", "grey"))
                 
                 # high_order_model = "gpt-4-turbo"
-                responses = send_prompt_n("", whole_prompt, n = 3 if high_order else send_num * 2)
+                num_to_generate = 3 if high_order else send_num * 2
+                responses = asyncio.run(generate_features_autogen(whole_prompt, n=num_to_generate))
                 print(termcolor.colored(responses, "green"))
                 
                 cur_attr_set = set()
@@ -135,5 +138,13 @@ class NLAgent():
                     # no valid responses
                     raise Exception("Error: no valid response")
             except Exception as e:
-                print(e, termcolor.colored("Error:regrenerate the op_type", "red"))
-                ConnectionRefusedError
+                print(e, termcolor.colored(f"Error during feature generation loop: {e}", "red"))
+                # If Autogen failed to produce valid responses after retries,
+                # break the loop and return the empty next_state.
+                if "Error: no valid response" in str(e):
+                    print(termcolor.colored("Stopping due to Autogen failing to generate valid responses.", "red"))
+                    return next_state # Return empty state instead of looping infinitely
+                # For other unexpected errors, maybe still return or re-raise depending on desired behavior
+                # For now, we'll also return to prevent hangs.
+                print(termcolor.colored("Stopping due to unexpected error.", "red"))
+                return next_state # Return empty state
