@@ -410,6 +410,12 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             
         # 主循环：执行指定步数的节点扩展
         for i in range(start_idx, step_num, 1):
+            # ---- Add check here ----
+            if not self.cur_states: # Check if heap is empty before starting step
+                print(termcolor.colored(f"A* Search stopped at step {i} because the candidate heap is empty.", "yellow"))
+                break # Stop the loop gracefully
+            # ---- End check ----
+
             self.astar_one_step(i)          # 单步A*搜索
             self.draw_current(-1*i)         # 可视化当前状态
             self.pre_idx = i + 1            # 更新进度标识

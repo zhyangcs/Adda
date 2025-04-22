@@ -31,7 +31,7 @@ you could download the data from the https://drive.google.com/file/d/1qTUpAEn25_
 include import the raw csv to the postgres, then do the feature engineering.
 You could assign the task_name and the model_type
 ```python
-python src/llm/tests/test_utils.py --task_name heart --model_type RF
+python src/llm/tests/test_util.py --task_name heart --model_type RF
 ```
 
 ### 3. do the In-DB computation part
