@@ -35,6 +35,13 @@ from src.llm.utils.common_utils import *
 import concurrent.futures
 import asyncio
 from src.llm.agents.autogen_code_generator import generate_code_autogen
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.linear_model import RidgeCV
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
+from sklearn.preprocessing import LabelEncoder, KBinsDiscretizer
 
 
 warnings.filterwarnings("ignore")
@@ -241,7 +248,7 @@ class LLMDagConstructor():
             return None, False
 
 
-    def task_to_features(self, cur_node:LLMDAGNODE, cur_step_idx:int = 0):
+    def task_to_features(self, cur_node:LLMDAGNODE, cur_step_idx:int = 0, stats_summary:str=""):
         """将任务描述转换为特征节点（核心生成逻辑）
         
         实现流程：
@@ -255,7 +262,8 @@ class LLMDagConstructor():
         nodes = topKSimilarNodes(cur_node, self.dag, src.env.topK_rag)
         example_prompt = nodes2example(nodes, self.dag)
         # next_state contains LLMDAGNODE instances with NL descriptions, etc.
-        next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt)
+        # Pass stats_summary to nl_agent
+        next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt, stats_summary=stats_summary)
 
         # 2. Generate, validate, and process code using Autogen for each description node
         next_states_with_code = []
@@ -405,23 +413,29 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
 
         if not self.cur_states: # Check if heap is empty
             print(termcolor.colored("A* Search Warning: cur_states heap is empty. Stopping search.", "yellow"))
-            # Consider setting self.finish = True or raising an exception
             return # Cannot proceed
 
         cur_node = heapq.heappop(self.cur_states)
         print(termcolor.colored(f"the current node: {cur_node.node_id}", "blue"))
+
+        # --- Generate Statistical Summary for the current node's data ---
+        stats_summary_str = self._generate_statistical_summary(cur_node.out_cur_df, target_col=self.target_col)
+        print(termcolor.colored(f"Generated stats summary for node {cur_node.node_id}:\n{stats_summary_str}", "magenta"))
+        # --- End Statistical Summary ---
+
         # task_to_features now handles code generation internally using Autogen
         # It populates next_node.task_code but not next_node.out_cur_df
-        cur_next_states = self.task_to_features(cur_node, cur_feature_idx)
-        # next_states += cur_next_states # We process cur_next_states directly below
+        # Pass the summary to task_to_features
+        cur_next_states = self.task_to_features(cur_node, cur_feature_idx, stats_summary=stats_summary_str)
 
         # 2. Execute code, evaluate, and choose the top-k states
         total_node_num = 0
+        # Recalculate total nodes *before* potentially adding new ones in the loop
         for node in self.dag.nodes:
             total_node_num += (1 + self.dag.out_degree(node))
 
         valid_next_nodes_for_heap = [] # Nodes that successfully execute and evaluate
-        for next_node in cur_next_states: # Use cur_next_states directly
+        for next_node in cur_next_states:
             if next_node is not None and hasattr(next_node, 'node_id') and hasattr(next_node, 'task_code') and next_node.task_code:
                 execution_success = False
                 # Check if parent DataFrame is valid
@@ -1139,3 +1153,269 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             print("--- Traceback ---:")
             traceback.print_exc()
             return input_df # Return original df on execution error
+
+    def _generate_statistical_summary(self, df: pd.DataFrame, sample_size: int = 5000, target_col: str | None = None) -> str:
+        """Generates an enhanced statistical summary string for the given DataFrame."""
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return "Input DataFrame is empty or invalid."
+
+        summary_parts = ["--- Statistical Insights Summary ---"]
+        df_sample = df.sample(n=min(len(df), sample_size), random_state=42) if len(df) > sample_size else df
+        numeric_cols = df_sample.select_dtypes(include=np.number).columns.tolist()
+        all_cols = df_sample.columns.tolist()
+
+        df_numeric_sample = df_sample[numeric_cols].copy() if numeric_cols else pd.DataFrame()
+
+        # --- Correlation Summary ---
+        if not df_numeric_sample.empty:
+            try:
+                # ... (Correlation logic remains the same as before) ...
+                corr_matrix = df_numeric_sample.corr()
+                high_corr_threshold = 0.8
+                high_corr_pairs = []
+                processed_in_pair = set()
+                for i in range(len(corr_matrix.columns)):
+                    for j in range(i):
+                        col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
+                        # Check if correlation calculation resulted in NaN (can happen with low variance cols)
+                        corr_val = corr_matrix.iloc[i, j]
+                        if pd.isna(corr_val):
+                            continue
+                        if abs(corr_val) > high_corr_threshold:
+                            if col1 not in processed_in_pair and col2 not in processed_in_pair:
+                                pair = (col1, col2, corr_val)
+                                high_corr_pairs.append(pair)
+                                processed_in_pair.add(col1)
+                                processed_in_pair.add(col2)
+
+
+                if high_corr_pairs:
+                     summary_parts.append("\n[Correlation Insights]")
+                     summary_parts.append(f"High Correlation (abs > {high_corr_threshold:.1f}):")
+                     for p in high_corr_pairs[:3]: # Limit displayed pairs
+                          summary_parts.append(f"- '{p[0]}' & '{p[1]}': {p[2]:.2f}")
+                else:
+                     summary_parts.append(f"\n[Correlation Insights]\nNo strong linear correlations (abs > {high_corr_threshold:.1f}) found.")
+            except Exception as e:
+                summary_parts.append(f"\n[Correlation Insights]\nAnalysis failed: {e}")
+        else:
+             summary_parts.append("\n[Correlation Insights]\nNo numeric columns for analysis.")
+
+        # --- PCA Insights (Enhanced) ---
+        if not df_numeric_sample.empty:
+            try:
+                df_pca_input = df_numeric_sample.fillna(df_numeric_sample.median())
+                if df_pca_input.empty or df_pca_input.shape[1] < 2:
+                     summary_parts.append("\n[PCA Insights]\nSkipped: Not enough numeric features or data.")
+                else:
+                     scaler_pca = StandardScaler()
+                     scaled_data_pca = scaler_pca.fit_transform(df_pca_input)
+                     n_components_pca = min(3, df_pca_input.shape[1])
+                     pca = PCA(n_components=n_components_pca, random_state=42)
+                     pca.fit(scaled_data_pca)
+                     variance_explained = pca.explained_variance_ratio_
+                     summary_parts.append(f"\n[PCA Insights] (on {df_pca_input.shape[1]} numeric features)")
+                     summary_parts.append(f"Top {n_components_pca} components capture {variance_explained.sum()*100:.1f}% total variance.")
+                     # Show top contributing features for each component
+                     for i in range(n_components_pca):
+                          component = pca.components_[i]
+                          feature_loadings = pd.Series(component, index=df_pca_input.columns).abs().sort_values(ascending=False)
+                          top_features = feature_loadings.head(3).index.tolist()
+                          summary_parts.append(f"- Comp. {i+1} ({variance_explained[i]*100:.1f}% var) strongly influenced by: {top_features}")
+            except Exception as e:
+                summary_parts.append(f"\n[PCA Insights]\nAnalysis failed: {e}")
+        else:
+             summary_parts.append("\n[PCA Insights]\nSkipped: No numeric columns.")
+
+
+        # --- Mutual Information (MI) Insights (if target_col provided) ---
+        if target_col and target_col in all_cols:
+            target_type = 'unknown'
+            try:
+                # Prepare data for MI - handle NaNs and non-numeric types
+                X_mi = df_sample.drop(columns=[target_col]).copy()
+                y_mi = df_sample[target_col].copy()
+
+                # Basic target preprocessing
+                if pd.api.types.is_numeric_dtype(y_mi):
+                    y_mi.fillna(y_mi.median(), inplace=True)
+                    target_type = 'regression'
+                    # Optional: Discretize target for MI if it's continuous?
+                    # discretizer = KBinsDiscretizer(n_bins=5, encode='ordinal', strategy='uniform')
+                    # y_mi = discretizer.fit_transform(y_mi.values.reshape(-1, 1)).ravel()
+                elif pd.api.types.is_categorical_dtype(y_mi) or pd.api.types.is_object_dtype(y_mi):
+                     y_mi.fillna(y_mi.mode()[0], inplace=True)
+                     le = LabelEncoder()
+                     y_mi = le.fit_transform(y_mi)
+                     target_type = 'classification'
+                else:
+                     raise ValueError("Target column type not suitable for MI analysis.")
+
+                # Preprocess features for MI (handle NaNs, encode categoricals)
+                processed_features_mi = {}
+                feature_names_mi = []
+                discrete_mask_mi = []
+                for col in X_mi.columns:
+                    if pd.api.types.is_numeric_dtype(X_mi[col]):
+                        processed_features_mi[col] = X_mi[col].fillna(X_mi[col].median()).values
+                        feature_names_mi.append(col)
+                        discrete_mask_mi.append(False) # Continuous features
+                    elif pd.api.types.is_categorical_dtype(X_mi[col]) or pd.api.types.is_object_dtype(X_mi[col]):
+                        filled_col = X_mi[col].fillna(X_mi[col].mode()[0])
+                        le = LabelEncoder()
+                        processed_features_mi[col] = le.fit_transform(filled_col).astype(int) # Ensure integer type
+                        feature_names_mi.append(col)
+                        discrete_mask_mi.append(True) # Discrete features
+                    # else: skip other types
+
+                if not feature_names_mi:
+                     summary_parts.append("\n[Mutual Information]\nSkipped: No suitable features found after preprocessing.")
+                else:
+                    # Stack processed features into a 2D array
+                    X_mi_processed = np.column_stack([processed_features_mi[name] for name in feature_names_mi])
+
+                    # Calculate MI based on target type
+                    if target_type == 'regression':
+                        mi_scores = mutual_info_regression(X_mi_processed, y_mi, discrete_features=discrete_mask_mi, random_state=42)
+                    elif target_type == 'classification':
+                        mi_scores = mutual_info_classif(X_mi_processed, y_mi, discrete_features=discrete_mask_mi, random_state=42)
+                    else: # Should not happen if initial check is done
+                         raise ValueError("Unknown target type for MI.")
+
+                    mi_series = pd.Series(mi_scores, index=feature_names_mi).sort_values(ascending=False)
+                    top_n_mi = min(5, len(mi_series))
+                    summary_parts.append(f"\n[Mutual Information] (relevance to '{target_col}')")
+                    summary_parts.append(f"Top {top_n_mi} features by MI score:")
+                    for feature, score in mi_series.head(top_n_mi).items():
+                        summary_parts.append(f"- {feature}: {score:.3f}") # Higher score = more informative
+
+            except Exception as e:
+                summary_parts.append(f"\n[Mutual Information]\nAnalysis failed: {e}")
+        elif target_col:
+             summary_parts.append(f"\n[Mutual Information]\nSkipped: Target column '{target_col}' not found.")
+        else:
+             summary_parts.append("\n[Mutual Information]\nSkipped: Target column not provided.")
+
+
+        # --- Basic LGBM Feature Importance (if target_col provided) ---
+        if target_col and target_col in all_cols:
+            try:
+                # Prepare data - Use numeric and simple categorical
+                X_lgbm = df_sample.drop(columns=[target_col]).copy()
+                y_lgbm = df_sample[target_col].copy()
+                lgbm_feature_names = []
+                categorical_features_lgbm = []
+
+                # Preprocessing
+                for col in X_lgbm.columns:
+                    if pd.api.types.is_numeric_dtype(X_lgbm[col]):
+                        X_lgbm[col] = X_lgbm[col].fillna(X_lgbm[col].median())
+                        lgbm_feature_names.append(col)
+                    elif X_lgbm[col].nunique() < 20 and pd.api.types.is_object_dtype(X_lgbm[col]): # Simple categorical encoding
+                         X_lgbm[col] = X_lgbm[col].fillna(X_lgbm[col].mode()[0]).astype('category')
+                         lgbm_feature_names.append(col)
+                         categorical_features_lgbm.append(col)
+                    # else: drop other types
+
+                X_lgbm = X_lgbm[lgbm_feature_names] # Keep only processed columns
+
+                if X_lgbm.empty:
+                    raise ValueError("No features left after preprocessing for LGBM.")
+
+                # Determine task type and model
+                if pd.api.types.is_numeric_dtype(y_lgbm):
+                    y_lgbm = y_lgbm.fillna(y_lgbm.median())
+                    lgbm_params = {'objective': 'regression_l1', 'metric': 'mae', 'n_estimators': 50, 'learning_rate': 0.05, 'feature_fraction': 0.8, 'bagging_fraction': 0.8, 'bagging_freq': 1, 'verbose': -1, 'n_jobs': -1, 'seed': 42, 'boosting_type': 'gbdt'}
+                    model = lgb.LGBMRegressor(**lgbm_params)
+                else: # Assume classification
+                     y_lgbm = y_lgbm.fillna(y_lgbm.mode()[0])
+                     le_lgbm = LabelEncoder()
+                     y_lgbm = le_lgbm.fit_transform(y_lgbm)
+                     num_class = len(le_lgbm.classes_)
+                     lgbm_params = {'objective': 'multiclass' if num_class > 2 else 'binary', 'metric': 'multi_logloss' if num_class > 2 else 'binary_logloss', 'n_estimators': 50, 'learning_rate': 0.05, 'feature_fraction': 0.8, 'bagging_fraction': 0.8, 'bagging_freq': 1, 'verbose': -1, 'n_jobs': -1, 'seed': 42, 'boosting_type': 'gbdt'}
+                     if num_class > 2:
+                         lgbm_params['num_class'] = num_class
+                     model = lgb.LGBMClassifier(**lgbm_params)
+
+                # Train model
+                model.fit(X_lgbm, y_lgbm, categorical_feature=[col for col in categorical_features_lgbm if col in X_lgbm.columns])
+
+                # Get feature importance
+                importances = pd.Series(model.feature_importances_, index=lgbm_feature_names).sort_values(ascending=False)
+                top_n_lgbm = min(5, len(importances))
+                summary_parts.append(f"\n[LGBM Importance] (predicting '{target_col}')")
+                summary_parts.append(f"Top {top_n_lgbm} features by importance:")
+                for feature, score in importances.head(top_n_lgbm).items():
+                    summary_parts.append(f"- {feature}: {score}")
+
+            except Exception as e:
+                summary_parts.append(f"\n[LGBM Importance]\nAnalysis failed: {e}")
+        elif target_col:
+             summary_parts.append(f"\n[LGBM Importance]\nSkipped: Target column '{target_col}' not found.")
+        else:
+             summary_parts.append("\n[LGBM Importance]\nSkipped: Target column not provided.")
+
+
+        # --- K-Means Clustering Insights (Enhanced) ---
+        if not df_numeric_sample.empty:
+            try:
+                df_kmeans_input = df_numeric_sample.fillna(df_numeric_sample.median())
+                if df_kmeans_input.empty or df_kmeans_input.shape[1] < 1:
+                     summary_parts.append("\n[Clustering Insights]\nSkipped: Not enough numeric features or data.")
+                else:
+                     scaler_kmeans = StandardScaler()
+                     scaled_data_kmeans = scaler_kmeans.fit_transform(df_kmeans_input)
+
+                     # Find optimal K using silhouette score
+                     best_k = -1
+                     best_score = -1.1 # Initialize below valid range
+                     max_k = min(6, scaled_data_kmeans.shape[0] - 1) if scaled_data_kmeans.shape[0] > 1 else -1
+                     silhouette_scores = {}
+
+                     if max_k >= 2:
+                         for k in range(2, max_k + 1):
+                             try:
+                                 kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto') # Use 'auto' for n_init
+                                 labels = kmeans.fit_predict(scaled_data_kmeans)
+                                 # Need at least 2 unique labels for silhouette score
+                                 if len(np.unique(labels)) > 1:
+                                     score = silhouette_score(scaled_data_kmeans, labels)
+                                     silhouette_scores[k] = score
+                                     if score > best_score:
+                                         best_score = score
+                                         best_k = k
+                                 else:
+                                     # If only 1 cluster is formed, score is undefined, skip k
+                                     print(termcolor.colored(f"Silhouette calculation skipped for k={k}: Only 1 cluster found.", "grey"))
+                                     continue
+                             except Exception as kmeans_e:
+                                  print(termcolor.colored(f"Silhouette calculation failed for k={k}: {kmeans_e}", "grey"))
+                                  continue
+
+                     if best_k != -1:
+                          kmeans = KMeans(n_clusters=best_k, random_state=42, n_init='auto')
+                          labels = kmeans.fit_predict(scaled_data_kmeans)
+                          centroids_scaled = kmeans.cluster_centers_
+                          # Inverse transform centroids to original scale for interpretability
+                          centroids_original = scaler_kmeans.inverse_transform(centroids_scaled)
+                          centroid_df = pd.DataFrame(centroids_original, columns=df_kmeans_input.columns)
+
+                          # Identify features with largest variance across centroids (potential separators)
+                          centroid_variance = centroid_df.var(axis=0).sort_values(ascending=False)
+                          top_separator_features = centroid_variance.head(3).index.tolist()
+
+                          summary_parts.append(f"\n[Clustering Insights] (K-Means on {df_kmeans_input.shape[1]} numeric features)")
+                          summary_parts.append(f"Optimal K found: {best_k} (Max Silhouette Score: {best_score:.2f})")
+                          cluster_counts = pd.Series(labels).value_counts().sort_index()
+                          summary_parts.append(f"Cluster sizes: {dict(cluster_counts)}")
+                          summary_parts.append(f"Features varying most across cluster centers: {top_separator_features}")
+                     else:
+                          summary_parts.append("\n[Clustering Insights]\nCould not determine optimal K or data unsuitable for K-Means.")
+
+            except Exception as e:
+                summary_parts.append(f"\n[Clustering Insights]\nAnalysis failed: {e}")
+        else:
+            summary_parts.append("\n[Clustering Insights]\nSkipped: No numeric columns.")
+
+        summary_parts.append("\n--- End Summary ---")
+        return "\n".join(summary_parts)

@@ -15,7 +15,7 @@ from typing import Type # Use Type for hinting if direct import is problematic
 # --- Configuration (Consider moving to a config file or environment variables) ---
 # Replace with your actual API key and base URL if needed
 # It's recommended to load these from environment variables for security.
-API_KEY = 'sk-iRsNsrqqhBlIGWrvZ3QNIoUWoUI8keRQnf4RtPGhXOJm5ITR' # Placeholder - Use environment variables
+API_KEY = 'sk-F6l6kc8Xlqb6FlP8ll0cST1GmXB5uSIDZIYyGvL0W2mdkg0F' # Placeholder - Use environment variables
 BASE_URL = 'https://api.nuwaapi.com/v1' # Placeholder
 MODEL = 'gpt-4o' # Or your preferred model
 
@@ -60,7 +60,8 @@ async def generate_code_autogen(node: LLMDAGNODE) -> tuple[str | None, bool]:
     op_desc = node.operation_desc[0] if node.operation_desc else "Generate feature based on inputs." # Use first desc
     col_details = "\n".join([f"- {k}: {v.strip()}" for k, v in node.column_info.items() if k in node.read_set])
 
-    code_proposer_prompt = f"""You are a Senior Python Data Scientist specializing in feature engineering code generation using Pandas and NumPy.
+    # --- Updated Code Proposer Prompt ---
+    code_proposer_prompt = f"""You are a Senior Python Data Scientist specializing in generating **pure, executable Python code snippets** for feature engineering using Pandas and NumPy.
 
 **Task**: Generate Python code for a feature engineering step based on the provided description and data context.
 
@@ -76,79 +77,78 @@ Relevant input columns and their descriptions:
 **Instructions**:
 1.  **Analyze**: Understand the feature description, input columns, and expected output column(s).
 2.  **Generate Code**: Write clean, efficient, and correct Python code using **Pandas** and **NumPy** operations on the DataFrame `df`.
-    *   The code should take columns from `df` specified in 'Input Columns Used' and generate the 'Output Column(s)'.
+    *   The code must operate directly on the `df` DataFrame.
     *   Assign the result to `df['{output_cols}']` (or multiple columns if specified).
-    *   Handle potential division by zero or log of non-positive numbers by adding small constants (e.g., `1e-9` or `1`).
-    *   Handle potential missing values (NaN) appropriately (e.g., using `.fillna()` or operations that inherently handle NaNs). You can fill with 0, mean, median, or mode if it makes sense, or leave NaNs if the operation supports them. State your assumption if filling.
-    *   Ensure the generated code is **self-contained** and operates directly on the `df` DataFrame. Do **NOT** include function definitions (`def ...:`), imports, or example usage. Only provide the core operational code.
-3.  **Format Output**: Present **ONLY** the generated Python code block. Do **NOT** include any explanations, comments (unless essential for complex logic), or markdown formatting like ```python ... ```.
+    *   Handle potential division by zero or log of non-positive numbers appropriately (e.g., add `1e-9` or `1`).
+    *   Handle potential missing values (NaN) appropriately (e.g., using `.fillna()` before the operation if needed). State necessary assumptions if filling NaNs.
+    *   Ensure the generated code is **self-contained operational code ONLY**. Do **NOT** include function definitions (`def ...:`), imports (`import ...`), example usage, or any surrounding text or explanation. Standard Python comments (`# ...`) are acceptable if necessary for clarity.
+3.  **Format Output (CRITICAL!)**:
+    *   Your entire response **MUST** consist **ONLY** of the raw Python code snippet.
+    *   **ABSOLUTELY NO** introductory phrases (like "Here is the code:"), concluding remarks, or markdown formatting (like ```python ... ```) are allowed.
+    *   The first line of your response must be the first line of the code, and the last line must be the last line of the code.
 
-**Example Code Snippet (Do NOT copy directly, adapt to the task):**
+**Example of CORRECT Output Format:**
 ```python
-# Example 1: Simple Ratio
-df['new_feature_ratio'] = df['col_a'] / (df['col_b'] + 1e-9)
-
-# Example 2: Interaction with fillna
-df['interaction_feature'] = df['col_c'].fillna(0) * df['col_d'].fillna(df['col_d'].median())
-
-# Example 3: Log transform
-df['log_feature'] = np.log(df['col_e'] + 1)
+# Calculate feature A
+df['feature_A'] = df['input_col1'] / (df['input_col2'].fillna(0) + 1e-9)
+# Calculate feature B based on A
+df['feature_B'] = np.log(df['feature_A'] + 1)
 ```
 
-**Constraint Checklist & Confidence Score**:
-Before finalizing, review your generated code against these criteria:
-*   [ ] Code operates on a DataFrame named `df`.
-*   [ ] Uses specified input columns: {input_cols}.
-*   [ ] Creates specified output column(s): {output_cols}.
-*   [ ] Handles potential NaNs appropriately.
-*   [ ] Handles potential division by zero / invalid math operations.
-*   [ ] Code is self-contained (no functions, imports).
-*   [ ] Output contains ONLY the code block.
+**Example of INCORRECT Output Format:**
+```text
+Here is the Python code you requested:
+```python
+df['feature_A'] = df['input_col1'] / (df['input_col2'].fillna(0) + 1e-9)
+```
+This code calculates feature A.
+```
 
-Confidence Score [1-5]: [Your Score]
-
-Now, generate the Python code based on the task details provided above."""
-
+Now, generate the **pure Python code snippet** based on the task details provided above.
+"""
 
     code_proposer = AssistantAgent(
         name="CodeProposer",
         model_client=client_coder,
-        system_message=code_proposer_prompt,
+        system_message=code_proposer_prompt, # Use updated prompt
         reflect_on_tool_use=False,
         model_client_stream=False,
     )
 
-    # Code Validator Agent
+    # --- Updated Code Validator Prompt ---
     code_validator = AssistantAgent(
         name="CodeValidator",
         model_client=client_validator,
-        system_message=f"""You are a meticulous Code Reviewer specializing in Pandas feature engineering code snippets.
+        system_message=f"""You are a **hyper-vigilant** Code Reviewer specializing in Pandas feature engineering code snippets. You must enforce strict formatting rules.
 
-**Your Task**: Review the Python code snippet provided by the CodeProposer. The code aims to create the feature(s) '{output_cols}' using input columns '{input_cols}' based on the description: "{op_desc}". The code operates on a pandas DataFrame named `df`.
+**Your Task**: Review the Python code snippet provided by the CodeProposer. The code aims to create the feature(s) '{output_cols}' using input columns '{input_cols}' based on the description: "{op_desc}". It must operate on a pandas DataFrame named `df`.
 
-**Review Criteria**:
+**Review Criteria (All MUST Pass for APPROVE)**:
 1.  **Correctness**: Does the code accurately implement the logic described in "{op_desc}"?
 2.  **Syntax**: Is the Python syntax valid?
-3.  **Pandas Usage**:
-    *   Does it correctly use Pandas operations?
-    *   Does it reference the DataFrame `df` correctly?
-    *   Does it assign the result to the specified output column(s) (`{output_cols}`)?
-    *   Does it attempt dangerous inplace operations without assignment (e.g., `df.fillna(..., inplace=True)`)? Prefer non-inplace (`df['col'] = df['col'].fillna(...)`).
-4.  **Error Handling**: Does the code seem robust against potential errors like division by zero, log of non-positive numbers, or unexpected NaNs? (Check for added constants or appropriate handling).
-5.  **Self-Contained**: Does the code snippet avoid defining functions (`def...`) or including imports? It should be just the operational code.
-6.  **Format**: Does the message contain ONLY the code, without ```python markers or extra text? (Minor surrounding text is okay, but the core should be code).
+3.  **Pandas Usage**: Correct Pandas/NumPy operations? Correct `df` reference? Correct output assignment to `{output_cols}`? No unsafe inplace operations?
+4.  **Error Handling**: Robust against division by zero, invalid math ops, NaNs?
+5.  **Self-Contained**: Avoids `def`, `import`, example usage?
+6.  **Format (Strict Check!)**:
+    *   Does the *entire* message consist **ONLY** of raw Python code (standard Python comments `#...` are allowed)?
+    *   Are there **NO** surrounding text, explanations, greetings, sign-offs?
+    *   Are there **NO** markdown markers like ```python or ```?
 
 **Interaction Strategy & Output Format**:
-*   **Analyze**: Carefully review the provided code snippet against the criteria.
+*   **Analyze**: Carefully review the snippet against ALL criteria, paying special attention to the **Format** (Criterion 6).
 *   **Provide Feedback**:
-    *   If the code meets **all** criteria and seems correct and robust, respond **ONLY** with `APPROVE`.
-    *   If the code has issues (syntax errors, logical flaws, incorrect Pandas usage, missing error handling, forbidden elements like `def` or `import`, includes ```python markers), respond **ONLY** with `REJECT` followed by:
-        *   A **brief** (1-2 sentences) explanation of the main issue(s).
-        *   **Specific, actionable suggestions** for fixing the code. Example: "REJECT The code divides without handling potential zeros. Suggest adding a small constant to the denominator: `df['col_b'] + 1e-9`." or "REJECT Code includes an import statement. Remove the `import pandas as pd` line." or "REJECT Code uses inplace fillna. Change to `df['output_col'] = df['input_col'].fillna(0)`." or "REJECT Code block is missing or wrapped in markdown ```python. Provide only the raw code."
-*   **Conciseness**: Keep feedback brief and focused. The goal is to guide the Proposer to generate a valid, runnable snippet.
+    *   If **ALL** criteria are met, respond **ONLY** with `APPROVE`.
+    *   If **ANY** criterion fails (especially Format!), respond **ONLY** with `REJECT` followed by:
+        *   A **brief** explanation focusing on the **most critical** issue(s).
+        *   **Specific, actionable suggestions** for fixing.
+    *   **Format Rejection Examples**:
+        *   "REJECT Response includes introductory text before the code. Remove 'Here is the code:'."
+        *   "REJECT Response uses markdown code fences (```python). Remove the fences."
+        *   "REJECT Response includes explanatory text after the code. Remove all text following the last line of code."
+*   **Conciseness**: Keep feedback brief.
 
-**Example Rejection Response:**
-REJECT Division by zero is not handled. Add a small epsilon to the denominator like `df['col_b'] + 1e-9`. Ensure the output column name is correct.
+**Example Rejection (Format Issue):**
+REJECT Response includes markdown code fences. Remove the ```python and ``` markers.
 """,
         reflect_on_tool_use=False,
         model_client_stream=False,

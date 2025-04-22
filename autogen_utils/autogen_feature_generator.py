@@ -9,7 +9,7 @@ import re
 openai_client = OpenAIChatCompletionClient(
     model='gpt-4o', # Or your preferred model
     base_url='https://api.nuwaapi.com/v1', # Replace if necessary
-    api_key='sk-YIkcYQ4PqHhKPyJf7sE8NQALxRwRrix2VXglnXOpkkheP7dY' # Replace with your key or use environment variables
+    api_key='sk-F6l6kc8Xlqb6FlP8ll0cST1GmXB5uSIDZIYyGvL0W2mdkg0F' # Replace with your key or use environment variables
 )
 
 # --- Define the NL Feature Describer Agent --- 
