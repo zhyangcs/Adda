@@ -1,6 +1,7 @@
 import asyncio
 import re
 import termcolor
+import src.env # Import env
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_core.tools import FunctionTool
@@ -13,11 +14,8 @@ from autogen_core import CancellationToken
 from typing import Type # Use Type for hinting if direct import is problematic
 
 # --- Configuration (Consider moving to a config file or environment variables) ---
-# Replace with your actual API key and base URL if needed
-# It's recommended to load these from environment variables for security.
-API_KEY = 'sk-F6l6kc8Xlqb6FlP8ll0cST1GmXB5uSIDZIYyGvL0W2mdkg0F' # Placeholder - Use environment variables
-BASE_URL = 'https://api.nuwaapi.com/v1' # Placeholder
-MODEL = 'gpt-4o' # Or your preferred model
+# Recommend loading these from environment variables or a config file.
+MODEL = 'gpt-4o' # Or your preferred model, could also be in src.env
 
 # Placeholder for LLMDAGNODE if not directly imported
 # Used for type hinting only
@@ -48,8 +46,8 @@ async def generate_code_autogen(node: LLMDAGNODE) -> tuple[str | None, bool]:
 
     # Initialize clients for this run
     try:
-        client_coder = OpenAIChatCompletionClient(model=MODEL, base_url=BASE_URL, api_key=API_KEY)
-        client_validator = OpenAIChatCompletionClient(model=MODEL, base_url=BASE_URL, api_key=API_KEY)
+        client_coder = OpenAIChatCompletionClient(model=MODEL, base_url=src.env.openai_base_url, api_key=src.env.openai_api_key)
+        client_validator = OpenAIChatCompletionClient(model=MODEL, base_url=src.env.openai_base_url, api_key=src.env.openai_api_key)
     except Exception as e:
         print(termcolor.colored(f"[Autogen Code Gen] Error initializing LLM clients: {e}", "red"))
         return None, False

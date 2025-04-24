@@ -42,6 +42,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
 from sklearn.preprocessing import LabelEncoder, KBinsDiscretizer
+from autogen_agentchat.agents import AssistantAgent # Ensure AssistantAgent is imported
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_agentchat.messages import TextMessage
+from autogen_core import CancellationToken
 
 
 warnings.filterwarnings("ignore")
@@ -67,6 +71,76 @@ emb_model = AutoModel.from_pretrained(rag_model_id_or_path, trust_remote_code=Tr
 emb_model.eval()
 emb_tokenizer = AutoTokenizer.from_pretrained(rag_model_id_or_path, trust_remote_code=True)   
  
+# --- Define Planner Agent Logic ---
+async def run_planner_agent(
+    initial_data_desc: str,
+    initial_col_info: dict, # Pass column info dictionary
+    initial_stats_summary: str,
+    target_col: str,
+    client: OpenAIChatCompletionClient # Reuse one of the existing clients
+    ) -> str:
+    """Runs a Planner agent to generate a high-level feature engineering plan."""
+    print(termcolor.colored("[Planner Agent] Generating global plan...", "blue"))
+    if not client:
+        print(termcolor.colored("[Planner Agent] Error: LLM client not available.", "red"))
+        return ""
+
+    # Prepare a concise context for the planner
+    col_desc_for_planner = get_column_info(initial_col_info, 1000) # Limit token usage for column descriptions
+    planner_context = f"""
+/* Initial Data Description:
+{col_desc_for_planner}
+*/
+
+Target Column: {target_col}
+
+/* Initial Statistical Insights Summary:
+{initial_stats_summary}
+*/
+"""
+
+    planner_system_prompt = f"""You are a **Strategic Feature Engineering Planner**.
+Based on the initial data description, target column ('{target_col}'), and statistical insights summary provided below, generate a concise, high-level strategic plan (3-5 bullet points) for the feature engineering process.
+
+Focus on:
+- Key areas to investigate (e.g., handling high correlation, exploring non-linearities suggested by MI).
+- Potentially promising feature types (e.g., interactions involving important features, transformations for skewed data).
+- Prioritization (e.g., "First address missing values, then explore interactions.").
+
+Your output should be ONLY the bulleted list representing the plan. No extra text.
+
+**Input Context:**
+{planner_context}
+
+**Output Example:**
+*   Address high correlation between 'feat_A' and 'feat_B' by creating ratio/difference features.
+*   Explore non-linear transformations (e.g., log, sqrt) for features 'feat_C', 'feat_D' based on high MI scores.
+*   Prioritize interaction features involving top important features identified by LGBM ('feat_X', 'feat_Y').
+*   Investigate features discriminating between the clusters identified by K-Means, focusing on 'feat_Z'.
+"""
+
+    planner_agent = AssistantAgent(
+        name="PlannerAgent",
+        model_client=client,
+        system_message=planner_system_prompt,
+        # No tools needed for the planner itself
+    )
+
+    try:
+        # Use on_messages for a single turn interaction
+        response = await planner_agent.on_messages(
+             [TextMessage(content="Generate the feature engineering plan based on the provided context.", source="user")],
+             CancellationToken(),
+        )
+        plan = response.chat_message.content.strip()
+        print(termcolor.colored(f"[Planner Agent] Generated Plan:\n{plan}", "green"))
+        # Basic cleanup: remove potential markdown list markers if LLM adds them inconsistently
+        plan = re.sub(r'^[\*\-\+] ', '', plan, flags=re.MULTILINE).strip()
+        return plan
+    except Exception as e:
+        print(termcolor.colored(f"[Planner Agent] Error generating plan: {e}", "red"))
+        return "" # Return empty plan on error
+
 class LLMDagConstructor():
     """LLM驱动的特征工程DAG构造器
     
@@ -112,7 +186,24 @@ class LLMDagConstructor():
         self.high_order_num = high_order_num
         self.token_limit = token_limit
         self.nl_agent = NLAgent(self.eval_model_type)
-        
+        self.global_plan = "" # Initialize global plan attribute
+        # Initialize LLM Clients here (as implemented previously)
+        self.client_coder = None
+        self.client_validator = None
+        try:
+            # Consider reusing clients if appropriate for your application structure
+            # It's generally more efficient than creating new ones for every operation.
+            # Ensure API_KEY, BASE_URL, and MODEL constants/variables are defined appropriately.
+            # Example uses constants defined earlier in the file or imported.
+            # We should use src.env imported earlier
+            self.client_coder = OpenAIChatCompletionClient(model='gpt-4o', base_url=src.env.openai_base_url, api_key=src.env.openai_api_key)
+            # self.client_validator = OpenAIChatCompletionClient(model='gpt-4o', base_url=src.env.BASE_URL, api_key=src.env.API_KEY)
+            print(termcolor.colored("LLMDagConstructor: LLM clients initialized successfully.", "green"))
+        except Exception as e:
+            print(termcolor.colored(f"LLMDagConstructor: Error initializing LLM clients: {e}. Global plan and code generation might fail.", "red"))
+            # Depending on requirements, you might want to raise the exception or handle it differently.
+            self.client_coder = None
+            self.client_validator = None
         
     def init_task_params(self, data_agenda:list[str], data_desc:list[str], target_col:str, tb_name:str = None, csv_path:str = None, do_unfinished:bool = False, task_name:str = None):
         """
@@ -248,22 +339,25 @@ class LLMDagConstructor():
             return None, False
 
 
-    def task_to_features(self, cur_node:LLMDAGNODE, cur_step_idx:int = 0, stats_summary:str=""):
-        """将任务描述转换为特征节点（核心生成逻辑）
-        
-        实现流程：
-        1. NLAgent生成特征描述 (LLMDAGNODE)
-        2. Autogen Code Gen Team生成并验证代码
-        3. (If needed) DivideAgent 分割复杂代码
-        4. 生成嵌入向量
-        5. DAG节点添加与可视化
-        """
+    def task_to_features(self, cur_node:LLMDAGNODE, cur_step_idx:int = 0, stats_summary:str="", global_plan:str=""): # Add global_plan
+        """将任务描述转换为特征节点（核心生成逻辑）"""
         # 1. NLAgent generate the description nodes
         nodes = topKSimilarNodes(cur_node, self.dag, src.env.topK_rag)
         example_prompt = nodes2example(nodes, self.dag)
         # next_state contains LLMDAGNODE instances with NL descriptions, etc.
         # Pass stats_summary to nl_agent
-        next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt, stats_summary=stats_summary)
+        next_state = self.nl_agent.task_to_desc(
+            cur_node,
+            # src.env.diverse_num,
+            3,
+            self.target_col,
+            cur_step_idx,
+            self.high_order_num,
+            self.token_limit,
+            example_prompt,
+            stats_summary=stats_summary,
+            global_plan=global_plan # Pass it along
+            )
 
         # 2. Generate, validate, and process code using Autogen for each description node
         next_states_with_code = []
@@ -419,14 +513,26 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         print(termcolor.colored(f"the current node: {cur_node.node_id}", "blue"))
 
         # --- Generate Statistical Summary for the current node's data ---
-        stats_summary_str = self._generate_statistical_summary(cur_node.out_cur_df, target_col=self.target_col)
+        stats_summary_str = ""
+        if isinstance(cur_node.out_cur_df, pd.DataFrame) and not cur_node.out_cur_df.empty:
+            try:
+                stats_summary_str = self._generate_statistical_summary(
+                    cur_node.out_cur_df,
+                    target_col_name=self.target_col, # Pass the name
+                    target_col_data=self.label      # Pass the actual label data
+                )
+            except Exception as e:
+                print(termcolor.colored(f"Failed to generate stats summary for node {cur_node.node_id}: {e}", "yellow"))
+        else:
+            print(termcolor.colored(f"Skipping stats summary for node {cur_node.node_id}: DataFrame invalid.", "yellow"))
+
         print(termcolor.colored(f"Generated stats summary for node {cur_node.node_id}:\n{stats_summary_str}", "magenta"))
         # --- End Statistical Summary ---
 
         # task_to_features now handles code generation internally using Autogen
         # It populates next_node.task_code but not next_node.out_cur_df
         # Pass the summary to task_to_features
-        cur_next_states = self.task_to_features(cur_node, cur_feature_idx, stats_summary=stats_summary_str)
+        cur_next_states = self.task_to_features(cur_node, cur_feature_idx, stats_summary=stats_summary_str, global_plan=self.global_plan)
 
         # 2. Execute code, evaluate, and choose the top-k states
         total_node_num = 0
@@ -569,11 +675,64 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             print(f"current states is reload: {self.finish}, {start_idx}")
             self.draw_current(-20)  # 绘制当前DAG状态（调试用）
             
+        # --- Run Planner Agent ONCE if starting fresh ---
+        if not do_unfinished:
+            print(termcolor.colored("Generating initial global plan...", "blue"))
+            initial_stats_summary = ""
+            if isinstance(self.root.out_cur_df, pd.DataFrame) and not self.root.out_cur_df.empty:
+                 try:
+                      initial_stats_summary = self._generate_statistical_summary(
+                           self.root.out_cur_df,
+                           target_col_name=self.target_col,
+                           target_col_data=self.label
+                      )
+                      print(termcolor.colored(f"Generated initial stats summary for planner: {initial_stats_summary}", "magenta"))
+                 except Exception as e:
+                      print(termcolor.colored(f"Failed to generate initial stats summary for planner: {e}", "yellow"))
+            else:
+                 print(termcolor.colored("Skipping initial stats summary for planner: Root DataFrame invalid.", "yellow"))
+
+            # Run the planner agent (make sure client_coder is initialized)
+            if self.client_coder:
+                 self.global_plan = asyncio.run(run_planner_agent(
+                      initial_data_desc="".join(data_desc), # Pass data description string
+                      initial_col_info=self.root.column_info, # Pass column info dict
+                      initial_stats_summary=initial_stats_summary,
+                      target_col=self.target_col,
+                      client=self.client_coder # Reuse coder client
+                 ))
+            else:
+                 print(termcolor.colored("Skipping global plan generation: LLM client not initialized.", "red"))
+        elif not hasattr(self, 'global_plan'): # Handle loading state where plan might be missing
+             print(termcolor.colored("Warning: Loading unfinished state, but global_plan attribute missing. Proceeding without plan.", "yellow"))
+             self.global_plan = ""
+        else:
+             print(termcolor.colored(f"Loaded global plan:\n{self.global_plan}", "cyan"))
+        # --- End Planner Agent Run ---
+        
+        # test
+        # exit()
+
+        # --- Initialize A* Heap (if starting fresh) ---
+        if not do_unfinished:
+            # ... (Initialize self.cur_states and self.pre_states as before) ...
+             self.cur_states = []
+             self.evaluate_node(self.root)
+             if self.root.final_score is not None and self.root.final_score != -1:
+                 self.root.utility = monte_carlo_like_heuristic_func(1, 1, self.root.final_score)
+                 heapq.heappush(self.cur_states, self.root)
+             else:
+                  print(termcolor.colored(f"Warning: Root node evaluation failed... Cannot start A* search.", "yellow"))
+                  asyncio.run(self.close_clients()) # Close clients if search cannot start
+                  return
+             self.pre_states = self.cur_states.copy()
+        # ---
+
         # 主循环：执行指定步数的节点扩展
         for i in range(start_idx, step_num, 1):
-             if not self.cur_states: # Check if heap is empty before starting step
+             if not self.cur_states: # 检查堆是否为空
                  print(termcolor.colored(f"A* Search stopped at step {i} because the candidate heap is empty.", "yellow"))
-                 break # Stop the loop
+                 break # 停止循环
              print(f"--- A* Step {i} ---")
              self.astar_one_step(i)          # 单步A*搜索
              self.draw_current(-1*i)         # 可视化当前状态
@@ -1154,17 +1313,91 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             traceback.print_exc()
             return input_df # Return original df on execution error
 
-    def _generate_statistical_summary(self, df: pd.DataFrame, sample_size: int = 5000, target_col: str | None = None) -> str:
+    def _generate_statistical_summary(
+        self,
+        df: pd.DataFrame,
+        sample_size: int = 5000,
+        target_col_name: str | None = None,
+        target_col_data: pd.Series | np.ndarray | None = None
+    ) -> str:
         """Generates an enhanced statistical summary string for the given DataFrame."""
         if not isinstance(df, pd.DataFrame) or df.empty:
             return "Input DataFrame is empty or invalid."
-
+ 
         summary_parts = ["--- Statistical Insights Summary ---"]
+        # Ensure consistent sampling by using the DataFrame's index if target_col_data is provided
+        sample_indices = df.index if len(df) <= sample_size else df.sample(n=sample_size, random_state=42).index
+        df_sample = df.loc[sample_indices]
+
+        # Align target_col_data with the sample if provided
+        aligned_target_data = None
+        if target_col_data is not None and target_col_name:
+            try:
+                # Ensure target_col_data is a pandas Series for easier indexing
+                if isinstance(target_col_data, np.ndarray):
+                    target_col_data = pd.Series(target_col_data, index=df.index) # Assume original df index alignment
+
+                if isinstance(target_col_data, pd.Series):
+                     # Check if index types match before attempting intersection
+                     if df_sample.index.dtype == target_col_data.index.dtype:
+                         common_index = df_sample.index.intersection(target_col_data.index)
+                         aligned_target_data = target_col_data.loc[common_index]
+                         # Align df_sample as well, in case target had NaNs dropped etc.
+                         df_sample = df_sample.loc[common_index]
+                         if aligned_target_data.empty or df_sample.empty:
+                              print(termcolor.colored("Warning: Target data or features became empty after index alignment.", "yellow"))
+                              aligned_target_data = None # Reset if alignment failed
+                         else:
+                             print(termcolor.colored(f"Successfully aligned target data (size: {len(aligned_target_data)}) with sampled features.", "grey"))
+                     else:
+                          print(termcolor.colored(f"Warning: Index type mismatch between features ({df_sample.index.dtype}) and target ({target_col_data.index.dtype}). Cannot align target data.", "yellow"))
+                          aligned_target_data = None
+                else:
+                    print(termcolor.colored("Warning: target_col_data is not a Series or ndarray. Cannot align.", "yellow"))
+                    aligned_target_data = None
+            except Exception as e:
+                 print(termcolor.colored(f"Error aligning target data: {e}. Proceeding without MI/LGBM.", "yellow"))
+                 aligned_target_data = None
+
         df_sample = df.sample(n=min(len(df), sample_size), random_state=42) if len(df) > sample_size else df
         numeric_cols = df_sample.select_dtypes(include=np.number).columns.tolist()
         all_cols = df_sample.columns.tolist()
-
+        categorical_cols = df_sample.select_dtypes(include=['object', 'category']).columns.tolist()
+ 
         df_numeric_sample = df_sample[numeric_cols].copy() if numeric_cols else pd.DataFrame()
+ 
+        # --- Univariate Statistics ---
+        summary_parts.append("\n[Univariate Statistics]")
+        # Numeric Columns
+        if numeric_cols:
+             summary_parts.append("Numeric Columns (Top 5 by variance shown):")
+             numeric_stats = df_numeric_sample.agg(['mean', 'median', 'std', 'min', 'max', 'skew']).transpose()
+             numeric_stats['nan%'] = df_numeric_sample.isnull().mean() * 100
+             # Show top 5 by standard deviation (as a proxy for variance)
+             top_var_cols = numeric_stats['std'].nlargest(5).index.tolist()
+             stats_to_show = numeric_stats.loc[top_var_cols] if len(top_var_cols) >= 5 else numeric_stats # Show all if less than 5
+             for col, stats in stats_to_show.iterrows():
+                  summary_parts.append(f"- '{col}': Mean={stats['mean']:.2f}, Median={stats['median']:.2f}, Std={stats['std']:.2f}, Skew={stats['skew']:.2f}, NaN={stats['nan%']:.1f}%")
+        else:
+             summary_parts.append("No numeric columns found.")
+
+        # Categorical Columns
+        if categorical_cols:
+             summary_parts.append("\nCategorical Columns (Top 3 by unique values shown):")
+             cat_stats = pd.DataFrame(index=categorical_cols)
+             cat_stats['nunique'] = df_sample[categorical_cols].nunique()
+             cat_stats['nan%'] = df_sample[categorical_cols].isnull().mean() * 100
+             # Show top 3 by nunique
+             top_nunique_cols = cat_stats['nunique'].nlargest(3).index.tolist()
+             stats_to_show_cat = cat_stats.loc[top_nunique_cols] if len(top_nunique_cols) >=3 else cat_stats
+
+             for col, stats in stats_to_show_cat.iterrows():
+                  top_vals = df_sample[col].value_counts(normalize=True).head(3) # Top 3 value frequencies
+                  top_vals_str = ", ".join([f"'{k}' ({v:.1%})" for k, v in top_vals.items()])
+                  summary_parts.append(f"- '{col}': Unique={int(stats['nunique'])}, TopVals=[{top_vals_str}], NaN={stats['nan%']:.1f}%")
+        else:
+            summary_parts.append("No categorical columns found.")
+
 
         # --- Correlation Summary ---
         if not df_numeric_sample.empty:
@@ -1172,7 +1405,9 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                 # ... (Correlation logic remains the same as before) ...
                 corr_matrix = df_numeric_sample.corr()
                 high_corr_threshold = 0.8
+                low_corr_threshold = -0.8 # For negative corr
                 high_corr_pairs = []
+                neg_corr_pairs = []
                 processed_in_pair = set()
                 for i in range(len(corr_matrix.columns)):
                     for j in range(i):
@@ -1184,18 +1419,33 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                         if abs(corr_val) > high_corr_threshold:
                             if col1 not in processed_in_pair and col2 not in processed_in_pair:
                                 pair = (col1, col2, corr_val)
-                                high_corr_pairs.append(pair)
-                                processed_in_pair.add(col1)
-                                processed_in_pair.add(col2)
+                                if corr_val > high_corr_threshold:
+                                    high_corr_pairs.append(pair)
+                                    processed_in_pair.add(col1)
+                                    processed_in_pair.add(col2)
+                                elif corr_val < low_corr_threshold:
+                                    neg_corr_pairs.append(pair)
+                                    processed_in_pair.add(col1)
+                                    processed_in_pair.add(col2)
 
 
                 if high_corr_pairs:
-                     summary_parts.append("\n[Correlation Insights]")
-                     summary_parts.append(f"High Correlation (abs > {high_corr_threshold:.1f}):")
-                     for p in high_corr_pairs[:3]: # Limit displayed pairs
-                          summary_parts.append(f"- '{p[0]}' & '{p[1]}': {p[2]:.2f}")
+                    # Sort by absolute correlation descending for display
+                    high_corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+                    summary_parts.append("\n[Correlation Insights]")
+                    summary_parts.append(f"High Positive Correlation ( > {high_corr_threshold:.1f}):")
+                    for p in high_corr_pairs[:5]: # Limit displayed pairs
+                         summary_parts.append(f"- '{p[0]}' & '{p[1]}': {p[2]:.2f}")
                 else:
-                     summary_parts.append(f"\n[Correlation Insights]\nNo strong linear correlations (abs > {high_corr_threshold:.1f}) found.")
+                     summary_parts.append(f"\n[Correlation Insights]\nNo strong positive correlations ( > {high_corr_threshold:.1f}) found.")
+
+                if neg_corr_pairs:
+                    neg_corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+                    summary_parts.append(f"High Negative Correlation ( < {low_corr_threshold:.1f}):")
+                    for p in neg_corr_pairs[:3]: # Limit displayed pairs
+                         summary_parts.append(f"- '{p[0]}' & '{p[1]}': {p[2]:.2f}")
+                # else: No need to explicitly state no negative corr if positive exists
+
             except Exception as e:
                 summary_parts.append(f"\n[Correlation Insights]\nAnalysis failed: {e}")
         else:
@@ -1210,18 +1460,19 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                 else:
                      scaler_pca = StandardScaler()
                      scaled_data_pca = scaler_pca.fit_transform(df_pca_input)
-                     n_components_pca = min(3, df_pca_input.shape[1])
+                     n_components_pca = min(5, df_pca_input.shape[1]) # Show more components
                      pca = PCA(n_components=n_components_pca, random_state=42)
                      pca.fit(scaled_data_pca)
                      variance_explained = pca.explained_variance_ratio_
+                     cumulative_variance = np.cumsum(variance_explained)
                      summary_parts.append(f"\n[PCA Insights] (on {df_pca_input.shape[1]} numeric features)")
-                     summary_parts.append(f"Top {n_components_pca} components capture {variance_explained.sum()*100:.1f}% total variance.")
+                     # summary_parts.append(f"Top {n_components_pca} components capture {cumulative_variance[-1]*100:.1f}% total variance.")
                      # Show top contributing features for each component
                      for i in range(n_components_pca):
                           component = pca.components_[i]
                           feature_loadings = pd.Series(component, index=df_pca_input.columns).abs().sort_values(ascending=False)
-                          top_features = feature_loadings.head(3).index.tolist()
-                          summary_parts.append(f"- Comp. {i+1} ({variance_explained[i]*100:.1f}% var) strongly influenced by: {top_features}")
+                          top_features = feature_loadings.head(5).index.tolist() # Show more features
+                          summary_parts.append(f"- Comp. {i+1} ({variance_explained[i]*100:.1f}% var, cum: {cumulative_variance[i]*100:.1f}%) influenced by: {top_features}")
             except Exception as e:
                 summary_parts.append(f"\n[PCA Insights]\nAnalysis failed: {e}")
         else:
@@ -1229,13 +1480,13 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
 
 
         # --- Mutual Information (MI) Insights (if target_col provided) ---
-        if target_col and target_col in all_cols:
+        if target_col_name and aligned_target_data is not None:
             target_type = 'unknown'
             try:
                 # Prepare data for MI - handle NaNs and non-numeric types
-                X_mi = df_sample.drop(columns=[target_col]).copy()
-                y_mi = df_sample[target_col].copy()
-
+                # X_mi = df_sample.drop(columns=[target_col_name], errors='ignore').copy() # Use df_sample aligned earlier
+                X_mi = df_sample.copy() # Use df_sample aligned earlier
+                y_mi = aligned_target_data.copy()
                 # Basic target preprocessing
                 if pd.api.types.is_numeric_dtype(y_mi):
                     y_mi.fillna(y_mi.median(), inplace=True)
@@ -1283,26 +1534,26 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                          raise ValueError("Unknown target type for MI.")
 
                     mi_series = pd.Series(mi_scores, index=feature_names_mi).sort_values(ascending=False)
-                    top_n_mi = min(5, len(mi_series))
-                    summary_parts.append(f"\n[Mutual Information] (relevance to '{target_col}')")
+                    top_n_mi = min(10, len(mi_series)) # Show more features
+                    summary_parts.append(f"\n[Mutual Information] (relevance to '{target_col_name}')")
                     summary_parts.append(f"Top {top_n_mi} features by MI score:")
                     for feature, score in mi_series.head(top_n_mi).items():
                         summary_parts.append(f"- {feature}: {score:.3f}") # Higher score = more informative
 
             except Exception as e:
                 summary_parts.append(f"\n[Mutual Information]\nAnalysis failed: {e}")
-        elif target_col:
-             summary_parts.append(f"\n[Mutual Information]\nSkipped: Target column '{target_col}' not found.")
+        elif target_col_name:
+             summary_parts.append(f"\n[Mutual Information]\nSkipped: Target column '{target_col_name}' data not available or alignment failed.")
         else:
              summary_parts.append("\n[Mutual Information]\nSkipped: Target column not provided.")
 
 
         # --- Basic LGBM Feature Importance (if target_col provided) ---
-        if target_col and target_col in all_cols:
+        if target_col_name and aligned_target_data is not None:
             try:
                 # Prepare data - Use numeric and simple categorical
-                X_lgbm = df_sample.drop(columns=[target_col]).copy()
-                y_lgbm = df_sample[target_col].copy()
+                X_lgbm = df_sample.copy() # Use aligned df_sample
+                y_lgbm = aligned_target_data.copy()
                 lgbm_feature_names = []
                 categorical_features_lgbm = []
 
@@ -1342,16 +1593,16 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
 
                 # Get feature importance
                 importances = pd.Series(model.feature_importances_, index=lgbm_feature_names).sort_values(ascending=False)
-                top_n_lgbm = min(5, len(importances))
-                summary_parts.append(f"\n[LGBM Importance] (predicting '{target_col}')")
+                top_n_lgbm = min(10, len(importances)) # Show more features
+                summary_parts.append(f"\n[LGBM Importance] (predicting '{target_col_name}')")
                 summary_parts.append(f"Top {top_n_lgbm} features by importance:")
                 for feature, score in importances.head(top_n_lgbm).items():
                     summary_parts.append(f"- {feature}: {score}")
 
             except Exception as e:
                 summary_parts.append(f"\n[LGBM Importance]\nAnalysis failed: {e}")
-        elif target_col:
-             summary_parts.append(f"\n[LGBM Importance]\nSkipped: Target column '{target_col}' not found.")
+        elif target_col_name:
+             summary_parts.append(f"\n[LGBM Importance]\nSkipped: Target column '{target_col_name}' data not available or alignment failed.")
         else:
              summary_parts.append("\n[LGBM Importance]\nSkipped: Target column not provided.")
 
@@ -1399,16 +1650,27 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                           # Inverse transform centroids to original scale for interpretability
                           centroids_original = scaler_kmeans.inverse_transform(centroids_scaled)
                           centroid_df = pd.DataFrame(centroids_original, columns=df_kmeans_input.columns)
+                          centroid_df_scaled = pd.DataFrame(centroids_scaled, columns=df_kmeans_input.columns) # Scaled version for variance calc
 
                           # Identify features with largest variance across centroids (potential separators)
-                          centroid_variance = centroid_df.var(axis=0).sort_values(ascending=False)
-                          top_separator_features = centroid_variance.head(3).index.tolist()
+                          centroid_variance = centroid_df_scaled.var(axis=0).sort_values(ascending=False)
+                          top_separator_features = centroid_variance.head(5).index.tolist() # More features
+                          # Identify features with smallest variance across centroids (common features)
+                          least_variance_features = centroid_variance.nsmallest(3).index.tolist()
 
                           summary_parts.append(f"\n[Clustering Insights] (K-Means on {df_kmeans_input.shape[1]} numeric features)")
                           summary_parts.append(f"Optimal K found: {best_k} (Max Silhouette Score: {best_score:.2f})")
                           cluster_counts = pd.Series(labels).value_counts().sort_index()
                           summary_parts.append(f"Cluster sizes: {dict(cluster_counts)}")
-                          summary_parts.append(f"Features varying most across cluster centers: {top_separator_features}")
+                          summary_parts.append(f"Features varying MOST across clusters (potential separators): {top_separator_features}")
+                          summary_parts.append(f"Features varying LEAST across clusters (common traits): {least_variance_features}")
+
+                          # Show centroid means for top separating features
+                          summary_parts.append("Centroid Means (Original Scale) for Top Separating Features:")
+                          for cluster_i in range(best_k):
+                             means = centroid_df.loc[cluster_i, top_separator_features].to_dict()
+                             means_str = ", ".join([f"'{k}': {v:.2f}" for k, v in means.items()])
+                             summary_parts.append(f"- Cluster {cluster_i}: {means_str}")
                      else:
                           summary_parts.append("\n[Clustering Insights]\nCould not determine optimal K or data unsuitable for K-Means.")
 
@@ -1419,3 +1681,10 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
 
         summary_parts.append("\n--- End Summary ---")
         return "\n".join(summary_parts)
+
+    async def close_clients(self):
+        # Close clients if they are still open
+        if self.client_coder:
+            await self.client_coder.close()
+        if self.client_validator:
+            await self.client_validator.close()

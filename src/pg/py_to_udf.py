@@ -161,21 +161,62 @@ $$ LANGUAGE plpython3u;"""
         for in_attr in in_attrs:
             code = code.replace(f"'{in_attr}'", f"'{in_attr.lower()}'")
         in_attrs = list(map(lambda x: x.lower(), in_attrs))
-        
-        udf = "CREATE OR REPLACE FUNCTION udf_%s (input cur_input_%s[])\n" % (str(seq), str(seq))
-        udf += "RETURNS cur_output_%s[] AS $$\n    " %(str(seq))
-        udf += "    ".join(import_code)
+
+        # Start building the UDF string
+        udf = f"CREATE OR REPLACE FUNCTION udf_{seq} (input cur_input_{seq}[])\n"
+        udf += f"RETURNS cur_output_{seq}[] AS $$\n"
+
+        # Add imports with proper indentation
+        if import_code:
+            udf += "    " + "\n    ".join(import_code) + "\n"
         udf += "    import pandas as pd\n"
-        udf += "    %s = pd.DataFrame(input, columns = [%s])\n    " %(var, ','.join(list(map(lambda x: "'"+x+"'", in_attrs)))) 
-        udf += '\n    '.join(code.split("\n"))
-        udf += postfix_com
-        
-        # warm_udf = "SELECT udf_%s(ARRAY[]::cur_input_%s[]);" %(str(seq), str(seq))
-        
-        cte1 = "tmp_res_store_"+str(seq)
-        call_udf1 = "select udf_%s(array(select row(%s)::cur_input_%s from %s)) as row1" %(str(seq), ','.join(in_attrs), str(seq), cur_table_name)
-        call_udf2 = "select (unnest(row1)).* from %s" %(cte1)
-        # call_udf = "select (unnest(udf_%s(array(select row(%s)::cur_input_%s from %s)))).*;\n" %(str(seq), ','.join(in_attrs), str(seq), cur_table_name)
+        udf += "    import numpy as np\n"
+
+        # Add UDF body lines, ensuring 4-space indentation
+        udf_lines = []
+        # Correct f-string for DataFrame creation
+        udf_lines.append(f"    {var} = pd.DataFrame(input, columns=[{','.join(map(repr, in_attrs))}])")
+
+        # --- Add NaN handling before user code ---
+        udf_lines.append("    # Replace inf/nan before processing")
+        udf_lines.append(f"    {var}.replace([np.inf, -np.inf], np.nan, inplace=True)")
+        # -----------------------------------------
+
+        # --- Insert user code ---
+        user_code_lines = [f"    {line}" for line in code.strip().split('\n')]
+        udf_lines.extend(user_code_lines)
+        # -----------------------
+
+        # --- Add NaN handling before returning ---
+        udf_lines.append("    # Replace inf/nan before returning")
+        udf_lines.append(f"    {var}.replace([np.inf, -np.inf], np.nan, inplace=True)")
+        udf_lines.append(f"    {var}.fillna(0, inplace=True)") # Fill remaining NaNs with 0
+        # --- Explicitly convert integer columns ---
+        udf_lines.append("    # Ensure integer columns are truly integer type before returning")
+        # Infer integer columns based on the output type definition (heuristic)
+        # A more robust way would involve passing type info, but this handles common cases.
+        for col in out_attrs: # out_attrs contains the names of columns in the output type
+            # Heuristic: if the column name suggests it's an ID, label, or survived status, try converting
+            if col.endswith('_id') or col == 'id' or col.endswith('_label') or col == 'survived' or col.endswith('pclass'): # Added pclass as it's often treated as int/category
+                 # Check if column exists before trying to convert
+                 udf_lines.append(f"    if '{col}' in {var}.columns:")
+                 udf_lines.append(f"        try:")
+                 udf_lines.append(f"            {var}['{col}'] = {var}['{col}'].astype(np.int64)")
+                 udf_lines.append(f"        except ValueError as e:") # Handle potential errors if conversion fails
+                 udf_lines.append(f"            plpy.warning(f'Could not convert column {{col}} to int64: {{e}}')")
+
+        # ---------------------------------------
+
+        # Final assembly:
+        udf += "\n".join(udf_lines) + "\n"
+        udf += postfix_com # Append the postfix directly
+
+        # Define call statements
+        cte1 = f"tmp_res_store_{seq}"
+        # Correct column joining for call_udf1
+        call_udf1 = f"select udf_{seq}(array(select row({','.join(in_attrs)})::cur_input_{seq} from {cur_table_name})) as row1"
+        call_udf2 = f"select (unnest(row1)).* from {cte1}"
+
         return sql_type + udf, (call_udf1, call_udf2), (cte1, "")
     
     def get_udf_from_template(func_code:str) -> str:

@@ -14,15 +14,15 @@ from src.pg.func_utils import *     # 导入PostgreSQL功能工具
 import sys
 import pickle
 # 导入各种机器学习模型
-from sklearn.linear_model import LogisticRegression
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn.linear_model import LogisticRegression
+# from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+# from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.tree import DecisionTreeClassifier, plot_tree
+# from sklearn.naive_bayes import GaussianNB
+# from sklearn.svm import SVC
+# from xgboost import XGBClassifier
+# from lightgbm import LGBMClassifier
+# from sklearn.ensemble import RandomForestClassifier
 from src.env import *                # 导入环境变量
 from src.llm.utils.common_utils import *  # 导入通用工具
 import argparse                      # 用于解析命令行参数
