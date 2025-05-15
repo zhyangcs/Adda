@@ -20,7 +20,7 @@ alpha = math.sqrt(2) / 1000.0 # w in the paper
 
 # rag_model_id_or_path = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 rag_model_id_or_path = "Qwen/Qwen2-0.5B-Instruct"
-openai_api_key = "sk-F6l6kc8Xlqb6FlP8ll0cST1GmXB5uSIDZIYyGvL0W2mdkg0F"
+openai_api_key = "sk-r3Ser79bfDP5rEVcX2hraaMQ8v6PJXBoZs5SNrF7bEb8H4J1"
 openai_base_url = "https://api.nuwaapi.com/v1"
 default_model = "gpt-4o"
 pg_user = "myuser"
@@ -31,3 +31,9 @@ def update_llm_model(model):
     global default_model
     default_model = model
     print(f"LLM model updated to: {default_model}")
+    
+    
+"""
+查询余额:
+https://key.nuwaapi.com/
+"""

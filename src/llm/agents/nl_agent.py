@@ -1,10 +1,6 @@
-import asyncio
-import re
-import termcolor
 from src.llm.utils.llm_util import *
 from src.llm.llm_dag_node import *
 from src.llm.utils.prompt import *
-from .autogen_feature_generator import generate_features_autogen
 
 class NLAgent():
     normal_feature_pre_list = ["new_feature", "detailed description", "brief description", "relevant"]
@@ -78,134 +74,66 @@ class NLAgent():
         return whole_prompt
         
         
-    def task_to_desc(self, cur_node:LLMDAGNODE, send_num:int, target_col:str, cur_step_idx:int = 0, high_order_num:int = 2, token_limit:int = 800, example_prompt:str="", stats_summary:str="", global_plan:str=""):
+    def task_to_desc(self, cur_node:LLMDAGNODE, send_num:int, target_col:str, cur_step_idx:int = 0, high_order_num:int = 2, token_limit:int = 800, example_prompt:str=""):
         print(termcolor.colored(f"[task to features] cur_node: {cur_node.node_id}", "yellow"))
         next_state = []
-        max_retries = 3
-        retry_count = 0
-
-        high_order = cur_step_idx < high_order_num
-
-        while retry_count < max_retries:
-            retry_count += 1
-            print(termcolor.colored(f"Attempt {retry_count}/{max_retries} to generate features for node {cur_node.node_id}", "blue"))
+            
+        while True:
             try:
+                high_order = False
+                print(termcolor.colored(f"[generate feature] cur_node: {cur_node.node_id}", "yellow"))
+                
                 if cur_step_idx < high_order_num:
+                    # we only generate high-order feature for first several step
                     prompt_template = NEXT_STEP_FREE
+                    high_order = True
+                    send_num = 3
                 elif cur_step_idx % 2 == 1 and cur_step_idx < 4:
                     prompt_template = NEXT_STEP_FORMAT
                 else:
                     prompt_template = NEXT_STEP_FORMAT_SHRINK
                 
-                fixed_prompt_tokens = token_num(prompt_template.format(data_desc="", y_attr="", memory_info="", model_type=""))
-                summary_tokens = token_num(stats_summary)
-                example_tokens = token_num(example_prompt)
-                plan_tokens = token_num(global_plan)
-                available_for_desc = token_limit - fixed_prompt_tokens - summary_tokens - example_tokens - plan_tokens - 150
-                df_desc = get_column_info(cur_node.column_info, max(200, available_for_desc), cur_node.attr_imp_order)
-                data_desc = f"/* Data description:\n{df_desc}\n*/"
+                df_desc = get_column_info(cur_node.column_info, token_limit - token_num(prompt_template), cur_node.attr_imp_order)
+                data_desc = f"/* Data description: {df_desc} */"    
+                whole_prompt = f"{prompt_template.format(data_desc = data_desc, y_attr = target_col, memory_info=example_prompt, model_type = self.eval_model_type)}"
                 
-                advanced_stats_section = ""
-                if stats_summary:
-                     advanced_stats_section = f"\n\n/*\nAdvanced Statistics Summary (based on CURRENT data sample):\n{stats_summary}\n*/"
-
-                global_plan_section = ""
-                if global_plan:
-                    global_plan_section = f"\n\n/*\nOverall Feature Strategy/Plan:\n{global_plan}\n*/"
-
-                whole_prompt = f"{prompt_template.format(data_desc = data_desc, y_attr = target_col, memory_info=example_prompt, model_type = self.eval_model_type)}{advanced_stats_section}{global_plan_section}"
-                print(termcolor.colored(f"Prompt Token Estimate: ~{token_num(whole_prompt)} / {token_limit}", "grey"))
-                if token_num(whole_prompt) > token_limit:
-                     print(termcolor.colored("Warning: Estimated prompt tokens exceed limit.", "yellow"))
-
-                num_to_generate = send_num
-                responses = asyncio.run(generate_features_autogen(whole_prompt, n=num_to_generate))
-                print(termcolor.colored(f"Autogen Raw Responses (Attempt {retry_count}): {responses}", "green"))
+                # print(termcolor.colored(f"{whole_prompt}\n Total token: {token_num(whole_prompt)}, Current Token Limitation {token_limit}", "grey"))
+                
+                # high_order_model = "gpt-4-turbo"
+                responses = send_prompt_n("", whole_prompt, n = 3 if high_order else send_num * 2)
+                print(termcolor.colored(responses, "green"))
                 
                 cur_attr_set = set()
-                for response_block in responses:
-                    if response_block is None or not isinstance(response_block, str) or response_block.strip() == "":
-                        print(termcolor.colored("Warning: Encountered None or invalid response block in list, skipping.", "magenta"))
-                        continue
-
-                    feature_dict = {}
-                    lines = response_block.strip().split('\n')
-                    try:
-                        for line in lines:
-                            line = line.strip()
-                            if ':' not in line:
-                                continue
-
-                            key_str, value_str = line.split(':', 1)
-                            key = key_str.strip().strip("'\"")
-
-                            value_str = value_str.strip()
-                            value = None
-
-                            if value_str.startswith('[') and value_str.endswith(']'):
-                                elements = re.findall(r"['\"]([^'\"]+)['\"]", value_str)
-                                value = [elem.strip() for elem in elements]
-                                if key == 'new_feature':
-                                    value = [prefix_check(v) for v in value]
-                            else:
-                                value = value_str.strip().strip("'\"")
-
-                            feature_dict[key] = value
-
-                        out_attr = feature_dict.get('new_feature')
-                        operation_desc = feature_dict.get('detailed description')
-                        operation_desc_brief = feature_dict.get('brief description')
-                        rel_cols = feature_dict.get('relevant')
-
-                        if not out_attr or not isinstance(out_attr, list):
-                            print(termcolor.colored(f"Warning: Missing or invalid 'new_feature' list in block: {response_block}", "yellow"))
-                            continue
-                        if not operation_desc or not isinstance(operation_desc, str):
-                            print(termcolor.colored(f"Warning: Missing or invalid 'detailed description' string in block: {response_block}", "yellow"))
-                            continue
-                        if not operation_desc_brief or not isinstance(operation_desc_brief, str):
-                             print(termcolor.colored(f"Warning: Missing or invalid 'brief description' string in block: {response_block}", "yellow"))
-                             continue
-                        if not rel_cols or not isinstance(rel_cols, list):
-                            print(termcolor.colored(f"Warning: Missing or invalid 'relevant' list in block: {response_block}", "yellow"))
-                            continue
-
-                        op_type = OpTypeEnum.UNSUPPORT if high_order else OpTypeEnum.APPLY
-
-                        if NLAgent.check_nl_response(rel_cols, out_attr[0], cur_node, cur_attr_set):
-                            print(f"Valid response parsed: {out_attr}")
-                            cur_attr_set.add(*out_attr)
-
-                            next_node = LLMDAGNODE(allocate_node_id(), "", set(), set(), None, None, cur_node.column_info.copy(), "", op_type, pd.DataFrame(), -1, "", [], [], None, cur_node.alive, False, cur_node.utility, None, cur_node.attr_embs.clone().detach() if cur_node.attr_embs is not None else None)
-
-                            next_node.operation_desc = [operation_desc]
+                for response in responses:
+                    parsed_response = NLAgent.parse_nl_comma(response, NLAgent.high_order_feature_pre_list if high_order else NLAgent.normal_feature_pre_list)
+                    
+                    if parsed_response != "":
+                        op_type, out_attr, operation_desc, operation_desc_brief, rel_cols = (OpTypeEnum.UNSUPPORT if high_order else (OpTypeEnum.BINARY if "UNARY" not in parsed_response[0] else OpTypeEnum.DISCRETIZE)), parse_string_to_list(parsed_response[-4]), parsed_response[-3], parsed_response[-2], parse_string_to_list(parsed_response[-1])
+                        
+                        
+                        if NLAgent.check_nl_response(rel_cols, parsed_response[1], cur_node, cur_attr_set):
+                            print(out_attr, cur_attr_set, set(cur_node.column_info.keys()), cur_attr_set.union(set(cur_node.column_info.keys())))
+                            cur_attr_set.add(*out_attr)     
+                            
+                            next_node = LLMDAGNODE(allocate_node_id(), "", set(), set(), cur_node.out_cur_df.copy(deep=True), pd.DataFrame(), cur_node.column_info.copy(), "", op_type, pd.DataFrame(), -1, cur_node.whole_code, [], [], None, cur_node.alive, False, cur_node.utility, None, cur_node.attr_embs.clone().detach())
+                            
+                            # fill the node with the relevant information
+                            next_node.op_type = op_type
+                            next_node.operation_desc = operation_desc
                             next_node.write_set = set(out_attr)
                             next_node.read_set = set(rel_cols) - next_node.write_set
-                            for attr in next_node.write_set:
-                                if attr not in next_node.column_info:
-                                    next_node.column_info[attr] = f"{attr}: (Created) {operation_desc_brief}\n"
-
+                            operation_desc_brief = operation_desc_brief
+                            for attr in next_node.write_set - set(next_node.column_info.keys()):
+                                next_node.column_info[attr] = attr + ": (created in previous step) " + operation_desc_brief + "\n"
+                            
                             next_state.append(next_node)
-                        else:
-                             print(termcolor.colored(f"Warning: Failed nl_response check for output '{out_attr[0]}' or relevant columns {rel_cols}", "yellow"))
-
-                    except Exception as parse_error:
-                         print(termcolor.colored(f"Error parsing feature block: '{response_block}'. Error: {parse_error}", "red"))
-                         import traceback
-                         traceback.print_exc()
-                         continue
-
-                if len(next_state) < num_to_generate:
-                     print(termcolor.colored(f"Warning: Attempt {retry_count} generated only {len(next_state)}/{num_to_generate} valid features.", "yellow"))
-
-                if len(next_state) >= num_to_generate:
-                    print(termcolor.colored(f"Collected {len(next_state)} valid features, returning.", "green"))
-                    return next_state
-
+                    
+                    if len(next_state) >= send_num:
+                        return next_state
+                        
+                if len(next_state) == 0:
+                    # no valid responses
+                    raise Exception("Error: no valid response")
             except Exception as e:
-                print(termcolor.colored(f"Error in task_to_desc outer loop (Attempt {retry_count}): {e}", "red"))
-                import traceback
-                traceback.print_exc()
-
-        print(termcolor.colored(f"Failed to generate sufficient valid features after {max_retries} attempts. Returning {len(next_state)} features found.", "red"))
-        return next_state
+                print(e, termcolor.colored("Error:regrenerate the op_type", "red"))
+                ConnectionRefusedError
