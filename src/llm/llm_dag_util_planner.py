@@ -197,65 +197,78 @@ class LLMDagConstructor():
         4. DAG节点添加与可视化
         """
         def gen_code_node(next_node):
+            """
+            生成特征节点的代码并处理
+            
+            参数:
+                next_node: 待处理的特征节点
+                
+            返回:
+                tuple: (处理后的节点, 是否成功生成代码)
+            """
             try:
+                # 尝试将特征描述转换为可执行代码
                 could_exec_code = code_agent.feature_to_code(next_node)
-                # for each node, check whether need to be divide and conquer
+                
+                # 检查是否需要分割代码，满足以下任一条件时进行分割：
+                # 1. 当前特征阶数小于高阶特征限制且代码生成失败
+                # 2. 生成的代码复杂度超过阈值
                 if cur_step_idx < self.high_order_num and not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info):
                     next_node, could_exec_code = divide_agent.divide_code(next_node)
+                    
+                # 如果成功生成代码，尝试生成修复特征
                 if could_exec_code:
                     could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
                 else:
                     could_exec_fix = False
+                    
+                # 为节点生成嵌入向量表示
                 next_node = self.generate_emb(next_node)
+                
+                # 只有当代码生成和修复都成功时，才返回处理后的节点
                 if could_exec_code and could_exec_fix:
                     return next_node, True
                 else:
                     return None, False
+                
             except Exception as e:
+                # 发生异常时打印错误信息并返回失败
                 print(termcolor.colored(f"Error: {e}", "red"))
                 return None, False
         
         # 1. NLAgent generate the description
         nodes = topKSimilarNodes(cur_node, self.dag, src.env.topK_rag)
         example_prompt = nodes2example(nodes, self.dag)
-        next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt)
+        
+        """
+            功能测试
+        """
+        ex_prompt = """Based on the analysis of the "Framingham" heart disease dataset and applying Kaggle-level standard feature engineering methods, here's the strategic plan:
+
+1. **高优先级 缺失值处理（基础特征处理）**
+   - We've identified the need to handle missing values, particularly in the 'education' field, if they exist. The strategy is to use mode filling and create missing value flags as needed to ensure data completeness.
+
+2. **中优先级 分类编码（基础特征处理）**
+   - For categorical features such as 'gender', apply One-Hot encoding due to its low cardinality. For 'education', we recommend using target encoding to preserve category-level information while managing dimensionality.
+
+3. **高优先级 数值特征增强（特征构造）**
+   - Enhance numeric features by applying log transformations to skewed features like 'glucose' and 'totchol'. This addresses significant skewness and improves model sensitivity to these important health measures.
+
+4. **中优先级 特征交叉（特征构造）**
+   - Construct interaction terms between 'currentsmoker' and 'cigsperday', capturing smoking behavior's impact on heart disease risk. Additional interaction terms can also be created for related features like 'sysbp' and 'diabp'.
+
+5. **低优先级 计算特征比率（特征构造）**
+   - Derive ratios such as 'sysbp' to 'diabp' and 'bmi' to 'age' to uncover underlying health patterns within the data, enhancing the model's ability to interpret complex relationships.
+
+These strategic points are designed to optimize feature representation in your ML tasks, supporting accurate prediction requirements for the 10-year CHD risk. Please let us know if further adjustments or insights are needed!"""
+        next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, ex_prompt + example_prompt)
 
         # 2. CodeAgent generate the code and fixing code
         code_agent = CodeAgent()
         divide_agent = DivideAgent(self.token_limit)
         next_states_with_code = []
-        # for next_node in next_state[:]:
-        #     try:
-        #         could_exec_code = code_agent.feature_to_code(next_node)
-        #         # for each node, check whether need to be divide and conquer
-        #         if cur_step_idx < self.high_order_num and not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info):
-        #             next_node, could_exec_code = divide_agent.divide_code(next_node)
-
-        #         if could_exec_code:
-        #             could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
-        #         else:
-        #             could_exec_fix = False
-                
-        #         # generate the embedding msg
-        #         next_node = self.generate_emb(next_node)    
-                    
-        #         if could_exec_code and could_exec_fix:
-        #             next_states_with_code.append(next_node)
-        #             self.dag.add_node(next_node)
-        #             self.dag.add_edge(cur_node, next_node)
-        #             self.attrname2node[list(next_node.write_set)[0]] = next_node
-        #             self.draw_current(next_node.node_id)
-        #         else:
-        #             print(termcolor.colored(f"Drop node for code: {could_exec_code}, for fix: {could_exec_fix}", "red"))
-                    
-        #     except Exception as e:
-        #         # if exception occur in the middle, then we drop the code
-        #         print(termcolor.colored(f"Error: {e}", "red"))
-        #         continue
-        
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = executor.map(gen_code_node, next_state[:])
-        # print(termcolor.colored(f"Get fully {len(results)}"))
         for next_node, success in results:
             if success:
                 next_states_with_code.append(next_node)

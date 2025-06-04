@@ -31,6 +31,7 @@ class MagenticPlanner:
         self.data_analyst = AssistantAgent(
             name="DataAnalyst",
             model_client=model_client,
+            description="数据质量保障专家，负责缺失值处理、异常检测、特征编码及基于统计指标的特征筛选，确保输入数据的可靠性和有效性",  # 新增description
             system_message="""你是统计报告分析师，职责包括：
 1. 解读单变量统计：分析特征方差/偏度/缺失率，识别需要特殊处理的特征
 2. 解析相关性分析：识别强相关特征对，提出剔除冗余特征建议
@@ -42,9 +43,43 @@ class MagenticPlanner:
         self.feature_engineer = AssistantAgent(
             name="FeatureEngineer",
             model_client=model_client,
+            description="特征价值挖掘专家，专注于通过数学变换、特征交叉、时序分解等技术手段提升特征的表征能力，并实现业务逻辑的编码转换",  # 新增description
             system_message="""你是特征工程实施专家，职责包括：
 1. 特征构造：对时间序列字段分解年/月/日/星期并构造时间间隔；对连续数值特征分箱、生成多项式/交互项；组合分类与数值特征生成交叉特征。
 2. 业务适配：根据场景构造时序行为特征、多维度关联特征。"""
+        )
+
+        # 关键思考员（识别核心问题）
+        self.critical_thinker = AssistantAgent(
+            name="CriticalThinker",
+            model_client=model_client,
+            description="负责识别核心矛盾与关键路径，建立推理主干",  # 新增description
+            system_message="""你是关键路径分析师，职责包括：
+1. 识别核心矛盾：根据业务目标锁定关键特征
+2. 建立推理主干：确定特征工程的核心路径（如：强相关特征优先处理）
+3. 风险预判：预测可能影响最终预测准确度的关键决策点"""
+        )
+
+        # 分步推理员（拆解任务流程）
+        self.stepwise_reasoner = AssistantAgent(
+            name="StepwiseReasoner",
+            model_client=model_client,
+            description="任务流程工程师，将复杂特征工程任务拆解为可执行的原子操作序列",  # 新增description
+            system_message="""你是流程拆解专家，职责包括：
+1. 步骤分解：将复杂任务拆分为原子操作（如：缺失处理→偏度修正→交互项生成）
+2. 时序规划：确定各步骤执行顺序及依赖关系
+3. 进度控制：监控每个步骤的执行质量"""
+        )
+
+        # 假设验证员（挑战性思考）
+        self.hypothesis_validator = AssistantAgent(
+            name="HypothesisValidator",
+            model_client=model_client,
+            description="挑战现有假设并提供替代方案",  # 新增description
+            system_message="""你是反向思考专家，职责包括：
+1. 假设挑战：质疑现有方案的潜在问题（如：交互项是否引入多重共线性？）
+2. 替代方案：提出不同的执行路径（如：分箱替代log变换）
+3. 效果验证：设计验证实验（如：对比变换前后的模型效果）"""
         )
 
         # 网络搜索代理（新增针对性搜索提示词）
@@ -53,10 +88,15 @@ class MagenticPlanner:
             model_client=model_client
         )
 
-        # 团队任务提示词新增协作要求
+        # 更新团队组成
         self.team = MagenticOneGroupChat(
-            # participants=[self.data_analyst, self.feature_engineer, self.web_surfer],
-            participants=[self.data_analyst, self.feature_engineer],
+            participants=[
+                self.data_analyst, 
+                self.feature_engineer,
+                # self.critical_thinker,
+                # self.stepwise_reasoner,
+                # self.hypothesis_validator
+            ],
             model_client=model_client
         )
 
@@ -113,14 +153,10 @@ def get_system_prompt() -> str:
 ### 团队讨论要求：
 - 要求你们在讨论时对话尽量简短，只讲要点。
 
-### 团队分工：
-- 数据分析师（DataAnalyst）：负责基础特征处理+特征选择
-- 特征工程师（FeatureEngineer）：负责特征构造+业务适配
-
 回答示例：
-1. 高优先级 缺失值处理（基础特征处理） - 依据：glucose列缺失率12%（输入上下文），且与目标列tenyearchd存在弱相关性（MI=0.15），建议用KNN模型预测填充并新增"glucose_missing"标记特征。
-2. 中优先级 数值特征增强（特征构造） - 依据：sysbp（收缩压）偏度=1.8（输入上下文），属于右偏分布，建议生成log(sysbp+1)变换特征；同时构造sysbp*diabp（舒张压）交互项捕捉血压联合影响。
-3. 低优先级 特征选择（过滤式） - 依据：totchol（总胆固醇）与ldl（若有）相关系数0.89（假设输入上下文），建议保留totchol并剔除ldl以降低冗余。
+1. 高优先级 缺失值处理（基础特征处理） 
+2. 中优先级 数值特征增强（特征构造） 
+3. 低优先级 特征选择（过滤式）
 
 输入信息如下：
 """

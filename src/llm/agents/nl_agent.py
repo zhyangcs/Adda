@@ -75,64 +75,87 @@ class NLAgent():
         
         
     def task_to_desc(self, cur_node:LLMDAGNODE, send_num:int, target_col:str, cur_step_idx:int = 0, high_order_num:int = 2, token_limit:int = 800, example_prompt:str=""):
+        """
+        将任务描述转换为特征节点
+        
+        参数:
+            cur_node: 当前节点
+            send_num: 需要生成的特征数量
+            target_col: 目标列名
+            cur_step_idx: 当前特征生成阶数
+            high_order_num: 高阶特征的最大阶数
+            token_limit: LLM的token限制
+            example_prompt: 示例提示词
+        """
         print(termcolor.colored(f"[task to features] cur_node: {cur_node.node_id}", "yellow"))
-        next_state = []
+        next_state = []  # 存储生成的新节点
             
         while True:
             try:
+                # TODO: 1. 添加一个使用LLM Agent的Planner；2.使用该Planner为每次特征节点生成提供不同的指导
                 high_order = False
                 print(termcolor.colored(f"[generate feature] cur_node: {cur_node.node_id}", "yellow"))
                 
+                # 根据当前阶数选择不同的提示词模板
                 if cur_step_idx < high_order_num:
-                    # we only generate high-order feature for first several step
+                    # 在前几步生成高阶特征
                     prompt_template = NEXT_STEP_FREE
                     high_order = True
                     send_num = 3
                 elif cur_step_idx % 2 == 1 and cur_step_idx < 4:
+                    # 在特定步骤使用格式化提示词
                     prompt_template = NEXT_STEP_FORMAT
                 else:
+                    # 其他情况使用简化提示词
                     prompt_template = NEXT_STEP_FORMAT_SHRINK
                 
+                # 获取数据描述，考虑token限制
                 df_desc = get_column_info(cur_node.column_info, token_limit - token_num(prompt_template), cur_node.attr_imp_order)
                 data_desc = f"/* Data description: {df_desc} */"    
                 whole_prompt = f"{prompt_template.format(data_desc = data_desc, y_attr = target_col, memory_info=example_prompt, model_type = self.eval_model_type)}"
+                print(termcolor.colored(whole_prompt, "white"))
                 
-                # print(termcolor.colored(f"{whole_prompt}\n Total token: {token_num(whole_prompt)}, Current Token Limitation {token_limit}", "grey"))
-                
-                # high_order_model = "gpt-4-turbo"
+                # 发送提示词到LLM获取响应
                 responses = send_prompt_n("", whole_prompt, n = 3 if high_order else send_num * 2)
                 print(termcolor.colored(responses, "green"))
                 
-                cur_attr_set = set()
+                # 处理每个响应
+                cur_attr_set = set()  # 记录已生成的特征名
                 for response in responses:
+                    # 解析自然语言响应
                     parsed_response = NLAgent.parse_nl_comma(response, NLAgent.high_order_feature_pre_list if high_order else NLAgent.normal_feature_pre_list)
                     
                     if parsed_response != "":
+                        # 解析操作类型、输出属性、操作描述等
                         op_type, out_attr, operation_desc, operation_desc_brief, rel_cols = (OpTypeEnum.UNSUPPORT if high_order else (OpTypeEnum.BINARY if "UNARY" not in parsed_response[0] else OpTypeEnum.DISCRETIZE)), parse_string_to_list(parsed_response[-4]), parsed_response[-3], parsed_response[-2], parse_string_to_list(parsed_response[-1])
                         
-                        
+                        # 检查响应是否有效
                         if NLAgent.check_nl_response(rel_cols, parsed_response[1], cur_node, cur_attr_set):
                             print(out_attr, cur_attr_set, set(cur_node.column_info.keys()), cur_attr_set.union(set(cur_node.column_info.keys())))
                             cur_attr_set.add(*out_attr)     
                             
+                            # 创建新节点
                             next_node = LLMDAGNODE(allocate_node_id(), "", set(), set(), cur_node.out_cur_df.copy(deep=True), pd.DataFrame(), cur_node.column_info.copy(), "", op_type, pd.DataFrame(), -1, cur_node.whole_code, [], [], None, cur_node.alive, False, cur_node.utility, None, cur_node.attr_embs.clone().detach())
                             
-                            # fill the node with the relevant information
+                            # 填充节点信息
                             next_node.op_type = op_type
                             next_node.operation_desc = operation_desc
                             next_node.write_set = set(out_attr)
                             next_node.read_set = set(rel_cols) - next_node.write_set
                             operation_desc_brief = operation_desc_brief
+                            
+                            # 更新列信息
                             for attr in next_node.write_set - set(next_node.column_info.keys()):
                                 next_node.column_info[attr] = attr + ": (created in previous step) " + operation_desc_brief + "\n"
                             
                             next_state.append(next_node)
                     
+                    # 如果生成足够数量的特征，返回结果
                     if len(next_state) >= send_num:
                         return next_state
                         
                 if len(next_state) == 0:
-                    # no valid responses
+                    # 如果没有有效响应，抛出异常
                     raise Exception("Error: no valid response")
             except Exception as e:
                 print(e, termcolor.colored("Error:regrenerate the op_type", "red"))

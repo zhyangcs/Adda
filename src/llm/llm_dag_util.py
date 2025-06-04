@@ -119,37 +119,61 @@ class LLMDagConstructor():
             do_unfinished: 是否继续未完成任务
             task_name: 任务名称
         """
-        # 数据预处理逻辑
+        # 如果不是处理未完成的任务，则进行初始化
         if not do_unfinished:
+            # 设置目标列和任务描述
             self.target_col = target_col
             self.task_desc = "".join(data_desc)
             
+            # 使用正则表达式解析数据议程中的每一行
+            # 格式为 "列名:列描述"
             pattern = r"(.*?):(.*?)"
             for line in data_agenda:
                 match = re.search(pattern, line)
                 if match:
+                    # 将列信息存储到column_info字典中
                     self.column_info[match.group(1)] = line
+                    # 如果是目标列，在描述后添加标记
                     if match.group(1) == self.target_col:
                         self.column_info[match.group(1)] = self.column_info[match.group(1)][:-1] + " (target column)\n"
                 else:
+                    # 如果匹配失败，打印错误信息并终止程序
                     print("match failed", line)
                     assert 0 == 1
+
+            # 设置表名
             self.tb_name = tb_name        
+            
+            # 如果提供了表名，从数据库中读取数据
             if tb_name != None:
-                # get the row number of the task
+                # 获取表中的总行数
                 row_num = int(pd.read_sql(f"SELECT COUNT(*) FROM {tb_name}", get_conn())['count'][0])
+                # 读取数据，最多读取4000行或总行数的1/4
                 df = pd.read_sql(f"SELECT * FROM {tb_name} LIMIT {min(4000, row_num//4)}", get_conn())
                 print(f"Current sampling {df.shape}")
+            # 如果提供了CSV文件路径，从CSV文件读取数据
             elif csv_path != None:
                 df = pd.read_csv(csv_path)
+
+            # 初始化根节点
             self.init_root_node(df)  
+            
+            # 初始化层级状态列表，第一层只包含根节点
             self.level_states = [[self.root]]
+            
+            # 创建有向图
             self.dag = nx.DiGraph()
+            # 添加根节点到图中
             self.dag.add_node(self.root)
-            # for print the draw for debug
+            
+            # 如果提供了任务名称，设置任务名称
             if task_name != None:
                 self.task_name = task_name
+            
+            # 绘制当前状态图（用于调试）
             self.draw_current(self.root.node_id)
+            
+            # 初始化前一个索引
             self.pre_idx = 0
         
     def generate_emb(self, node):
@@ -197,21 +221,46 @@ class LLMDagConstructor():
         4. DAG节点添加与可视化
         """
         def gen_code_node(next_node):
+            """
+            生成特征节点的代码并验证其可执行性
+            
+            参数:
+                next_node: LLMDAGNODE对象，待生成代码的节点
+                
+            返回:
+                tuple: (next_node, success)
+                    - next_node: 处理后的节点对象，如果生成失败则为None
+                    - success: 布尔值，表示代码生成是否成功
+            """
             try:
+                # 1. 使用code_agent生成特征转换代码
                 could_exec_code = code_agent.feature_to_code(next_node)
-                # for each node, check whether need to be divide and conquer
+                
+                # 2. 检查是否需要分治处理
+                # 条件1: 当前步骤小于高阶特征数且代码生成失败
+                # 条件2: 代码复杂度超过阈值
                 if cur_step_idx < self.high_order_num and not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info):
+                    # 使用分治策略重新生成代码
                     next_node, could_exec_code = divide_agent.divide_code(next_node)
+                    
+                # 3. 如果代码生成成功，尝试生成修复特征
                 if could_exec_code:
                     could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
                 else:
                     could_exec_fix = False
+                    
+                # 4. 生成节点的嵌入向量（用于相似度计算）
                 next_node = self.generate_emb(next_node)
+                
+                # 5. 返回结果
+                # 只有当代码生成和修复特征都成功时，才返回成功
                 if could_exec_code and could_exec_fix:
                     return next_node, True
                 else:
                     return None, False
+            
             except Exception as e:
+                # 6. 异常处理
                 print(termcolor.colored(f"Error: {e}", "red"))
                 return None, False
         
