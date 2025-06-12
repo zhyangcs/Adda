@@ -4,13 +4,13 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "python": "/usr/bin/python3"
         },
         {
             "name": "Python Debugger: Test Util",
@@ -18,7 +18,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/llm/tests/test_util.py",
             "args": ["--task_name", "heart", "--model_type", "RF"],
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "python": "/root/miniconda3/bin/python"
         }
     ]
 }

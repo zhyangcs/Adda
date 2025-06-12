@@ -1,0 +1,18 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Test Util",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "src/llm/tests/test_util.py",
+                "--task_name",
+                "heart",
+                "--model_type",
+                "RF"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}

@@ -446,12 +446,14 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         self.search_type = "ASTAR"
         # 同步全局节点ID（用于节点唯一标识）
         src.llm.llm_dag_node.global_node_id = self.node_id
-
-        # TEST: 测试planner
-        planner_agents = Planner(self.root, target_col)
         
         # 初始化任务参数（数据加载/预处理）
         self.init_task_params(data_agenda, data_desc, target_col, tb_name, csv_path, do_unfinished, task_name)
+        data_age = '\n'.join(self.column_info.values())
+
+        # TEST: 测试planner
+        planner_agents = Planner(self.root, target_col, self.task_desc, data_age)
+
         # 新建任务时初始化优先队列
         if not do_unfinished:
             self.cur_states = []
