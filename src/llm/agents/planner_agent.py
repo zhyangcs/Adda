@@ -51,15 +51,15 @@ class Planner:
         )
 
         # 计划记忆列表
-        plan_memory = ListMemory()
-        working_memory = ListMemory()
+        self.plan_memory = ListMemory()
+        self.working_memory = ListMemory()
 
         # 核心agent
         self.core_agent = AssistantAgent(
             name = "Planner",
             model_client = self.model_client,
             description = CORE_AGENT_DESCRIPTION,
-            memory = [plan_memory, working_memory]
+            memory = [self.plan_memory, self.working_memory]
         )
 
     def one_step_planning(self, current_dag:nx.DiGraph):
@@ -72,82 +72,30 @@ class Planner:
         """
         self.serialized_tree_str = self._convert_dag_to_string(current_dag) # 序列化后的生成树
 
-        # TODO: 构建各阶段prompt
-
         # 1.对执行结果进行分析
         # 构建分析用prompt
-        # analysis_prompts = ANALYSISI_PROMPT.format(
-        #     task_desc = self.task_description,
-        #     base_feature_info = self.data_agenda,
-        #     target_column_name = self.target_col,
-        #     feature_generation_tree = self.serialized_tree_str
-        # )
+        analysis_prompts = ANALYSISI_PROMPT.format(
+            task_desc = self.task_description,
+            base_feature_info = self.data_agenda,
+            target_column_name = self.target_col,
+            feature_generation_tree = self.serialized_tree_str
+        )
 
-        # # print(analysis_prompts)
-        # # exit()
-
-        # result1 = asyncio.run(self.core_agent.run(task=analysis_prompts)).messages[1].content
-        # print(result1)
-        # exit()
-
-        result1 = """
-在之前的特征搜索过程中，agent们尝试从基础特征到新的特征生成，所记录的特征生成树和效果如下：
-
-特征生成树中的节点信息仅包含一个根节点，表示没有进行进一步的特征生成。以下是对该节点信息的分析：
-
-1. **节点1**：
-   - **特征生成代码**：没有记录任何特征生成代码，表明该节点没有通过计算或组合生成新的特征。
-   - **模型精度**：使用基础特征进行机器学习预测时，模型的精度为0.6771。
-
-在给出的特征生成树和关系中，仅有一个节点，没有其他特征组合计算或新的特征生成尝试。因此，无法进一步分析特征组合的效果，以及特征计算对模型精度的影响。也无从探析特定基础特征或计算方法（如加减乘除、对数操作等）能够增加或减少模型预测精度的具体规律。
-
-总结来说，在这个特征生成过程中：
-- 没有进行任何新特征生成尝试。
-- 当前基于基础特征的模型达到了精度0.6771。
-
-由于缺乏后续节点生成关系和不同特征组合尝试的信息，因此无法评价特征生成树中的其他生成方向走势。
-        """
+        result1 = asyncio.run(self.core_agent.run(task=analysis_prompts)).messages[-1].content
+        print(result1)
 
         # 2.根据分析结果，对任务进行猜想
-        # sepculate_prompt = SEPCULATE_PROMPT.format(result1=result1)
-        # result2 = asyncio.run(self.core_agent.run(task=sepculate_prompt)).messages[1].content
-        # print(result2)
-        # exit()
-        # TODO: 从result2中提取猜想增删改操作，并根据标签类型进行分类操作
-        result2 = """
-根据之前的分析结果和根节点的信息，以及通用特征构建实践，我对新特征的组合和计算方式作出以下猜想：
+        sepculate_prompt = SEPCULATE_PROMPT.format(result1=result1)
+        result2 = asyncio.run(self.core_agent.run(task=sepculate_prompt)).messages[-1].content
+        print(result2)
 
-1. **猜想1**：尝试组合年龄(age)与吸烟相关特征（如currentsmoker和cigsperday），生成一个新的特征"age_smoker_interaction"，可能提高模型对心脏病风险的预测效果。
-   - **可信度**：中等，因为年龄和吸烟是公认的心血管风险因子，可以通过交互效应影响心脏病风险。
-
-2. **猜想2**：通过组合身体指标，如体重指数(bmi)和血糖(glucose)，生成一个新的特征"bmi_glucose_ratio"，可能提高模型识别肥胖或代谢综合征患者的能力。
-   - **可信度**：较高，因为肥胖和糖尿病均是心脏病的风险因子，比例形式可以揭示潜在关系。
-
-3. **猜想3**：使用对数变换处理总胆固醇（totchol）以生成一个新特征"log_totchol"，可能提高模型效果。
-   - **可信度**：较低，因为对数变换在处理较大数值范围数据时能稳定模型，但其实际效果依赖特征分布。
-
-4. **猜想4**：组合收缩压（sysbp）和舒张压（diabp）生成一个新的特征"pulse_pressure"，评估其对心脏病风险的预测效果。
-   - **可信度**：中等，因为脉压与心血管事件关系密切。
-
-根据上述猜想的可信度评估，我将进行以下工作记忆调整：
-
-<add>猜想1：年龄与吸烟相关特征组合，生成"age_smoker_interaction" + 中等<add> 
-<add>猜想2：组合体重指数与血糖生成"bmi_glucose_ratio" + 较高<add> 
-<add>猜想3：对数变换总胆固醇生成"log_totchol" + 较低<add> 
-<add>猜想4：组合收缩压与舒张压生成"pulse_pressure" + 中等<add> 
-
-TERMINATE
-        """
         # 解析添加操作
         add_pattern = re.compile(r'<add>(.*?)<add>', re.DOTALL)
         add_matches = add_pattern.findall(result2)
         for match in add_matches:
-            # 分离猜想内容和可信度
-            content_str, confidence = match.rsplit('+', 1)
-            content_str = content_str.strip()
-            confidence = confidence.strip()
-            # 创建带可信度的记忆内容
-            full_content = f"{content_str} (可信度: {confidence})"
+            # 将描述和可信度作为整体注入记忆条目
+            memory_entry = match.strip()
+            full_content = memory_entry
             memory_content = MemoryContent(content=full_content, mime_type="text/plain")
             # 添加到工作记忆
             asyncio.run(self.working_memory.add(memory_content))
@@ -157,9 +105,16 @@ TERMINATE
         del_matches = del_pattern.findall(result2)
         for idx in del_matches:
             # 转换为整数索引并删除对应记忆
-            index = int(idx.strip()) - 1  # 假设序号从1开始
+            idx_str = idx.strip()
+            try:
+                index = int(idx_str) - 1  # 假设序号从1开始
+            except ValueError:
+                print(f"删除索引格式错误: {idx_str}，跳过删除操作")
+                continue
             if 0 <= index < len(self.working_memory.content):
                 self.working_memory.content.pop(index)
+            else:
+                print(f"删除索引超出范围: {idx_str}，跳过删除操作")
         
         # 解析修改操作
         rev_pattern = re.compile(r'<rev>\[(.*?)\](.*?)<rev>', re.DOTALL)
@@ -176,7 +131,27 @@ TERMINATE
 
         # 3.生成和调整计划
         planning_prompt = PLANNING_PROMPT.format(result2=result2)
-        result3 = asyncio.run(self.core_agent.run(task=planning_prompt)).messages[1].content
+        result3 = asyncio.run(self.core_agent.run(task=planning_prompt)).messages[-1].content
+        print(result3)
+
+        # 解析result3中的待拓展节点和建议
+        ext_pattern = re.compile(r'<ext>(.*?)<ext>', re.DOTALL)
+        ext_matches = ext_pattern.findall(result3)
+        if ext_matches:
+            node_number = int(ext_matches[0].strip())
+            # 存储节点编号，可根据需要进行后续处理
+            print(f"提取到待拓展节点编号: {node_number}")
+        
+        sug_pattern = re.compile(r'<sug>(.*?)<sug>', re.DOTALL)
+        sug_matches = sug_pattern.findall(result3)
+        if sug_matches:
+            suggestions = sug_matches[0].strip()
+            # 存储建议，可根据需要进行后续处理
+            print(f"提取到建议: {suggestions}")
+        else:
+            suggestions = ""
+
+        return node_number, suggestions
 
     def _convert_dag_to_string(self, current_dag:ni.DiGraph):
         """
@@ -282,3 +257,4 @@ if __name__ == '__main__':
         logger.debug("one_step_planning执行完成")
     except Exception as e:
         logger.error(f"one_step_planning执行失败: {str(e)}", exc_info=True)
+        

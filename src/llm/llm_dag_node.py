@@ -75,6 +75,9 @@ class LLMDAGNODE():
     # 属性嵌入向量（用于相似度计算）
     attr_embs: torch.Tensor = None
 
+    # planner给出的拓展建议
+    planner_suggest: str = ""
+
     def __hash__(self):
         """哈希函数，用于在集合和字典中使用节点"""
         return hash(self.node_id)

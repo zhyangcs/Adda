@@ -113,6 +113,11 @@ class NLAgent():
                 df_desc = get_column_info(cur_node.column_info, token_limit - token_num(prompt_template), cur_node.attr_imp_order)
                 data_desc = f"/* Data description: {df_desc} */"    
                 whole_prompt = f"{prompt_template.format(data_desc = data_desc, y_attr = target_col, memory_info=example_prompt, model_type = self.eval_model_type)}"
+
+                # 如果经过global_planner处理，加上global_planner的建议
+                if cur_node.planner_suggest != "":
+                    whole_prompt += f"/* user suggestion: {cur_node.planner_suggest} */"
+
                 print(termcolor.colored(whole_prompt, "white"))
                 
                 # 发送提示词到LLM获取响应

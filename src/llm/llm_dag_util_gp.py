@@ -407,14 +407,29 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         For cur_states, we generate the next states using the self-defined function
         '''
         # TEST: Planner执行一次
-        planner_agents.one_step_planning(self.dag)
+        next_node_id, suggestions_str = planner_agents.one_step_planning(self.dag)
 
         # 1. generate the next states from original states
         next_states = []
 
-        cur_node = heapq.heappop(self.cur_states)
+        # 根据next_node_id查找并移除节点
+        index_to_remove = None
+        for i, node in enumerate(self.cur_states):
+            if node.node_id == next_node_id:
+                index_to_remove = i
+                break
+        
+        if index_to_remove is None:
+            raise ValueError(f"Node with id {next_node_id} not found in cur_states")
+        
+        # 移除找到的节点并重新构建堆
+        cur_node = self.cur_states.pop(index_to_remove)
+        heapq.heapify(self.cur_states)
                 
         print(termcolor.colored(f"the current node: {cur_node.node_id}", "blue"))
+
+        cur_node.planner_suggest = suggestions_str
+
         cur_next_states = self.task_to_features(cur_node, cur_feature_idx)
         next_states += cur_next_states
                 
