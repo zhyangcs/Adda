@@ -409,6 +409,7 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         next_states = []
         
         cur_node = heapq.heappop(self.cur_states)
+
         print(termcolor.colored(f"the current node: {cur_node.node_id}", "blue"))
         cur_next_states = self.task_to_features(cur_node, cur_feature_idx)
         next_states += cur_next_states

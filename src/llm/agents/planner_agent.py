@@ -55,12 +55,8 @@ class Planner:
         self.working_memory = ListMemory()
 
         # 核心agent
-        self.core_agent = AssistantAgent(
-            name = "Planner",
-            model_client = self.model_client,
-            description = CORE_AGENT_DESCRIPTION,
-            memory = [self.plan_memory, self.working_memory]
-        )
+        self.core_agent = None
+        self.already_list = []
 
     def one_step_planning(self, current_dag:nx.DiGraph):
 
@@ -70,6 +66,14 @@ class Planner:
         input:
             current_dag: 表示特征生成过程的有向无环图，用于序列化后组成prompt
         """
+        # 重置core agent
+        self.core_agent = AssistantAgent(
+            name = "Planner",
+            model_client = self.model_client,
+            description = CORE_AGENT_DESCRIPTION,
+            memory = [self.plan_memory, self.working_memory]
+        )
+
         self.serialized_tree_str = self._convert_dag_to_string(current_dag) # 序列化后的生成树
 
         # 1.对执行结果进行分析
@@ -130,7 +134,11 @@ class Planner:
         print(self.working_memory.content)
 
         # 3.生成和调整计划
-        planning_prompt = PLANNING_PROMPT.format(result2=result2)
+        planning_prompt = PLANNING_PROMPT.format(
+            feature_generation_tree=self.serialized_tree_str, 
+            result2=result2,
+            already_list=self.already_list
+        )
         result3 = asyncio.run(self.core_agent.run(task=planning_prompt)).messages[-1].content
         print(result3)
 
@@ -150,6 +158,8 @@ class Planner:
             print(f"提取到建议: {suggestions}")
         else:
             suggestions = ""
+
+        self.already_list.append(node_number)
 
         return node_number, suggestions
 
