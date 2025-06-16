@@ -11,9 +11,9 @@ if project_root not in sys.path:
 # from src.llm.agents.autogen_code_generator import *  # 导入AutoGen代码生成器
 
 # from src.llm.llm_dag_util_autogen import *  # 导入LLM DAG工具 # 更改此项选择DAG节点生成是否使用AutoGen
-# from src.llm.llm_dag_util import *
+from src.llm.llm_dag_util import *
 # from src.llm.llm_dag_util_planner import *
-from src.llm.llm_dag_util_gp import *
+# from src.llm.llm_dag_util_gp import *
 
 from src.pg.func_utils import *     # 导入PostgreSQL功能工具
 import sys

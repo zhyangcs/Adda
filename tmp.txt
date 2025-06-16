@@ -1,3 +1,5 @@
+bash -c "python src/llm/tests/test_util.py --task_name heart --model_type RF > output.log 2>&1"
+
 #         result2 = """
 # 根据之前的分析结果和根节点的信息，以及通用特征构建实践，我对新特征的组合和计算方式作出以下猜想：
 
