@@ -94,7 +94,7 @@ class Planner:
         print(result2)
 
         # 解析添加操作
-        add_pattern = re.compile(r'<add>(.*?)<add>', re.DOTALL)
+        add_pattern = re.compile(r'<add>(.*?)</add>', re.DOTALL)
         add_matches = add_pattern.findall(result2)
         for match in add_matches:
             # 将描述和可信度作为整体注入记忆条目
@@ -105,7 +105,7 @@ class Planner:
             asyncio.run(self.working_memory.add(memory_content))
         
         # 解析删除操作
-        del_pattern = re.compile(r'<del>(.*?)<del>', re.DOTALL)
+        del_pattern = re.compile(r'<del>(.*?)</del>', re.DOTALL)
         del_matches = del_pattern.findall(result2)
         for idx in del_matches:
             # 转换为整数索引并删除对应记忆
@@ -121,7 +121,7 @@ class Planner:
                 print(f"删除索引超出范围: {idx_str}，跳过删除操作")
         
         # 解析修改操作
-        rev_pattern = re.compile(r'<rev>\[(.*?)\](.*?)<rev>', re.DOTALL)
+        rev_pattern = re.compile(r'<rev>\[(.*?)\](.*?)</rev>', re.DOTALL)
         rev_matches = rev_pattern.findall(result2)
         for idx, new_content in rev_matches:
             # 转换为整数索引并修改对应记忆
@@ -143,14 +143,14 @@ class Planner:
         print(result3)
 
         # 解析result3中的待拓展节点和建议
-        ext_pattern = re.compile(r'<ext>(.*?)<ext>', re.DOTALL)
+        ext_pattern = re.compile(r'<ext>(.*?)</ext>', re.DOTALL)
         ext_matches = ext_pattern.findall(result3)
         if ext_matches:
             node_number = int(ext_matches[0].strip())
             # 存储节点编号，可根据需要进行后续处理
             print(f"提取到待拓展节点编号: {node_number}")
         
-        sug_pattern = re.compile(r'<sug>(.*?)<sug>', re.DOTALL)
+        sug_pattern = re.compile(r'<sug>(.*?)</sug>', re.DOTALL)
         sug_matches = sug_pattern.findall(result3)
         if sug_matches:
             suggestions = sug_matches[0].strip()
