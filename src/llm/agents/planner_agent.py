@@ -20,7 +20,8 @@ import json
 
 from src.llm.utils.llm_util import *
 from src.llm.llm_dag_node import *
-from src.llm.utils.agent_prompt import *
+
+from src.llm.utils.planner_prompts.agent_prompt_i import * # 具有详细思维链指导要求的分析步骤提示词、基于自然语言的可信度等级划分、新的生成格式要求与生成格式提醒
 
 # 调试
 import pandas as pd
