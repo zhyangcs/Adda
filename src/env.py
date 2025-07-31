@@ -3,8 +3,8 @@ import math
 
 # proj_path = "/home/lpk/udfgen/sigmod-reproduce" # SET YOUR PATH HERE
 # proj_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-proj_path = "/home/ubuntu/autofe" # 调试用
-# proj_path = "/root/autofe" # 调试用
+# proj_path = "/home/ubuntu/autofe" # 调试用
+proj_path = "/root/autofe" # 调试用
 print("Current Project Root is ", proj_path)
 
 global_seed = 0

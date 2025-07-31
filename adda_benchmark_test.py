@@ -35,7 +35,8 @@ class AddaBenchmarkTester:
                  datasets: Optional[List[str]] = None,
                  models: Optional[List[str]] = None,
                  max_retries: int = 3,
-                 timeout_hours: int = 2):
+                 timeout_hours: int = 2,
+                 single_timeout_minutes: int = 20):
         """
         初始化测试器
         
@@ -43,19 +44,21 @@ class AddaBenchmarkTester:
             datasets: 要测试的数据集列表，None表示使用所有可用数据集
             models: 要测试的模型列表，None表示使用所有可用模型
             max_retries: 每个组合的最大重试次数
-            timeout_hours: 单个测试的超时时间（小时）
+            timeout_hours: 单个测试的超时时间（小时）（已弃用，保留兼容性）
+            single_timeout_minutes: 单次尝试（特征生成+模型训练）的超时时间（分钟）
         """
         self.project_root = project_root
         self.test_save_path = test_save_path
         self.max_retries = max_retries
-        self.timeout_seconds = timeout_hours * 3600
+        self.timeout_seconds = timeout_hours * 3600  # 保留兼容性
+        self.single_timeout_seconds = single_timeout_minutes * 60
         
         # 加载配置
         self.config = self._load_config()
         
         # 设置测试范围
         self.available_datasets = list(self.config['task_config'].keys())
-        self.available_models = ['RF', 'XGB', 'LGBM', 'DT', 'ET']  # 常用模型
+        self.available_models = ['RF', 'XGB', 'LGBM', 'CART', 'ET']  # 常用模型
         
         self.datasets = datasets if datasets else self.available_datasets
         self.models = models if models else self.available_models
@@ -86,7 +89,8 @@ class AddaBenchmarkTester:
         print(f"  数据集: {self.datasets}")
         print(f"  模型: {self.models}")
         print(f"  最大重试次数: {self.max_retries}")
-        print(f"  超时时间: {self.timeout_seconds/3600:.1f}小时")
+        print(f"  单次尝试超时时间: {self.single_timeout_seconds/60:.1f}分钟")
+        print(f"  总体超时时间: {self.timeout_seconds/3600:.1f}小时")
     
     def _get_existing_result_dirs(self, dataset: str, model: str) -> List[str]:
         """获取已存在的结果目录"""
@@ -160,28 +164,41 @@ class AddaBenchmarkTester:
         ]
         
         print(f"    执行特征生成: {' '.join(cmd)}")
+        print(f"    超时设置: {self.single_timeout_seconds/60:.1f}分钟")
+        
+        start_time = time.time()
         
         try:
             result = subprocess.run(
                 cmd,
                 cwd=self.project_root,
-                timeout=self.timeout_seconds,
+                timeout=self.single_timeout_seconds,  # 使用单次尝试超时
                 capture_output=True,
                 text=True
             )
+            
+            elapsed_time = time.time() - start_time
+            print(f"    特征生成耗时: {elapsed_time/60:.2f}分钟")
             
             if result.returncode == 0:
                 print("    特征生成成功")
                 return True
             else:
-                print(f"    特征生成失败: {result.stderr}")
+                print(f"    特征生成失败，返回码: {result.returncode}")
+                if result.stderr:
+                    print(f"    错误信息: {result.stderr}")
+                if result.stdout:
+                    print(f"    输出信息: {result.stdout}")
                 return False
                 
         except subprocess.TimeoutExpired:
-            print(f"    特征生成超时 (>{self.timeout_seconds/3600:.1f}小时)")
+            elapsed_time = time.time() - start_time
+            print(f"    特征生成超时！({elapsed_time/60:.1f}分钟 > {self.single_timeout_seconds/60:.1f}分钟)")
+            print(f"    可能原因: 1) 数据处理卡死 2) 文件锁冲突 3) 内存不足 4) API调用卡住")
             return False
         except Exception as e:
-            print(f"    特征生成异常: {e}")
+            elapsed_time = time.time() - start_time
+            print(f"    特征生成异常 (耗时{elapsed_time/60:.2f}分钟): {e}")
             return False
     
     def _run_multimodel_type(self, dataset: str, model: str) -> Optional[float]:
@@ -194,15 +211,21 @@ class AddaBenchmarkTester:
         ]
         
         print(f"    执行模型训练: {' '.join(cmd)}")
+        print(f"    超时设置: {self.single_timeout_seconds/60:.1f}分钟")
+        
+        start_time = time.time()
         
         try:
             result = subprocess.run(
                 cmd,
                 cwd=self.project_root,
-                timeout=self.timeout_seconds,
+                timeout=self.single_timeout_seconds,  # 使用单次尝试超时
                 capture_output=True,
                 text=True
             )
+            
+            elapsed_time = time.time() - start_time
+            print(f"    模型训练耗时: {elapsed_time/60:.2f}分钟")
             
             if result.returncode == 0:
                 # 解析输出中的分数
@@ -212,16 +235,26 @@ class AddaBenchmarkTester:
                     return score
                 else:
                     print("    模型训练成功，但无法解析得分")
+                    print("    输出内容预览:")
+                    preview = result.stdout[:500] + "..." if len(result.stdout) > 500 else result.stdout
+                    print(f"    {preview}")
                     return None
             else:
-                print(f"    模型训练失败: {result.stderr}")
+                print(f"    模型训练失败，返回码: {result.returncode}")
+                if result.stderr:
+                    print(f"    错误信息: {result.stderr}")
+                if result.stdout:
+                    print(f"    输出信息: {result.stdout}")
                 return None
                 
         except subprocess.TimeoutExpired:
-            print(f"    模型训练超时 (>{self.timeout_seconds/3600:.1f}小时)")
+            elapsed_time = time.time() - start_time
+            print(f"    模型训练超时！({elapsed_time/60:.1f}分钟 > {self.single_timeout_seconds/60:.1f}分钟)")
+            print(f"    可能原因: 1) 模型训练时间过长 2) 数据量太大 3) 计算资源不足")
             return None
         except Exception as e:
-            print(f"    模型训练异常: {e}")
+            elapsed_time = time.time() - start_time
+            print(f"    模型训练异常 (耗时{elapsed_time/60:.2f}分钟): {e}")
             return None
     
     def _parse_score_from_output(self, output: str) -> Optional[float]:
@@ -496,12 +529,14 @@ def main():
     parser.add_argument("--datasets", nargs="*", 
                        help="要测试的数据集列表（默认：所有可用数据集）")
     parser.add_argument("--models", nargs="*", 
-                       choices=['RF', 'XGB', 'LGBM', 'DT', 'ET'],
+                       choices=['RF', 'XGB', 'LGBM', 'CART', 'ET'],
                        help="要测试的模型列表（默认：所有可用模型）")
     parser.add_argument("--max-retries", type=int, default=3,
                        help="每个组合的最大重试次数（默认：3）")
     parser.add_argument("--timeout-hours", type=float, default=2.0,
-                       help="单个测试的超时时间（小时）（默认：2.0）")
+                       help="总体超时时间（小时）（默认：2.0，已弃用）")
+    parser.add_argument("--single-timeout-minutes", type=int, default=20,
+                       help="单次尝试超时时间（分钟）（默认：20）")
     parser.add_argument("--output-md", default="adda_benchmark_report.md",
                        help="输出的markdown报告文件名")
     parser.add_argument("--output-json", default="adda_benchmark_results.json",
@@ -515,7 +550,8 @@ def main():
             datasets=args.datasets,
             models=args.models,
             max_retries=args.max_retries,
-            timeout_hours=args.timeout_hours
+            timeout_hours=args.timeout_hours,
+            single_timeout_minutes=args.single_timeout_minutes
         )
         
         # 运行基准测试

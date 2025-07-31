@@ -87,7 +87,7 @@ def run_custom_test():
         "labor", "hepatitis", "bike", "abalone", "boston_house", 
         "airfoil", "house_sale", "medical"
     ]
-    available_models = ["RF", "XGB", "LGBM", "DT", "ET"]
+    available_models = ["RF", "XGB", "LGBM", "CART", "ET"]
     
     print("可用数据集:")
     for i, dataset in enumerate(available_datasets, 1):

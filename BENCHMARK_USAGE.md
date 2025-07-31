@@ -41,7 +41,7 @@
 - `RF`: Random Forest (随机森林)
 - `XGB`: XGBoost
 - `LGBM`: LightGBM
-- `DT`: Decision Tree (决策树)
+- `CART`: Decision Tree (决策树)
 - `ET`: Extra Trees (极端随机树)
 
 ## 快速开始
