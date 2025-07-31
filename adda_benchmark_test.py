@@ -128,6 +128,28 @@ class AddaBenchmarkTester:
                 return None
         return None
     
+    def _rename_result_dir_immediately(self, dataset: str, model: str, retry_num: int, score: float):
+        """每次尝试完成后立即重命名结果目录"""
+        base_pattern = f"{dataset}_{model}_Full"
+        base_dir = os.path.join(self.test_save_path, base_pattern)
+        
+        if os.path.exists(base_dir):
+            # 创建新的目录名（包含尝试次数和分数）
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_name = f"{base_pattern}_retry{retry_num}_score{score:.4f}_{timestamp}"
+            new_dir = os.path.join(self.test_save_path, new_name)
+            
+            try:
+                shutil.move(base_dir, new_dir)
+                print(f"    结果目录已重命名: {base_dir} -> {new_dir}")
+                return new_dir
+            except Exception as e:
+                print(f"    警告: 重命名结果目录失败: {e}")
+                return None
+        else:
+            print(f"    警告: 未找到结果目录 {base_dir}")
+            return None
+    
     def _run_test_util(self, dataset: str, model: str) -> bool:
         """运行test_util.py进行特征生成"""
         cmd = [
@@ -231,10 +253,10 @@ class AddaBenchmarkTester:
         for retry in range(1, self.max_retries + 1):
             print(f"  第 {retry}/{self.max_retries} 次尝试")
             
-            # 如果不是第一次尝试，备份已存在的目录
-            if retry > 1:
-                previous_score = all_scores[-1] if all_scores else None
-                self._backup_existing_dir(dataset, model, retry, previous_score)
+            # # 如果不是第一次尝试，备份已存在的目录
+            # if retry > 1:
+            #     previous_score = all_scores[-1] if all_scores else None
+            #     self._backup_existing_dir(dataset, model, retry, previous_score)
             
             # 执行特征生成
             if not self._run_test_util(dataset, model):
@@ -246,6 +268,9 @@ class AddaBenchmarkTester:
             if score is None:
                 print(f"    第 {retry} 次尝试失败：模型训练失败")
                 continue
+            
+            # 立即重命名结果目录
+            self._rename_result_dir_immediately(dataset, model, retry, score)
             
             all_scores.append(score)
             

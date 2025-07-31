@@ -21,8 +21,27 @@ you should install the `armadillo` and `postgres database` to the server
 ### 3. config the environment variable
 in `src/env.py` you could set the project configurable variables, especially `openai_api_key` and `rag_model_id_or_path`
 
+### 4. 配置pl/python环境
+如果使用conda环境，可能出现pl/python3使用的解释器和conda下的python解释器不一致的情况
+这时候，使用如下指令
+```bash
+# 一般的安装指令
+/usr/bin/python3 -m pip install pandas scikit-learn xgboost lightgbm
+
+# 或者
+sudo -u pip install pandas scikit-learn xgboost lightgbm
+
+# 如果是root用户
+su - postgres -c "pip install pandas scikit-learn xgboost lightgbm"
+```
+
 
 ## Code execution example
+
+### 0. 启动postgresql服务
+```bash
+service postgresql start
+```
 
 ### 1. download the necessary data
 you could download the data from the https://drive.google.com/file/d/1qTUpAEn25_-9CUEnk1IgCsvQMkn62R-Z/view?usp=sharing, and unzip to the ./data directory of the project
