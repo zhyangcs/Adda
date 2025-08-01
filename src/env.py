@@ -4,7 +4,8 @@ import math
 # proj_path = "/home/lpk/udfgen/sigmod-reproduce" # SET YOUR PATH HERE
 # proj_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # proj_path = "/home/ubuntu/autofe" # 调试用
-proj_path = "/root/autofe" # 调试用
+# proj_path = "/root/autofe" # 调试用
+proj_path = "/home/lizhenyu/projects/autofe" # 调试用
 print("Current Project Root is ", proj_path)
 
 global_seed = 0
@@ -20,13 +21,14 @@ diverse_num = 6 # k in the paper
 alpha = math.sqrt(2) / 1000.0 # w in the paper
 
 # rag_model_id_or_path = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
-rag_model_id_or_path = "Qwen/Qwen2-0.5B-Instruct"
+# rag_model_id_or_path = "Qwen/Qwen2-0.5B-Instruct"
+rag_model_id_or_path = "/home/lizhenyu/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B-Instruct/snapshots/c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
 openai_api_key = "sk-r3Ser79bfDP5rEVcX2hraaMQ8v6PJXBoZs5SNrF7bEb8H4J1"
 openai_base_url = "https://api.nuwaapi.com/v1"
 default_model = "gpt-4o"
 pg_user = "myuser"
 pg_db = "mydb"
-pg_port = 5432
+pg_port = 5431
 
 def update_llm_model(model):
     global default_model
