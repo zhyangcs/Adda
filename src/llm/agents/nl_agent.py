@@ -9,24 +9,83 @@ class NLAgent():
     def __init__(self, eval_model_type):
         self.eval_model_type = eval_model_type
     
+    @staticmethod
     def parse_nl_comma(content, pre_list):    
-        content_lines_with_end = [line + "^" for line in content.split("\n") if line != "" and ":" in line]
-        if len(content_lines_with_end) != len(pre_list):
-            print(termcolor.colored(f"Error: the length of content_lines_with_end {len(content_lines_with_end)} is not equal to the length of pre_list {len(pre_list)}", "red"))
-            return ""
-        res = []
-        try:
-            for i in range(len(content_lines_with_end)):
-                res.append(NLAgent.parse_one_comma(content_lines_with_end[i], pre_list[i]))
-        except Exception as e:
-            print(termcolor.colored(f"Error: {e}", "red"))
-            return ""
-        return res
+        """
+        Parse natural language response with enhanced error handling
+        """
+        print(termcolor.colored(f"=== 开始解析响应 ===", "blue"))
+        print(termcolor.colored(f"期望字段: {pre_list}", "blue"))
+        print(termcolor.colored(f"响应内容:\n{content}", "blue"))
         
+        # 按行分割，查找包含冒号的行
+        content_lines_with_end = [line + "^" for line in content.split("\n") if line != "" and ":" in line]
+        
+        print(termcolor.colored(f"找到的带冒号行数: {len(content_lines_with_end)}", "blue"))
+        print(termcolor.colored(f"期望行数: {len(pre_list)}", "blue"))
+        
+        if len(content_lines_with_end) != len(pre_list):
+            print(termcolor.colored(f"警告: 行数不匹配！期望{len(pre_list)}行，实际{len(content_lines_with_end)}行", "yellow"))
+            print(termcolor.colored("内容预览:", "yellow"))
+            for i, line in enumerate(content_lines_with_end):
+                print(termcolor.colored(f"  Line {i+1}: {line}", "yellow"))
+            
+            # 如果行数不匹配，尝试继续解析可用的行
+            if len(content_lines_with_end) < len(pre_list):
+                print(termcolor.colored("尝试解析可用的行...", "yellow"))
+                # 填充缺失的行
+                while len(content_lines_with_end) < len(pre_list):
+                    content_lines_with_end.append("")
+            else:
+                # 如果行数过多，截取前几行
+                print(termcolor.colored("截取到期望的行数...", "yellow"))
+                content_lines_with_end = content_lines_with_end[:len(pre_list)]
+        
+        res = []
+        successful_parses = 0
+        
+        try:
+            for i in range(len(pre_list)):
+                print(termcolor.colored(f"\n--- 解析字段 {i+1}: {pre_list[i]} ---", "blue"))
+                
+                if i < len(content_lines_with_end) and content_lines_with_end[i]:
+                    print(termcolor.colored(f"行内容: {content_lines_with_end[i]}", "blue"))
+                    
+                    try:
+                        parsed = NLAgent.parse_one_comma(content_lines_with_end[i], pre_list[i])
+                        res.append(parsed)
+                        successful_parses += 1
+                        print(termcolor.colored(f"✅ 成功解析: {parsed}", "green"))
+                    except Exception as e:
+                        print(termcolor.colored(f"❌ 解析失败: {e}", "red"))
+                        res.append("")  # 添加空值保持列表长度
+                else:
+                    print(termcolor.colored(f"❌ 缺少内容", "yellow"))
+                    res.append("")  # 添加空值保持列表长度
+            
+            print(termcolor.colored(f"\n=== 解析完成: {successful_parses}/{len(pre_list)} 字段成功 ===", "blue"))
+            print(termcolor.colored(f"最终结果: {res}", "blue"))
+            
+            # 如果所有字段都解析失败，返回空字符串
+            if successful_parses == 0:
+                print(termcolor.colored("所有字段都解析失败，返回空结果", "red"))
+                return ""
+            
+            return res
+            
+        except Exception as e:
+            print(termcolor.colored(f"解析过程中发生严重错误: {e}", "red"))
+            return ""
+        
+    @staticmethod
     def parse_one_comma(content, prefix):
         """
         The format could be 'prefix': content or 'content', or 'prefix': ['content1', 'content2']
+        Enhanced to handle multiple format variations
         """
+        print(termcolor.colored(f"  尝试解析字段: {prefix}", "blue"))
+        print(termcolor.colored(f"  行内容: {content}", "blue"))
+        
         def get_ans(match):
             if match.group(1) == prefix:
                 ans = match.group(2).strip()
@@ -40,16 +99,78 @@ class NLAgent():
                 print(termcolor.colored(f"new_feature: [{ans1}] from [{ans}]", "yellow"))
                 ans = ans1
             return ans.strip()
-        pattern = r"""'(.*)':(.*)\^"""
-        pattern2 = r'"(.*)":(.*)\^'
-        match = re.search(pattern, content, re.DOTALL)
-        match2 = re.search(pattern2, content, re.DOTALL)
-        if match:
-            return get_ans(match)
-        elif match2:
-            return get_ans(match2)
-        else:
-            raise ValueError(f"match failed content {content}, regenerating the code")
+        
+        # 尝试多种正则表达式模式，从严格到宽松
+        patterns = [
+            # 严格格式：'field': value 或 "field": value
+            r"""['"]?([^'":]+)['"]?\s*:\s*(.*)\^""",
+            r"""['"]?([^'":]+)['"]?\s*:\s*(.*)""",
+            # 宽松格式：field: value 或 field : value
+            r"""([^:]+)\s*:\s*(.*)""",
+        ]
+        
+        for i, pattern in enumerate(patterns):
+            print(termcolor.colored(f"  尝试模式 {i+1}: {pattern}", "blue"))
+            try:
+                match = re.search(pattern, content, re.DOTALL)
+                if match:
+                    print(termcolor.colored(f"  ✅ 模式 {i+1} 匹配成功", "green"))
+                    print(termcolor.colored(f"  组1: '{match.group(1)}'", "green"))
+                    print(termcolor.colored(f"  组2: '{match.group(2)}'", "green"))
+                    
+                    # 验证匹配的字段名是否与期望的prefix匹配
+                    field_name = match.group(1).strip().strip("'").strip('"')
+                    if field_name == prefix:
+                        print(termcolor.colored(f"  ✅ 字段名匹配: {field_name} == {prefix}", "green"))
+                        result = get_ans(match)
+                        print(termcolor.colored(f"  ✅ 解析结果: {result}", "green"))
+                        return result
+                    # 如果第一个组不匹配，尝试第二个组
+                    elif match.group(2) and match.group(2).strip():
+                        # 检查第二个组是否包含prefix
+                        if prefix in match.group(2):
+                            print(termcolor.colored(f"  ✅ 在组2中找到prefix: {prefix}", "green"))
+                            # 重新构造匹配对象
+                            result = get_ans(match)
+                            print(termcolor.colored(f"  ✅ 解析结果: {result}", "green"))
+                            return result
+                    else:
+                        print(termcolor.colored(f"  ❌ 字段名不匹配: {field_name} != {prefix}", "yellow"))
+                else:
+                    print(termcolor.colored(f"  ❌ 模式 {i+1} 匹配失败", "yellow"))
+            except Exception as e:
+                print(termcolor.colored(f"  ❌ 模式 {i+1} 执行异常: {e}", "red"))
+                continue
+        
+        # 如果所有正则表达式都失败，尝试简单的冒号分割作为最后的备选方案
+        print(termcolor.colored(f"  尝试备选方案: 冒号分割", "blue"))
+        try:
+            if ':' in content:
+                parts = content.split(':', 1)
+                if len(parts) == 2:
+                    field_part = parts[0].strip().strip("'").strip('"')
+                    value_part = parts[1].strip().strip("^").strip()
+                    
+                    print(termcolor.colored(f"  分割结果: field='{field_part}', value='{value_part}'", "blue"))
+                    
+                    # 检查字段名是否匹配
+                    if field_part == prefix:
+                        print(termcolor.colored(f"  ✅ 备选方案成功: 字段名匹配", "green"))
+                        return value_part
+                    # 或者检查值部分是否包含prefix
+                    elif prefix in value_part:
+                        print(termcolor.colored(f"  ✅ 备选方案成功: 值包含prefix", "green"))
+                        return value_part
+                    else:
+                        print(termcolor.colored(f"  ❌ 备选方案失败: 字段名和值都不匹配", "yellow"))
+        except Exception as e:
+            print(termcolor.colored(f"  ❌ 备选方案异常: {e}", "red"))
+        
+        # 如果所有方法都失败，记录详细信息并抛出异常
+        print(termcolor.colored(f"  ❌ 所有解析方法都失败", "red"))
+        print(termcolor.colored(f"  内容: '{content}'", "red"))
+        print(termcolor.colored(f"  期望字段: '{prefix}'", "red"))
+        raise ValueError(f"match failed content {content}, regenerating the code")
     
     def check_nl_response(rel_attrs:list, out_attr:str, cur_node:LLMDAGNODE, appear_attrs:list):
         """
@@ -121,14 +242,26 @@ class NLAgent():
                 print(termcolor.colored(whole_prompt, "white"))
                 
                 # 发送提示词到LLM获取响应
+                print(termcolor.colored("🚀 准备调用send_prompt_n...", "yellow"))
                 responses = send_prompt_n("", whole_prompt, n = 3 if high_order else send_num * 2)
+                print(termcolor.colored(f"✅ send_prompt_n调用完成，返回类型: {type(responses)}", "yellow"))
+                print(termcolor.colored(f"✅ responses长度: {len(responses) if responses else 'None'}", "yellow"))
+                print(termcolor.colored(f"✅ responses内容: {responses}", "yellow"))
+                
+                print(termcolor.colored("=== API原始回答 ===", "cyan"))
+                for i, response in enumerate(responses):
+                    print(termcolor.colored(f"响应 {i+1}:", "cyan"))
+                    print(termcolor.colored(response, "cyan"))
+                    print(termcolor.colored("---", "cyan"))
                 print(termcolor.colored(responses, "green"))
                 
                 # 处理每个响应
                 cur_attr_set = set()  # 记录已生成的特征名
-                for response in responses:
+                for i, response in enumerate(responses):
+                    print(termcolor.colored(f"处理响应 {i+1}", "magenta"))
                     # 解析自然语言响应
                     parsed_response = NLAgent.parse_nl_comma(response, NLAgent.high_order_feature_pre_list if high_order else NLAgent.normal_feature_pre_list)
+                    print(termcolor.colored(f"解析结果: {parsed_response}", "magenta"))
                     
                     if parsed_response != "":
                         # 解析操作类型、输出属性、操作描述等
@@ -154,6 +287,10 @@ class NLAgent():
                                 next_node.column_info[attr] = attr + ": (created in previous step) " + operation_desc_brief + "\n"
                             
                             next_state.append(next_node)
+                        else:
+                            print(termcolor.colored(f"响应验证失败", "red"))
+                    else:
+                        print(termcolor.colored(f"解析失败，跳过此响应", "red"))
                     
                     # 如果生成足够数量的特征，返回结果
                     if len(next_state) >= send_num:
@@ -163,5 +300,10 @@ class NLAgent():
                     # 如果没有有效响应，抛出异常
                     raise Exception("Error: no valid response")
             except Exception as e:
-                print(e, termcolor.colored("Error:regrenerate the op_type", "red"))
-                ConnectionRefusedError
+                print(termcolor.colored(f"❌ 发生异常: {e}", "red"))
+                print(termcolor.colored(f"❌ 异常类型: {type(e).__name__}", "red"))
+                import traceback
+                print(termcolor.colored(f"❌ 异常堆栈:\n{traceback.format_exc()}", "red"))
+                print(termcolor.colored("Error:regrenerate the op_type", "red"))
+                # 移除无效的ConnectionRefusedError
+                continue

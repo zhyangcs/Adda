@@ -3,3 +3,8 @@
 **/__pycache__/**
 **/.idea/
 *.pkl
+.vscode/
+.ipynb_checkpoints/
+/report/autofe-master
+benchmark/log/
+benchmark/results/

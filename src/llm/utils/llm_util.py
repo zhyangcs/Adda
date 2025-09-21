@@ -109,6 +109,12 @@ def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_m
     if retry_time == 0:
         raise Exception("Failed to send prompt to OpenAI")
     
+    # 确保不越界访问choices
+    actual_choices = len(completion.choices)
+    if actual_choices < n:
+        print(termcolor.colored(f"Warning: Requested {n} responses, but only got {actual_choices}", "yellow"))
+        n = actual_choices
+    
     msglist = [completion.choices[i].message.content for i in range(n)]
     
     t2 = time.time()
