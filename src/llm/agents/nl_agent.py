@@ -186,7 +186,7 @@ class NLAgent():
         # print(termcolor.colored(f"CheckNLResponse: rel_attrs: {rel_attrs}, all_relevant_contained: {all_relevant_contained}, cur_node column {cur_node.column_info.keys()}", "yellow"))
         out_not_appear = out_attr not in appear_attrs.union(set(cur_node.column_info.keys()))
         print(termcolor.colored(f"CheckNLResponse: all_relevant_contained: {all_relevant_contained}, out_not_appear: {out_not_appear}", "yellow"))
-        return all_relevant_contained and out_not_appear    
+        return all_relevant_contained and out_not_appear
     
     def get_raw_desc(self, cur_node):
         df_desc = get_column_info(cur_node.column_info, 800, cur_node.attr_imp_order)

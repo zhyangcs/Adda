@@ -69,7 +69,7 @@ def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_m
     t1 = time.time()
     if test_speed:
         time.sleep(1)
-        return
+        return []
     
     client = OpenAI(
         base_url=openai_base_url,
@@ -87,38 +87,37 @@ def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_m
             "content": user_prompt,  
     })
     
-    retry_time = RETRY_TIME
-    while retry_time > 0:
-        try:
-            print(termcolor.colored("Sending prompt to OpenAI...", "yellow"))
-            completion = client.chat.completions.create(
-                model = model,
-                temperature = temperature,
-                messages = messages,
-                max_tokens = 1000,
-                n = n,
-                seed = global_seed,
-            )
-            print(termcolor.colored("Received the response successfully!", "yellow"))
+    msglist = []
+    total_tokens = 0
+    
+    # 模拟多响应：通过多次调用来实现
+    for i in range(n):
+        retry_time = RETRY_TIME
+        while retry_time > 0:
+            try:
+                print(termcolor.colored(f"Sending prompt {i+1}/{n} to OpenAI...", "yellow"))
+                completion = client.chat.completions.create(
+                    model = model,
+                    temperature = temperature,
+                    messages = messages,
+                    max_tokens = 1000,
+                    seed=global_seed + i,  # 使用不同的seed获取不同响应
+                )
+                print(termcolor.colored(f"Received response {i+1}/{n} successfully!", "yellow"))
+                total_tokens += completion.usage.total_tokens
+                msglist.append(completion.choices[0].message.content)
+                break
+            except OpenAIError as e:
+                print(termcolor.colored("Error: %s" % e, "red"))
+                time.sleep(10)
+                retry_time -= 1
+        
+        if retry_time == 0:
+            print(termcolor.colored(f"Failed to send prompt {i+1}/{n} to OpenAI", "red"))
             break
-        except OpenAIError as e:
-            print(termcolor.colored("Error: %s" % e, "red"))
-            time.sleep(10)
-            retry_time -= 1
-    
-    if retry_time == 0:
-        raise Exception("Failed to send prompt to OpenAI")
-    
-    # 确保不越界访问choices
-    actual_choices = len(completion.choices)
-    if actual_choices < n:
-        print(termcolor.colored(f"Warning: Requested {n} responses, but only got {actual_choices}", "yellow"))
-        n = actual_choices
-    
-    msglist = [completion.choices[i].message.content for i in range(n)]
     
     t2 = time.time()
-    print(termcolor.colored("Time used: %s, Token Usage: %d" % (t2 - t1, completion.usage.total_tokens), "yellow"))
+    print(termcolor.colored("Time used: %s, Total Token Usage: %d, Responses: %d/%d" % (t2 - t1, total_tokens, len(msglist), n), "yellow"))
     return msglist
     
 def get_score(df:pd.DataFrame, label, model):
