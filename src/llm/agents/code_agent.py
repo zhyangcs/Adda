@@ -64,7 +64,16 @@ class CodeAgent():
         
         retry_times = TOTAL_RETRY_TIMES
         while retry_times > 0:
-            parsed_code = parse_code(send_prompt("", prompt_str), language='python')
+            response = send_prompt("", prompt_str)
+            
+            # 检查API调用是否成功
+            if response is None:
+                print(termcolor.colored("API call failed, retrying...", "red"))
+                retry_times -= 1
+                time.sleep(5)
+                continue
+                
+            parsed_code = parse_code(response, language='python')
             print(termcolor.colored(parsed_code, "green"))
             cur_node.task_code = parsed_code
 
@@ -79,6 +88,8 @@ class CodeAgent():
                 return True
             else:
                 retry_times -= 1
+                if retry_times > 0:
+                    print(termcolor.colored("Code execution failed, retrying...", "yellow"))
                 
         return False
     
@@ -95,6 +106,14 @@ class CodeAgent():
         while retry_time > 0:
             try:
                 responses = send_prompt_n("", whole_prompt, 1)
+                
+                # 检查API调用是否成功
+                if not responses or len(responses) == 0:
+                    print(termcolor.colored("API call failed, retrying...", "red"))
+                    retry_time -= 1
+                    time.sleep(5)
+                    continue
+                    
                 print(termcolor.colored(responses, "green"))
                 for response in responses:
                     ret = parse_fix_feature(response)

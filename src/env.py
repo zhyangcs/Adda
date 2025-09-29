@@ -23,8 +23,12 @@ alpha = math.sqrt(2) / 1000.0 # w in the paper
 # rag_model_id_or_path = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 # rag_model_id_or_path = "Qwen/Qwen2-0.5B-Instruct"
 rag_model_id_or_path = "/home/lizhenyu/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B-Instruct/snapshots/c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
-openai_api_key = "sk-XFOqa14voF6GcmRF234d4768587f4213Ab50Fc94862393D3"
-openai_base_url = "https://api.mixrai.com/v1/"
+# openai_api_key = "sk-XFOqa14voF6GcmRF234d4768587f4213Ab50Fc94862393D3"
+# openai_base_url = "https://api.mixrai.com/v1/"
+
+openai_api_key = "sk-XLdxKzgVlU0LQWwdHvLASphBnDkdcojnaJxky8D3n7Itqhf8"
+openai_base_url = "https://api.nuwaapi.com/v1"
+
 default_model = "gpt-4o"
 pg_user = "myuser"
 pg_db = "mydb"
