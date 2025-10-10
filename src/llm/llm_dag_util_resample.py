@@ -35,6 +35,7 @@ from transformers import AutoModel, AutoTokenizer, AutoConfig
 from src.llm.utils.common_utils import *
 import concurrent.futures
 from src.llm.agents.planner_agent import Planner
+from src.llm.adaptive_sampling import AdaptiveSamplingValidator, AdaptiveSamplingEstimator, SamplingConfig
 
 
 warnings.filterwarnings("ignore")
@@ -71,7 +72,7 @@ class LLMDagConstructor():
     - 与NLAgent/CodeAgent交互生成自然语言描述和代码
     """
     
-    def __init__(self, task_type:str, eval_model_type:str, beam_limit:int = 6, async_mode:bool = False, do_feature_selection:bool = False, boost_training:bool = False, high_order_num:int = 2, token_limit:int = 800, use_stratified_sampling:bool = True, sample_ratio:float = 0.25, resample_interval:int = 0):
+    def __init__(self, task_type:str, eval_model_type:str, beam_limit:int = 6, async_mode:bool = False, do_feature_selection:bool = False, boost_training:bool = False, high_order_num:int = 2, token_limit:int = 800, use_stratified_sampling:bool = True, sample_ratio:float = 0.25, resample_interval:int = 0, enable_adaptive_sampling:bool = True, adaptive_config:SamplingConfig = None):
         """
         参数:
             task_type: 任务类型(分类/回归)
@@ -85,6 +86,8 @@ class LLMDagConstructor():
             use_stratified_sampling: 是否使用分层采样
             sample_ratio: 采样比例 (0.0-1.0)
             resample_interval: 每多少步重新采样一次 (默认0，表示不重采样)
+            enable_adaptive_sampling: 是否启用自适应采样
+            adaptive_config: 自适应采样配置
         """
         self.node_id = global_node_id
         self.column_info = {}
@@ -117,6 +120,19 @@ class LLMDagConstructor():
         self.step_count = 0
         self.total_dataset_size = None
         self.original_df = None
+
+        # 自适应采样相关参数
+        self.enable_adaptive_sampling = enable_adaptive_sampling
+        self.adaptive_config = adaptive_config or SamplingConfig()
+        if self.enable_adaptive_sampling:
+            self.adaptive_validator = AdaptiveSamplingValidator(
+                self.eval_model, task_type, self.adaptive_config
+            )
+            self.adaptive_estimator = AdaptiveSamplingEstimator(self.adaptive_config)
+            print("Adaptive sampling enabled with multi-scale validation")
+        else:
+            self.adaptive_validator = None
+            self.adaptive_estimator = None
         
         
     def init_task_params(self, data_agenda:list[str], data_desc:list[str], target_col:str, tb_name:str = None, csv_path:str = None, do_unfinished:bool = False, task_name:str = None):
@@ -539,15 +555,36 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         cur_next_states = self.task_to_features(cur_node, cur_feature_idx)
         next_states += cur_next_states
                 
-        # 2. choose the top-k states, by self
+        # 2. choose the top-k states, by self (with adaptive sampling)
         total_node_num = 0
         for node in self.dag.nodes:
             total_node_num += (1 + self.dag.out_degree(node))
         for next_node in next_states:
             self.evaluate_node(next_node)
-            next_node.utility = monte_carlo_like_heuristic_func(self.dag.out_degree(next_node)+1, total_node_num, next_node.final_score)
+
+            # 调整utility函数，考虑一致性
+            if self.enable_adaptive_sampling and hasattr(next_node, 'consistency_score'):
+                # 一致性权重调整utility
+                consistency_bonus = next_node.consistency_score * 0.2
+                adjusted_score = next_node.final_score + consistency_bonus
+            else:
+                adjusted_score = next_node.final_score
+
+            next_node.utility = monte_carlo_like_heuristic_func(
+                self.dag.out_degree(next_node)+1, total_node_num, adjusted_score
+            )
             heapq.heappush(self.cur_states, next_node)
-        cur_node.utility = monte_carlo_like_heuristic_func(self.dag.out_degree(cur_node)+1, total_node_num, cur_node.final_score)
+
+        # 调整当前节点的utility
+        if self.enable_adaptive_sampling and hasattr(cur_node, 'consistency_score'):
+            consistency_bonus = cur_node.consistency_score * 0.2
+            adjusted_score = cur_node.final_score + consistency_bonus
+        else:
+            adjusted_score = cur_node.final_score
+
+        cur_node.utility = monte_carlo_like_heuristic_func(
+            self.dag.out_degree(cur_node)+1, total_node_num, adjusted_score
+        )
         self.pre_states = self.cur_states.copy()
         self.node_id = src.llm.llm_dag_node.global_node_id
         
@@ -615,6 +652,11 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                 
         # 后处理：生成最终特征代码
         self.compute_best_code()
+
+        # 打印自适应采样统计信息
+        if self.enable_adaptive_sampling:
+            self.print_adaptive_sampling_stats()
+
         self.finish = True  # 标记任务完成
 
 
@@ -658,13 +700,118 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         if self.async_mode:
             self.aliveLock.release()
         
+    def evaluate_node_with_adaptive_sampling(self, node:LLMDAGNODE) -> float:
+        """使用自适应采样评估节点性能
+
+        Args:
+            node: 待评估的节点
+
+        Returns:
+            final_score: 综合评估分数
+        """
+        print(termcolor.colored(f"the node{node.node_id} is evaluating with adaptive sampling: \n {node.task_code}", "yellow"))
+
+        # 基础评估
+        base_score, scores, attr_imp_order = self.get_scores(node.out_cur_df)
+        node.final_score = base_score
+        node.scores = scores
+        node.attr_imp_order = attr_imp_order
+
+        # 如果启用自适应采样，进行一致性验证
+        if self.enable_adaptive_sampling and self.adaptive_validator and self.original_df is not None:
+            try:
+                # 计算特征复杂度
+                feature_complexity = self._calculate_feature_complexity(node)
+
+                # 自适应采样率
+                adaptive_ratio = self.adaptive_validator.adaptive_sampling_ratio(
+                    node, feature_complexity
+                )
+
+                # 多尺度验证
+                consistency, bias, multi_scale_scores = \
+                    self.adaptive_validator.validate_feature_consistency(
+                        node, self.original_df, self.target_col
+                    )
+
+                # 迭代验证（可选）
+                if bias > self.adaptive_config.consistency_threshold:
+                    validation_results = self.adaptive_validator.iterative_validation(
+                        node, self.original_df, self.target_col
+                    )
+                    consistency = validation_results['final_consistency']
+                    bias = validation_results['final_bias']
+                    adaptive_ratio = validation_results['recommended_sampling_ratio']
+
+                # 更新节点属性
+                node.consistency_score = consistency
+                node.bias_score = bias
+                node.adaptive_sampling_ratio = adaptive_ratio
+                node.multi_scale_scores = multi_scale_scores
+
+                # 记录一致性历史
+                if not hasattr(node, 'consistency_history'):
+                    node.consistency_history = []
+                node.consistency_history.append(consistency)
+
+                # 调整最终分数（考虑一致性）
+                consistency_weight = 0.3  # 一致性权重
+                node.final_score = base_score * (1 - consistency_weight) + consistency * consistency_weight
+
+                print(termcolor.colored(
+                    f"Adaptive sampling results - Consistency: {consistency:.3f}, "
+                    f"Bias: {bias:.3f}, Adaptive ratio: {adaptive_ratio:.3f}, "
+                    f"Adjusted score: {node.final_score:.3f}", "green"
+                ))
+
+            except Exception as e:
+                print(termcolor.colored(f"Error in adaptive sampling evaluation: {e}", "red"))
+                # 出错时使用基础分数
+                pass
+
+        return node.final_score
+
+    def _calculate_feature_complexity(self, node:LLMDAGNODE) -> float:
+        """计算特征复杂度
+
+        Args:
+            node: 特征节点
+
+        Returns:
+            复杂度分数 (0-1)
+        """
+        complexity = 0.0
+
+        # 代码复杂度
+        if hasattr(node, 'task_code') and node.task_code:
+            code_lines = len(node.task_code.split('\n'))
+            complexity += min(code_lines / 20, 0.4)  # 代码行数贡献
+
+        # 特征数量复杂度
+        if hasattr(node, 'out_cur_df') and not node.out_cur_df.empty:
+            feature_count = len(node.out_cur_df.columns)
+            complexity += min(feature_count / 50, 0.3)  # 特征数量贡献
+
+        # 操作复杂度
+        if hasattr(node, 'operation_desc'):
+            operation_str = str(node.operation_desc).lower()
+            if any(op in operation_str for op in ['aggregate', 'group', 'combine']):
+                complexity += 0.2
+            if any(op in operation_str for op in ['polynomial', 'interaction', 'transform']):
+                complexity += 0.1
+
+        return min(complexity, 1.0)
+
     def evaluate_node(self, node:LLMDAGNODE):
         '''
-        evaluate the node by the score of the model
+        evaluate the node by the score of the model (with optional adaptive sampling)
         '''
-        print(termcolor.colored(f"the node{node.node_id} is evaluating : \n {node.task_code}, \n {node.out_cur_df.info()}", "yellow"))
-        node.final_score, node.scores, node.attr_imp_order = self.get_scores(node.out_cur_df)
-        return node.final_score
+        if self.enable_adaptive_sampling:
+            return self.evaluate_node_with_adaptive_sampling(node)
+        else:
+            print(termcolor.colored(f"the node{node.node_id} is evaluating : \n {node.task_code}, \n {node.out_cur_df.info()}", "yellow"))
+            node.final_score, node.scores, node.attr_imp_order = self.get_scores(node.out_cur_df)
+            return node.final_score
 
     def get_scores(self, df:pd.DataFrame):
         """
@@ -685,6 +832,63 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         
         return cv_result.mean(), None, None # do not consider the feature importance in this version
         
+    def print_adaptive_sampling_stats(self):
+        """打印自适应采样统计信息"""
+        if not self.enable_adaptive_sampling:
+            print("Adaptive sampling is disabled")
+            return
+
+        print("\n" + "="*60)
+        print("ADAPTIVE SAMPLING STATISTICS")
+        print("="*60)
+
+        # 统计节点信息
+        total_nodes = 0
+        high_consistency_nodes = 0
+        low_consistency_nodes = 0
+        avg_consistency = 0
+        avg_bias = 0
+        adaptive_ratios = []
+
+        for node in self.dag.nodes():
+            if hasattr(node, 'consistency_score'):
+                total_nodes += 1
+                consistency = node.consistency_score
+                bias = getattr(node, 'bias_score', 0)
+                adaptive_ratio = getattr(node, 'adaptive_sampling_ratio', self.sample_ratio)
+
+                avg_consistency += consistency
+                avg_bias += bias
+                adaptive_ratios.append(adaptive_ratio)
+
+                if consistency > 0.8:
+                    high_consistency_nodes += 1
+                elif consistency < 0.5:
+                    low_consistency_nodes += 1
+
+        if total_nodes > 0:
+            avg_consistency /= total_nodes
+            avg_bias /= total_nodes
+
+            print(f"Total nodes evaluated: {total_nodes}")
+            print(f"High consistency nodes ( >0.8 ): {high_consistency_nodes} ({high_consistency_nodes/total_nodes*100:.1f}%)")
+            print(f"Low consistency nodes ( <0.5 ): {low_consistency_nodes} ({low_consistency_nodes/total_nodes*100:.1f}%)")
+            print(f"Average consistency score: {avg_consistency:.3f}")
+            print(f"Average bias score: {avg_bias:.3f}")
+            print(f"Average adaptive sampling ratio: {np.mean(adaptive_ratios):.3f}")
+
+            # 显示最佳节点
+            best_nodes = heapq.nlargest(3, self.dag.nodes(),
+                                      key=lambda x: getattr(x, 'final_score', 0))
+            print("\nTop 3 nodes by score:")
+            for i, node in enumerate(best_nodes):
+                consistency = getattr(node, 'consistency_score', 'N/A')
+                bias = getattr(node, 'bias_score', 'N/A')
+                print(f"  {i+1}. Node {node.node_id}: Score={node.final_score:.3f}, "
+                      f"Consistency={consistency}, Bias={bias}")
+
+        print("="*60 + "\n")
+
     def compute_best_code(self, file_path:str = None):
         """
         for each leave node, we fetch all features, and choose the most important features, then we decide topk features we choose
