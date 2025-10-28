@@ -400,34 +400,42 @@ function hideNodeInfo() {
   flex: 1;
   flex-direction: column;
   padding: 1rem;
-  gap: 1rem;
+  gap: 0; /* 移除gap以消除空白 */
   overflow: hidden;
   background-color: #ffffff;
+  height: 100%;
 }
 
 /* 上方区域 */
 .upper-section {
   display: flex;
   gap: 1rem;
-  flex: 1;
+  flex: 7; /* 占据70%的高度 */
   min-height: 0;
+  padding-bottom: 0.5rem;
 }
 
 .agent-flow-section {
-  flex: 1;
+  flex: 6.5; /* 占据65%的宽度 */
   min-width: 300px;
+  display: flex;
+  flex-direction: column;
 }
 
 .feature-tree-section {
-  flex: 1.5;
-  min-width: 400px;
+  flex: 3.5; /* 占据35%的宽度 */
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 下方区域 */
 .lower-section {
   display: flex;
   gap: 1rem;
-  height: 200px;
+  flex: 3; /* 占据30%的高度 */
+  min-height: 0;
+  padding-top: 0.5rem;
 }
 
 .current-features-section {
@@ -486,11 +494,12 @@ function hideNodeInfo() {
 
 /* Agent Flow Diagram */
 .agent-flow-diagram {
-  height: 300px;
+  flex: 1;
   background-color: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   position: relative;
+  min-height: 200px;
 }
 
 .flow-container {
@@ -622,11 +631,12 @@ function hideNodeInfo() {
 
 /* Feature Tree */
 .feature-tree-container {
-  height: 300px;
+  flex: 1;
   background-color: #f0f0f0;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   padding: 0.5rem;
+  min-height: 200px;
 }
 
 .tree-visualization {
