@@ -59,7 +59,24 @@ class APIService {
   }
 
   async getTreeData(): Promise<FeatureTreeResponse> {
-    return this.post('/get-treejson/')
+    try {
+      const response = await fetch('/get-treejson/', {
+        method: 'POST',  // 修复：使用POST方法以匹配后端
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})  // 发送空的JSON body
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      return response.json()
+    } catch (error) {
+      console.error('Failed to get tree data:', error)
+      throw error
+    }
   }
 
   async nextStep(): Promise<TaskResponse> {

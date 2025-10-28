@@ -104,6 +104,48 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function nextStep(): Promise<boolean> {
+    try {
+      if (!isInitialized.value) {
+        addNotification('请先初始化任务', 'fail')
+        return false
+      }
+
+      const response = await apiService.nextStep()
+      if (response.status === 'success') {
+        addNotification('Next step executed successfully', 'success')
+        return true
+      } else {
+        addNotification(`Next step failed: ${response.message}`, 'fail')
+        return false
+      }
+    } catch (error) {
+      addNotification('Failed to execute next step', 'fail')
+      return false
+    }
+  }
+
+  async function autoStep(): Promise<boolean> {
+    try {
+      if (!isInitialized.value) {
+        addNotification('请先初始化任务', 'fail')
+        return false
+      }
+
+      const response = await apiService.runAutoPipeline()
+      if (response.status === 'success') {
+        addNotification('Auto pipeline executed successfully', 'success')
+        return true
+      } else {
+        addNotification(`Auto pipeline failed: ${response.message}`, 'fail')
+        return false
+      }
+    } catch (error) {
+      addNotification('Failed to run auto pipeline', 'fail')
+      return false
+    }
+  }
+
   async function checkTaskStatus() {
     try {
       const response = await apiService.checkTaskStatus()
@@ -152,6 +194,8 @@ export const useTaskStore = defineStore('task', () => {
     startTask,
     stopTask,
     clearTask,
+    nextStep,
+    autoStep,
     checkTaskStatus,
     addNotification,
     clearNotifications

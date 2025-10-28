@@ -231,9 +231,11 @@ const statusDotClass = computed(() => {
 async function handleCheckFormat() {
   isSubmitting.value = true
   try {
-    const success = await taskStore.startTask()
+    const success = await taskStore.checkFormat()
     if (success) {
       taskStore.addNotification('Task configuration validated successfully!', 'success')
+      // 初始化完成后加载特征树数据
+      await featureTreeStore.loadTreeData()
     }
   } finally {
     isSubmitting.value = false
@@ -241,8 +243,8 @@ async function handleCheckFormat() {
 }
 
 async function handleStart() {
-  await taskStore.startTask()
-  if (taskStore.isInitialized) {
+  const success = await taskStore.autoStep()
+  if (success) {
     await featureTreeStore.loadTreeData()
   }
 }
@@ -265,11 +267,10 @@ async function handleDownload() {
 }
 
 async function handleNextStep() {
-  await taskStore.startTask()
-  if (taskStore.isInitialized) {
+  const success = await taskStore.nextStep()
+  if (success) {
     await featureTreeStore.loadTreeData()
   }
-  taskStore.addNotification('Next step generated', 'success')
 }
 
 async function handleTestPerformance() {
