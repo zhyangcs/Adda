@@ -1,18 +1,22 @@
 <template>
   <div class="main-layout">
-    <!-- 左侧导航栏 -->
+    <!-- 左侧栏：任务配置与控制 -->
     <AppSidebar />
 
-    <!-- 主内容区域 -->
-    <div class="content-wrapper">
+    <!-- 中间栏：Agent思考过程与特征生成 -->
+    <div class="center-content">
       <MainContent />
     </div>
+
+    <!-- 右侧栏：执行日志与系统状态 (可折叠) -->
+    <RightSidebar />
   </div>
 </template>
 
 <script setup lang="ts">
 import AppSidebar from './Sidebar/AppSidebar.vue'
 import MainContent from './Content/MainContent.vue'
+import RightSidebar from './Sidebar/RightSidebar.vue'
 </script>
 
 <style scoped>
@@ -22,9 +26,22 @@ import MainContent from './Content/MainContent.vue'
   background-color: #f8f9fa;
 }
 
-.content-wrapper {
-  display: flex;
+.center-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  min-width: 0; /* 允许flexbox收缩 */
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .main-layout {
+    flex-direction: column;
+  }
+
+  .center-content {
+    min-height: 400px;
+  }
 }
 </style>
