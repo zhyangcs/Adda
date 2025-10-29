@@ -22,6 +22,10 @@ export const useTaskStore = defineStore('task', () => {
     config.value.description.trim() !== '' && !isRunning.value
   )
 
+  const canDoNextStep = computed(() =>
+    isInitialized.value && !isRunning.value
+  )
+
   const statusText = computed(() => {
     const statusMap: Record<TaskStatus, string> = {
       idle: '准备就绪',
@@ -187,6 +191,7 @@ export const useTaskStore = defineStore('task', () => {
 
     // 计算属性
     canStartTask,
+    canDoNextStep,
     statusText,
 
     // 方法

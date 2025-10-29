@@ -188,69 +188,13 @@
 
             <!-- 右边：Feature Generation -->
             <div class="feature-tree-section">
-              <div class="section-header">
-                <h6 class="section-title">
-                  <GitBranch :size="18" class="me-2" />
-                  Feature Generation - 特征搜索树可视化
-                </h6>
-              </div>
-
-              <div class="feature-tree-container">
-                <div
-                  ref="treeContainer"
-                  class="tree-visualization"
-                  :class="{ 'is-loading': featureTreeStore.isLoading }"
-                >
-                  <div
-                    v-if="!featureTreeStore.treeData && !featureTreeStore.isLoading"
-                    class="empty-state"
-                  >
-                    <GitBranch :size="48" class="text-muted mb-3" />
-                    <h6 class="text-muted">No Feature Tree Available</h6>
-                    <p class="text-muted small">
-                      Please configure and initialize a task first.
-                    </p>
-                  </div>
-
-                  <div
-                    v-if="featureTreeStore.isLoading"
-                    class="loading-state"
-                  >
-                    <div class="spinner-border text-primary" role="status">
-                      <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2 mb-0 text-muted">Loading feature tree...</p>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 特征选择信息（合并的Current Feature Set内容） -->
-              <div class="feature-selection-info">
-                <div class="info-header">
-                  <h6 class="info-title">Current Feature Set</h6>
-                </div>
-                <div class="info-content">
-                  <div class="feature-list">
-                    <span v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
-                      No features selected (click node for choose/delete)
-                    </span>
-                    <span v-else class="features-text">
-                      {{ featureTreeStore.currentFeatures.join(', ') }}
-                    </span>
-                  </div>
-                  <div class="performance-info">
-                    <strong>Performance:</strong>
-                    <span class="performance-value">{{ featureTreeStore.performance }}</span>
-                    <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
-                  </div>
-                </div>
-              </div>
+              <FeatureTreePanel />
             </div>
           </div>
         </div>
       </pane>
 
-    
+
       <!-- 右侧面板：SQL Code组件（上方） + Feature Performance组件（下方） -->
       <pane :size="rightPaneSize" min="20" max="60" v-if="!rightPanelCollapsed">
         <div class="right-panel-content">
@@ -268,6 +212,7 @@
               :performance-data="performanceData"
               :time-data="timeData"
               :shap-data="shapData"
+              :is-loading="isLoadingPerformance"
               @generate-features="handleGenerateFeatures"
               @refresh-data="handleRefreshData"
             />
@@ -287,30 +232,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Users, GitBranch, Cog } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { Users, Cog } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import SQLCode from '@/components/Features/SQLCode.vue'
 import FeaturePerformance from '@/components/Features/FeaturePerformance.vue'
-import * as d3 from 'd3'
+import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 
-const treeContainer = ref<HTMLElement>()
 const activeAgent = ref<'main' | 'optimization' | 'validation'>('main')
 const workingAgents = ref<string[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
-const isPerformanceLoading = ref(false)
 
 // 右侧面板数据
 const sqlCode = ref('')
 const performanceData = ref<any>(null)
 const timeData = ref<any>(null)
 const shapData = ref<any>(null)
+const isLoadingPerformance = ref(false)
 
 // Splitpanes 相关状态
 const leftPaneSize = ref(75) // 左侧面板默认占75%
@@ -408,15 +352,6 @@ function simulateAgentWork() {
   }
 }
 
-// 监听树数据变化，重新渲染
-watch(() => featureTreeStore.treeData, (newData) => {
-  if (newData && treeContainer.value) {
-    nextTick(() => {
-      renderTree(newData)
-    })
-  }
-}, { deep: true })
-
 // 监听任务状态变化
 watch(() => taskStore.status, (newStatus) => {
   if (newStatus === 'running') {
@@ -426,6 +361,14 @@ watch(() => taskStore.status, (newStatus) => {
     connectionActive.value = false
     connectionActiveReverse.value = false
     connectionActiveValidation.value = false
+  }
+})
+
+// 监听任务初始化状态变化
+watch(() => taskStore.isInitialized, (isInitialized) => {
+  if (isInitialized) {
+    // 当任务初始化后，加载特征树数据
+    featureTreeStore.loadTreeData()
   }
 })
 
@@ -443,10 +386,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
-  if (taskStore.isInitialized) {
-    featureTreeStore.loadTreeData()
-  }
-
   // 从localStorage加载用户偏好
   const savedRatio = localStorage.getItem('main-content-split-ratio')
   const savedCollapsed = localStorage.getItem('right-panel-collapsed')
@@ -467,6 +406,9 @@ onMounted(() => {
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeyDown)
 
+  // 添加性能测试事件监听器
+  window.addEventListener('test-performance', handleTestPerformanceEvent)
+
   // 添加splitter点击事件监听器
   nextTick(() => {
     const splitters = document.querySelectorAll('.splitpanes__splitter')
@@ -474,7 +416,6 @@ onMounted(() => {
       splitter.addEventListener('click', (event: Event) => {
         event.preventDefault()
         event.stopPropagation()
-        console.log('Splitter clicked, triggering collapse')
         toggleRightPanel()
       })
 
@@ -496,225 +437,111 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // 移除键盘事件监听器
+  // 移除事件监听器
   window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('test-performance', handleTestPerformanceEvent)
 })
 
-// D3.js 树形图渲染 (从FeatureGenerationPanel复制)
-function renderTree(treeStructure: any) {
-  if (!treeContainer.value) return
+// 处理性能测试事件
+function handleTestPerformanceEvent(event: CustomEvent) {
+  const { features } = event.detail
 
-  // 清空容器
-  d3.select(treeContainer.value).selectAll("*").remove()
-
-  let { root_id, parent_child_relations, node_info, cur_selected_idx } = treeStructure
-
-  // 将节点信息转换为字典
-  const nodeInfoMap = node_info.reduce((map: any, info: any) => {
-    map[info.node_id] = info
-    return map
-  }, {})
-
-  // 构建树结构
-  function buildTree(rootId: string, _relations: [string, string][], nodeInfoMap: any) {
-    const tree = {
-      id: rootId,
-      ...nodeInfoMap[rootId],
-      children: [],
-      selected: cur_selected_idx.includes(rootId)
-    }
-    const nodeMap: { [key: string]: any } = { [rootId]: tree }
-
-    parent_child_relations.forEach(([parent_id, child_id]: [string, string]) => {
-      const parentNode = nodeMap[parent_id]
-      const childNode = {
-        id: child_id,
-        ...nodeInfoMap[child_id],
-        children: [],
-        selected: cur_selected_idx.includes(child_id)
-      }
-      parentNode.children.push(childNode)
-      nodeMap[child_id] = childNode
-    })
-
-    return tree
+  // 确保右侧面板展开
+  if (rightPanelCollapsed.value) {
+    toggleRightPanel()
   }
 
-  const data = buildTree(root_id, parent_child_relations, nodeInfoMap)
-  renderD3Tree(data)
-}
-
-function renderD3Tree(data: any) {
-  if (!treeContainer.value) return
-
-  // 创建树布局
-  const treeLayout = d3.tree()
-    .size([280, 200])
-    .separation(() => 1)
-
-  // 创建SVG容器
-  const svg = d3.select(treeContainer.value)
-    .append("svg")
-    .attr("width", "100%")
-    .attr("height", 250)
-    .attr("viewBox", "0 0 300 250")
-    .append("g")
-    .attr("transform", "translate(10, 25)")
-
-  // 创建层次结构
-  const root = d3.hierarchy(data)
-  treeLayout(root)
-
-  // 绘制连接线
-  svg.selectAll(".link")
-    .data(root.links())
-    .enter()
-    .append("path")
-    .attr("class", "link")
-    .attr("d", d3.linkVertical<any, d3.HierarchyNode<any>>()
-      .x((d: any) => d.x)
-      .y((d: any) => d.y) as any)
-
-  // 创建节点组
-  const nodes = svg.selectAll(".node")
-    .data(root.descendants())
-    .enter()
-    .append("g")
-    .attr("class", "node")
-    .attr("transform", (d: any) => `translate(${d.x},${d.y})`)
-    .classed("selected", (d: any) => d.data.selected)
-    .on("click", function (_event: any, d: any) {
-      handleNodeClick(d.data)
-    })
-    .on("mouseover", function (_event: any, d: any) {
-      showNodeInfo(d.data)
-    })
-    .on("mouseout", hideNodeInfo)
-
-  // 绘制节点矩形
-  nodes.append("rect")
-    .attr("width", 80)
-    .attr("height", 30)
-    .attr("x", -40)
-    .attr("y", -15)
-    .attr("fill", (d: any) => d.data.selected ? "#2ecc71" : "#c8c8c8")
-    .attr("stroke", "#b4b4b4")
-    .attr("stroke-width", 2)
-    .attr("rx", 4)
-    .on("mouseover", function (_event: any, d: any) {
-      d3.select(this).attr("fill", d.data.selected ? "#27ae60" : "#b4b4b4")
-    })
-    .on("mouseout", function (_event: any, d: any) {
-      d3.select(this).attr("fill", d.data.selected ? "#2ecc71" : "#c8c8c8")
-    })
-
-  // 添加节点文字
-  nodes.append("text")
-    .attr("dy", -5)
-    .style("font-weight", "bold")
-    .style("font-size", "10px")
-    .text((d: any) => `${d.data.feature_name?.substring(0, 8) || ''}`)
-
-  nodes.append("text")
-    .attr("dy", 8)
-    .style("font-size", "9px")
-    .text((d: any) => `ID: ${d.data.node_id}`)
-
-  // 设置根节点引用
-  featureTreeStore.setRoot(root)
-}
-
-function handleNodeClick(nodeData: any) {
-  featureTreeStore.toggleNodeSelection(nodeData.node_id)
-  // 重新渲染树以更新选中状态
-  if (featureTreeStore.treeData) {
-    renderTree(featureTreeStore.treeData)
-  }
-}
-
-function showNodeInfo(nodeData: any) {
-  featureTreeStore.setSelectedNode(nodeData)
-}
-
-function hideNodeInfo() {
-  featureTreeStore.setSelectedNode(null)
+  // 调用性能测试函数
+  testPerformance()
 }
 
 // 右侧面板组件事件处理
-function handleGenerateFeatures() {
-  // 处理生成特征请求
-  taskStore.addNotification('Starting feature generation...', 'info')
+async function handleGenerateFeatures() {
+  // 处理测试性能请求
+  await testPerformance()
+}
 
-  // 模拟生成过程
-  setTimeout(() => {
-    // 生成模拟SQL代码
-    sqlCode.value = `-- Generated Feature SQL Code
-SELECT
-    feature_1,
-    feature_2,
-    feature_1 * feature_2 AS interaction_feature,
-    ABS(feature_1 - feature_2) AS difference_feature,
-    (feature_1 + feature_2) / 2 AS average_feature
-FROM training_data
-WHERE feature_1 IS NOT NULL
-  AND feature_2 IS NOT NULL;
+async function testPerformance() {
+  if (isLoadingPerformance.value) {
+    taskStore.addNotification('Performance test already in progress...', 'warning')
+    return
+  }
 
--- Feature transformation complete
--- Total features generated: 5
--- Execution time: 0.23s`
+  isLoadingPerformance.value = true
+  taskStore.addNotification('Testing performance...', 'info')
 
-    // 生成模拟性能数据
-    performanceData.value = {
-      accuracy: 0.8234,
-      precision: 0.8156,
-      recall: 0.8312,
-      f1Score: 0.8233,
-      auc: 0.8912
+  try {
+    const response = await fetch('/test-performance/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        // 如果需要传递参数，可以在这里添加
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    // 生成模拟时间数据
-    timeData.value = {
-      total: 23.4,
-      generation: 12.7,
-      evaluation: 7.8,
-      selection: 2.9
-    }
+    const data = await response.json()
 
-    // 生成模拟SHAP数据
-    shapData.value = {
-      meanShap: 0.1456,
-      features: [
-        { name: 'feature_1', value: 0.2341, percentage: 100 },
-        { name: 'feature_2', value: 0.1876, percentage: 80 },
-        { name: 'interaction_feature', value: 0.1453, percentage: 62 },
-        { name: 'difference_feature', value: 0.0987, percentage: 42 },
-        { name: 'average_feature', value: 0.0765, percentage: 33 }
-      ]
-    }
+    if (data.status === 'success') {
+      // 更新SQL代码（显示all_sql）
+      if (data.sql_code && data.sql_code.all_sql) {
+        sqlCode.value = data.sql_code.all_sql
+      }
 
-    taskStore.addNotification('Feature generation completed successfully!', 'success')
-  }, 2000)
+      // 更新性能数据
+      if (data.performance_info) {
+        const perf = data.performance_info
+
+        // 转换性能数据格式
+        performanceData.value = {
+          accuracy: perf.accuracy || 0,
+          precision: perf.precision || 0,
+          recall: perf.recall || 0,
+          f1Score: perf.f1_score || perf.f1Score || 0,
+          auc: perf.auc || 0
+        }
+
+        // 转换时间数据（如果存在）
+        timeData.value = {
+          total: perf.total_time || perf.time_usage || 0,
+          generation: perf.generation_time || 0,
+          evaluation: perf.evaluation_time || 0,
+          selection: perf.selection_time || 0
+        }
+
+        // 转换SHAP数据（如果存在）
+        if (perf.shap_values && perf.shap_values.length > 0) {
+          shapData.value = {
+            meanShap: perf.mean_shap || 0,
+            features: perf.shap_values.map((shap: any, index: number) => ({
+              name: shap.feature_name || `feature_${index}`,
+              value: shap.shap_value || shap.value || 0,
+              percentage: Math.max(1, (shap.importance || shap.percentage || 1))
+            })).sort((a: any, b: any) => b.value - a.value).slice(0, 5)
+          }
+        }
+      }
+
+      taskStore.addNotification('Performance test completed successfully!', 'success')
+    } else {
+      throw new Error(data.message || 'Performance test failed')
+    }
+  } catch (error) {
+    console.error('Error testing performance:', error)
+    taskStore.addNotification(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
+  } finally {
+    isLoadingPerformance.value = false
+  }
 }
 
 function handleRefreshData() {
-  // 处理刷新数据请求
-  taskStore.addNotification('Refreshing performance data...', 'info')
-
-  // 模拟数据刷新
-  setTimeout(() => {
-    if (performanceData.value) {
-      // 稍微调整性能数据以模拟刷新
-      performanceData.value = {
-        ...performanceData.value,
-        accuracy: Math.min(0.95, performanceData.value.accuracy + Math.random() * 0.01 - 0.005),
-        precision: Math.min(0.95, performanceData.value.precision + Math.random() * 0.01 - 0.005),
-        recall: Math.min(0.95, performanceData.value.recall + Math.random() * 0.01 - 0.005),
-        f1Score: Math.min(0.95, performanceData.value.f1Score + Math.random() * 0.01 - 0.005)
-      }
-    }
-
-    taskStore.addNotification('Performance data refreshed!', 'success')
-  }, 1000)
+  // 处理刷新数据请求，重新调用测试性能API
+  testPerformance()
 }
 </script>
 
@@ -766,13 +593,6 @@ function handleRefreshData() {
   min-width: 250px;
   display: flex;
   flex-direction: column;
-}
-
-/* 特征选择信息样式 */
-.feature-selection-info {
-  margin-top: 0.5rem;
-  border-top: 1px solid #dee2e6;
-  padding-top: 0.5rem;
 }
 
 /* 右侧面板布局 */
@@ -1122,61 +942,6 @@ function handleRefreshData() {
   stroke: #007bff;
 }
 
-/* Feature Tree */
-.feature-tree-container {
-  flex: 1;
-  background-color: #f0f0f0;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
-  padding: 0.5rem;
-  min-height: 200px;
-}
-
-.tree-visualization {
-  height: 100%;
-  overflow: auto;
-}
-
-.empty-state,
-.loading-state {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #6c757d;
-}
-
-/* 特征信息 */
-.feature-list {
-  margin-bottom: 1rem;
-}
-
-.no-features {
-  color: #6c757d;
-  font-style: italic;
-}
-
-.features-text {
-  color: #155724;
-  background-color: #d4edda;
-  padding: 0.5rem;
-  border-radius: 4px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.performance-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.performance-value {
-  color: #007bff;
-  font-weight: 600;
-}
-
 /* 节点信息 */
 .node-details {
   display: flex;
@@ -1237,36 +1002,6 @@ function handleRefreshData() {
     stroke-dashoffset: 0;
   }
 }
-
-/* D3.js 样式 */
-:deep(.link) {
-  fill: none;
-  stroke: #666;
-  stroke-width: 1.5px;
-}
-
-:deep(.node) {
-  cursor: pointer;
-}
-
-:deep(.node.selected rect) {
-  stroke: #27ae60;
-  stroke-width: 2px;
-}
-
-:deep(.node rect) {
-  transition: all 0.2s ease;
-}
-
-:deep(.node:hover rect) {
-  filter: brightness(0.9);
-}
-
-:deep(.node text) {
-  pointer-events: none;
-  user-select: none;
-}
-
 
 /* 展开按钮容器样式 */
 .expand-button-container {

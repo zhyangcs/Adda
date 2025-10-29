@@ -9,20 +9,36 @@ import type {
 class APIService {
   private baseURL = ''
 
-  async post<T = any>(endpoint: string, data?: any): Promise<T> {
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: data ? JSON.stringify(data) : undefined
-    })
+  async post<T = any>(endpoint: string, data?: any, timeoutMs: number = 10 * 60 * 1000): Promise<T> {
+    // 默认10分钟超时，对于长时操作如next step
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    try {
+      const response = await fetch(`${this.baseURL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: data ? JSON.stringify(data) : undefined,
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      return response.json()
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request timeout after ${timeoutMs/1000} seconds`)
+      }
+      throw error
     }
-
-    return response.json()
   }
 
   // 任务相关API
@@ -59,28 +75,12 @@ class APIService {
   }
 
   async getTreeData(): Promise<FeatureTreeResponse> {
-    try {
-      const response = await fetch('/get-treejson/', {
-        method: 'POST',  // 修复：使用POST方法以匹配后端
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({})  // 发送空的JSON body
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      return response.json()
-    } catch (error) {
-      console.error('Failed to get tree data:', error)
-      throw error
-    }
+    return this.post('/get-treejson/', {})
   }
 
   async nextStep(): Promise<TaskResponse> {
-    return this.post('/next-step/')
+    // 为next step操作设置更长的超时时间（15分钟）
+    return this.post('/next-step/', undefined, 15 * 60 * 1000)
   }
 
   async testPerformance(nodeIds: string[]): Promise<PerformanceResponse> {

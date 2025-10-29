@@ -6,17 +6,28 @@
         Feature Performance
       </div>
       <div class="actions">
-        <button class="btn-icon" @click="refreshData">
-          <i class="bi bi-arrow-clockwise" :class="{ 'spinning': isRefreshing }"></i>
+        <button class="btn-icon" @click="refreshData" :disabled="props.isLoading || isRefreshing">
+          <i class="bi bi-arrow-clockwise" :class="{ 'spinning': props.isLoading || isRefreshing }"></i>
         </button>
-        <button class="btn-icon" @click="exportData" :disabled="!hasData">
+        <button class="btn-icon" @click="exportData" :disabled="!hasData || props.isLoading">
           <i class="bi bi-download"></i>
         </button>
       </div>
     </div>
 
     <div class="performance-content">
-      <div v-if="hasData" class="metrics-grid">
+      <!-- Loading State -->
+      <div v-if="props.isLoading" class="loading-state">
+        <div class="loading-content">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading performance data...</span>
+          </div>
+          <p class="mt-3 mb-0">Testing performance...</p>
+          <small>Please wait while we analyze your features</small>
+        </div>
+      </div>
+
+      <div v-else-if="hasData" class="metrics-grid">
         <!-- Performance Metrics -->
         <div class="metric-card performance">
           <div class="metric-header">
@@ -194,6 +205,7 @@ const props = defineProps<{
   performanceData?: PerformanceData
   timeData?: TimeData
   shapData?: ShapData
+  isLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -519,6 +531,31 @@ const exportData = () => {
   color: var(--text-placeholder);
   margin-bottom: 16px;
   display: block;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-content p {
+  margin: 8px 0 4px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.loading-content small {
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
 .empty-state h3 {

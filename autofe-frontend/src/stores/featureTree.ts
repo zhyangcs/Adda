@@ -171,6 +171,7 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     // 方法
     loadTreeData,
     toggleNodeSelection,
+    updateSelectionFromTree,
     updateCurrentFeatures,
     clearSelection,
     testPerformance,

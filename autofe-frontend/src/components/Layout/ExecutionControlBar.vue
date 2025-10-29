@@ -1,5 +1,5 @@
 <template>
-  <div class="execution-control-bar">
+  <div class="execution-control-bar" :class="{ 'is-loading': isNextStepLoading }">
     <!-- 端到端模式按钮 -->
     <div v-if="isEndToEndPage" class="button-group">
       <button
@@ -35,10 +35,13 @@
       <button
         class="btn btn-success btn-sm"
         @click="handleNextStep"
-        :disabled="!taskStore.canStartTask || taskStore.isLoading"
+        :disabled="!taskStore.canDoNextStep || isNextStepLoading"
       >
-        <SkipForward :size="16" class="me-1" />
-        Next Step
+        <div v-if="isNextStepLoading" class="spinner-border spinner-border-sm me-1" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <SkipForward v-else :size="16" class="me-1" />
+        {{ isNextStepLoading ? 'Processing...' : 'Next Step' }}
       </button>
 
       <button
@@ -71,17 +74,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Play, Square, Download, SkipForward, BarChart, Brain
 } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const route = useRoute()
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
+const workspaceStore = useWorkspaceStore()
+
+// Next step loading状态
+const isNextStepLoading = ref(false)
 
 // 根据路由判断当前页面模式
 const isEndToEndPage = computed(() => route.path === '/end-to-end')
@@ -101,9 +109,27 @@ async function handleStop() {
 }
 
 async function handleNextStep() {
-  const success = await taskStore.autoStep()
-  if (success) {
-    await featureTreeStore.loadTreeData()
+  try {
+    // 设置loading状态
+    isNextStepLoading.value = true
+
+    // 真实调用next step API
+    console.log('Next Step clicked - calling real API')
+
+    const success = await taskStore.nextStep()
+    if (success) {
+      taskStore.addNotification('Next step completed successfully', 'success')
+      // 成功后重新加载树数据
+      await featureTreeStore.loadTreeData()
+    } else {
+      taskStore.addNotification('Next step failed', 'fail')
+    }
+  } catch (error) {
+    console.error('Next step failed:', error)
+    taskStore.addNotification('Next step execution failed', 'fail')
+  } finally {
+    // 清除loading状态
+    isNextStepLoading.value = false
   }
 }
 
@@ -113,7 +139,10 @@ async function handleTestPerformance() {
     return
   }
 
-  await taskStore.testPerformance(featureTreeStore.selectedFeatures)
+  // 发射全局事件，让MainContent组件接收
+  window.dispatchEvent(new CustomEvent('test-performance', {
+    detail: { features: featureTreeStore.selectedFeatures }
+  }))
 }
 
 async function handleGenerateModel() {
@@ -136,7 +165,7 @@ async function handleDownload() {
 
 function handleShowThinking() {
   // 显示Agent思考过程的逻辑
-  taskStore.toggleAgentThinking()
+  workspaceStore.toggleAgentThinking()
 }
 </script>
 
@@ -224,6 +253,26 @@ function handleShowThinking() {
   .btn .me-1 {
     margin-right: 2px;
   }
+}
+
+/* Loading状态样式 */
+.execution-control-bar.is-loading {
+  position: relative;
+}
+
+.execution-control-bar.is-loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.execution-control-bar.is-loading .btn:not(:disabled) {
+  filter: grayscale(30%);
 }
 
 /* 移动端超小屏幕 */
