@@ -1,255 +1,279 @@
 <template>
   <div class="main-content">
-    <!-- 上方区域：Agent思考过程 + 特征搜索树 -->
-    <div class="upper-section">
-      <!-- 左侧：Agent协作流程图 -->
-      <div class="agent-flow-section">
-        <div class="section-header">
-          <h6 class="section-title">
-            <Users :size="18" class="me-2" />
-            Agent Thinking Process
-          </h6>
-        </div>
-
-        <div class="agent-flow-diagram">
-          <!-- 环形布局的Agent协作图 -->
-          <div class="flow-container">
-            <!-- 中心标题 -->
-            <div class="flow-center">
-              <div class="flow-title">Agent Flow</div>
-              <div class="flow-status">{{ getCurrentFlowStatus() }}</div>
+    <!-- 使用Splitpanes实现左右分区布局 -->
+    <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
+      <!-- 左侧面板：Agent流程图（上方） + Node Information（下方） -->
+      <pane :size="leftPaneSize" min="15" max="70">
+        <div class="left-panel">
+          <!-- 上方：Agent协作流程图 -->
+          <div class="agent-flow-section">
+            <div class="section-header">
+              <h6 class="section-title">
+                <Users :size="18" class="me-2" />
+                Agent Thinking Process
+              </h6>
             </div>
 
-            <!-- Agent图标环形布局 -->
-            <div class="agents-container">
-              <!-- Main Agent -->
-              <div
-                class="agent-node main-agent"
-                :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
-                @click="setActiveAgent('main')"
-              >
-                <div class="agent-icon">
-                  <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+            <div class="agent-flow-diagram">
+              <!-- 环形布局的Agent协作图 -->
+              <div class="flow-container">
+                <!-- 中心标题 -->
+                <div class="flow-center">
+                  <div class="flow-title">Agent Flow</div>
+                  <div class="flow-status">{{ getCurrentFlowStatus() }}</div>
                 </div>
-                <div class="agent-label">Main Agent</div>
-                <div class="agent-goal">Feature Engineering</div>
-                <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
-              </div>
 
-              <!-- Optimization Agent -->
-              <div
-                class="agent-node opt-agent"
-                :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
-                @click="setActiveAgent('optimization')"
-              >
-                <div class="agent-icon">
-                  <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                <!-- Agent图标环形布局 -->
+                <div class="agents-container">
+                  <!-- Main Agent -->
+                  <div
+                    class="agent-node main-agent"
+                    :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
+                    @click="setActiveAgent('main')"
+                  >
+                    <div class="agent-icon">
+                      <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+                    </div>
+                    <div class="agent-label">Main Agent</div>
+                    <div class="agent-goal">Feature Engineering</div>
+                    <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
+                  </div>
+
+                  <!-- Optimization Agent -->
+                  <div
+                    class="agent-node opt-agent"
+                    :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
+                    @click="setActiveAgent('optimization')"
+                  >
+                    <div class="agent-icon">
+                      <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                    </div>
+                    <div class="agent-label">Opt Agent</div>
+                    <div class="agent-goal">Performance Tuning</div>
+                    <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
+                  </div>
+
+                  <!-- Node Validation Process -->
+                  <div
+                    class="agent-node validation-agent"
+                    :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
+                    @click="setActiveAgent('validation')"
+                  >
+                    <div class="agent-icon">
+                      <Cog :size="32" />
+                    </div>
+                    <div class="agent-label">Node Validation</div>
+                    <div class="agent-goal">Feature Validation</div>
+                    <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+                  </div>
+
+                  <!-- 连接线 - L型循环 -->
+                  <svg class="connection-lines" viewBox="0 0 500 400">
+                    <!-- 定义箭头 -->
+                    <defs>
+                      <marker
+                        id="arrowhead-main-opt"
+                        markerWidth="10"
+                        markerHeight="7"
+                        refX="9"
+                        refY="3.5"
+                        orient="auto"
+                      >
+                        <polygon
+                          points="0 0, 10 3.5, 0 7"
+                          :fill="connectionActive ? '#007bff' : '#dee2e6'"
+                        />
+                      </marker>
+                      <marker
+                        id="arrowhead-opt-validation"
+                        markerWidth="10"
+                        markerHeight="7"
+                        refX="9"
+                        refY="3.5"
+                        orient="auto"
+                      >
+                        <polygon
+                          points="0 0, 10 3.5, 0 7"
+                          :fill="connectionActiveReverse ? '#007bff' : '#dee2e6'"
+                        />
+                      </marker>
+                      <marker
+                        id="arrowhead-validation-main"
+                        markerWidth="10"
+                        markerHeight="7"
+                        refX="9"
+                        refY="3.5"
+                        orient="auto"
+                      >
+                        <polygon
+                          points="0 0, 10 3.5, 0 7"
+                          :fill="connectionActiveValidation ? '#007bff' : '#dee2e6'"
+                        />
+                      </marker>
+                    </defs>
+
+                    <!-- Main to Opt (straight arrow: from right edge of Main icon to left edge of Opt icon) -->
+                    <path
+                      d="M 130 85 L 370 85"
+                      class="connection-line"
+                      :class="{ active: connectionActive }"
+                      marker-end="url(#arrowhead-main-opt)"
+                    />
+
+                    <!-- Opt to Validation (polyline: from bottom edge of Opt to left edge of Validation) -->
+                    <path
+                      d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 130 280"
+                      class="connection-line curved"
+                      :class="{ active: connectionActiveReverse }"
+                      marker-end="url(#arrowhead-opt-validation)"
+                    />
+
+                    <!-- Validation to Main (straight arrow: from top edge of Validation to bottom edge of Main) -->
+                    <path
+                      d="M 85 280 L 85 170"
+                      class="connection-line"
+                      :class="{ active: connectionActiveValidation }"
+                      marker-end="url(#arrowhead-validation-main)"
+                    />
+                  </svg>
                 </div>
-                <div class="agent-label">Opt Agent</div>
-                <div class="agent-goal">Performance Tuning</div>
-                <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
               </div>
+            </div>
+          </div>
 
-              <!-- Node Validation Process -->
-              <div
-                class="agent-node validation-agent"
-                :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
-                @click="setActiveAgent('validation')"
-              >
-                <div class="agent-icon">
-                  <Cog :size="32" />
+          <!-- 分隔线 -->
+          <div class="divider"></div>
+
+          <!-- 下方：左右分列的Node Information和Feature Generation -->
+          <div class="lower-section">
+            <!-- 左边：Node Information -->
+            <div class="node-info-section">
+              <div class="info-card">
+                <div class="info-header">
+                  <h6 class="info-title">Node Information</h6>
                 </div>
-                <div class="agent-label">Node Validation</div>
-                <div class="agent-goal">Feature Validation</div>
-                <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+                <div class="info-content">
+                  <div v-if="featureTreeStore.selectedNode" class="node-details">
+                    <div class="node-detail">
+                      <span class="detail-label">Node ID:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
+                    </div>
+                    <div class="node-detail">
+                      <span class="detail-label">Feature Name:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
+                    </div>
+                    <div class="node-detail">
+                      <span class="detail-label">Task Code:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.task_code }}</span>
+                    </div>
+                    <div class="node-detail">
+                      <span class="detail-label">Operation:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
+                    </div>
+                    <div class="node-detail">
+                      <span class="detail-label">Description:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
+                    </div>
+                    <div class="node-detail">
+                      <span class="detail-label">Score:</span>
+                      <span class="detail-value">{{ featureTreeStore.selectedNode.score?.toFixed(4) }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="no-node-info">
+                    Hover over a node to see details.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右边：Feature Generation -->
+            <div class="feature-tree-section">
+              <div class="section-header">
+                <h6 class="section-title">
+                  <GitBranch :size="18" class="me-2" />
+                  Feature Generation - 特征搜索树可视化
+                </h6>
               </div>
 
-              <!-- 连接线 - L型循环 -->
-              <svg class="connection-lines" viewBox="0 0 500 400">
-                <!-- 定义箭头 -->
-                <defs>
-                  <marker
-                    id="arrowhead-main-opt"
-                    markerWidth="10"
-                    markerHeight="7"
-                    refX="9"
-                    refY="3.5"
-                    orient="auto"
+              <div class="feature-tree-container">
+                <div
+                  ref="treeContainer"
+                  class="tree-visualization"
+                  :class="{ 'is-loading': featureTreeStore.isLoading }"
+                >
+                  <div
+                    v-if="!featureTreeStore.treeData && !featureTreeStore.isLoading"
+                    class="empty-state"
                   >
-                    <polygon
-                      points="0 0, 10 3.5, 0 7"
-                      :fill="connectionActive ? '#007bff' : '#dee2e6'"
-                    />
-                  </marker>
-                  <marker
-                    id="arrowhead-opt-validation"
-                    markerWidth="10"
-                    markerHeight="7"
-                    refX="9"
-                    refY="3.5"
-                    orient="auto"
+                    <GitBranch :size="48" class="text-muted mb-3" />
+                    <h6 class="text-muted">No Feature Tree Available</h6>
+                    <p class="text-muted small">
+                      Please configure and initialize a task first.
+                    </p>
+                  </div>
+
+                  <div
+                    v-if="featureTreeStore.isLoading"
+                    class="loading-state"
                   >
-                    <polygon
-                      points="0 0, 10 3.5, 0 7"
-                      :fill="connectionActiveReverse ? '#007bff' : '#dee2e6'"
-                    />
-                  </marker>
-                  <marker
-                    id="arrowhead-validation-main"
-                    markerWidth="10"
-                    markerHeight="7"
-                    refX="9"
-                    refY="3.5"
-                    orient="auto"
-                  >
-                    <polygon
-                      points="0 0, 10 3.5, 0 7"
-                      :fill="connectionActiveValidation ? '#007bff' : '#dee2e6'"
-                    />
-                  </marker>
-                </defs>
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 mb-0 text-muted">Loading feature tree...</p>
+                  </div>
+                </div>
+              </div>
 
-                <!-- Main to Opt (straight arrow: from right edge of Main icon to left edge of Opt icon) -->
-                <path
-                  d="M 130 85 L 370 85"
-                  class="connection-line"
-                  :class="{ active: connectionActive }"
-                  marker-end="url(#arrowhead-main-opt)"
-                />
-
-                <!-- Opt to Validation (polyline: from bottom edge of Opt to left edge of Validation) -->
-                <path
-                  d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 130 280"
-                  class="connection-line curved"
-                  :class="{ active: connectionActiveReverse }"
-                  marker-end="url(#arrowhead-opt-validation)"
-                />
-
-                <!-- Validation to Main (straight arrow: from top edge of Validation to bottom edge of Main) -->
-                <path
-                  d="M 85 280 L 85 170"
-                  class="connection-line"
-                  :class="{ active: connectionActiveValidation }"
-                  marker-end="url(#arrowhead-validation-main)"
-                />
-              </svg>
+              <!-- 特征选择信息（合并的Current Feature Set内容） -->
+              <div class="feature-selection-info">
+                <div class="info-header">
+                  <h6 class="info-title">Current Feature Set</h6>
+                </div>
+                <div class="info-content">
+                  <div class="feature-list">
+                    <span v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
+                      No features selected (click node for choose/delete)
+                    </span>
+                    <span v-else class="features-text">
+                      {{ featureTreeStore.currentFeatures.join(', ') }}
+                    </span>
+                  </div>
+                  <div class="performance-info">
+                    <strong>Performance:</strong>
+                    <span class="performance-value">{{ featureTreeStore.performance }}</span>
+                    <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </pane>
+
+      <!-- 分隔条 -->
+      <splitter @click="toggleRightPanel" />
+
+      <!-- 右侧面板：完全留空 -->
+      <pane :size="rightPaneSize" min="20" max="60" v-if="!rightPanelCollapsed">
+        <div class="right-panel-empty">
+          <!-- 完全留空的预留空间 -->
+          <div class="empty-reserved-space">
+            <!-- 预留区域，完全空白 -->
+          </div>
+        </div>
+      </pane>
+
+      <!-- 折叠按钮（当右侧面板隐藏时显示） -->
+      <div v-if="rightPanelCollapsed" class="expand-button" @click="toggleRightPanel">
+        <ChevronLeft :size="20" />
       </div>
-
-      <!-- 右侧：特征搜索树可视化 -->
-      <div class="feature-tree-section">
-        <div class="section-header">
-          <h6 class="section-title">
-            <GitBranch :size="18" class="me-2" />
-            Feature Generation - 特征搜索树可视化
-          </h6>
-        </div>
-
-        <div class="feature-tree-container">
-          <div
-            ref="treeContainer"
-            class="tree-visualization"
-            :class="{ 'is-loading': featureTreeStore.isLoading }"
-          >
-            <div
-              v-if="!featureTreeStore.treeData && !featureTreeStore.isLoading"
-              class="empty-state"
-            >
-              <GitBranch :size="48" class="text-muted mb-3" />
-              <h6 class="text-muted">No Feature Tree Available</h6>
-              <p class="text-muted small">
-                Please configure and initialize a task first.
-              </p>
-            </div>
-
-            <div
-              v-if="featureTreeStore.isLoading"
-              class="loading-state"
-            >
-              <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-              </div>
-              <p class="mt-2 mb-0 text-muted">Loading feature tree...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 下方区域：当前特征集和节点信息 -->
-    <div class="lower-section">
-      <!-- 当前特征集信息 -->
-      <div class="current-features-section">
-        <div class="info-card">
-          <div class="info-header">
-            <h6 class="info-title">Current Feature Set</h6>
-          </div>
-          <div class="info-content">
-            <div class="feature-list">
-              <span v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
-                No features selected (click node for choose/delete)
-              </span>
-              <span v-else class="features-text">
-                {{ featureTreeStore.currentFeatures.join(', ') }}
-              </span>
-            </div>
-            <div class="performance-info">
-              <strong>Performance:</strong>
-              <span class="performance-value">{{ featureTreeStore.performance }}</span>
-              <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 节点信息面板 -->
-      <div class="node-info-section">
-        <div class="info-card">
-          <div class="info-header">
-            <h6 class="info-title">Node Information</h6>
-          </div>
-          <div class="info-content">
-            <div v-if="featureTreeStore.selectedNode" class="node-details">
-              <div class="node-detail">
-                <span class="detail-label">Node ID:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
-              </div>
-              <div class="node-detail">
-                <span class="detail-label">Feature Name:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
-              </div>
-              <div class="node-detail">
-                <span class="detail-label">Task Code:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.task_code }}</span>
-              </div>
-              <div class="node-detail">
-                <span class="detail-label">Operation:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
-              </div>
-              <div class="node-detail">
-                <span class="detail-label">Description:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
-              </div>
-              <div class="node-detail">
-                <span class="detail-label">Score:</span>
-                <span class="detail-value">{{ featureTreeStore.selectedNode.score?.toFixed(4) }}</span>
-              </div>
-            </div>
-            <div v-else class="no-node-info">
-              Hover over a node to see details.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </splitpanes>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
-import { Users, User, Settings, GitBranch, Cog } from 'lucide-vue-next'
+import { Users, User, Settings, GitBranch, Cog, ChevronLeft } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import * as d3 from 'd3'
@@ -264,6 +288,45 @@ const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
 const isPerformanceLoading = ref(false)
+
+// Splitpanes 相关状态
+const leftPaneSize = ref(75) // 左侧面板默认占75%
+const rightPaneSize = ref(25) // 右侧面板默认占25%（留空）
+const rightPanelCollapsed = ref(false) // 右侧面板折叠状态
+
+// 处理分隔条拖动
+function handleResize(event: any) {
+  const [leftPane] = event
+  leftPaneSize.value = leftPane.size
+  rightPaneSize.value = 100 - leftPane.size
+
+  // 保存用户偏好到localStorage
+  localStorage.setItem('main-content-split-ratio', leftPane.size.toString())
+}
+
+// 切换右侧面板折叠状态
+function toggleRightPanel() {
+  rightPanelCollapsed.value = !rightPanelCollapsed.value
+
+  if (rightPanelCollapsed.value) {
+    // 折叠右侧面板，左侧占满
+    leftPaneSize.value = 100
+    rightPaneSize.value = 0
+  } else {
+    // 展开右侧面板，恢复之前比例
+    const savedRatio = localStorage.getItem('main-content-split-ratio')
+    if (savedRatio) {
+      leftPaneSize.value = parseFloat(savedRatio)
+      rightPaneSize.value = 100 - leftPaneSize.value
+    } else {
+      leftPaneSize.value = 75
+      rightPaneSize.value = 25
+    }
+  }
+
+  // 保存折叠状态
+  localStorage.setItem('right-panel-collapsed', rightPanelCollapsed.value.toString())
+}
 
 // Agent flow status
 const getCurrentFlowStatus = () => {
@@ -328,6 +391,23 @@ watch(() => taskStore.status, (newStatus) => {
 onMounted(() => {
   if (taskStore.isInitialized) {
     featureTreeStore.loadTreeData()
+  }
+
+  // 从localStorage加载用户偏好
+  const savedRatio = localStorage.getItem('main-content-split-ratio')
+  const savedCollapsed = localStorage.getItem('right-panel-collapsed')
+
+  if (savedRatio) {
+    leftPaneSize.value = parseFloat(savedRatio)
+    rightPaneSize.value = 100 - leftPaneSize.value
+  }
+
+  if (savedCollapsed) {
+    rightPanelCollapsed.value = savedCollapsed === 'true'
+    if (rightPanelCollapsed.value) {
+      leftPaneSize.value = 100
+      rightPaneSize.value = 0
+    }
   }
 })
 
@@ -478,52 +558,147 @@ function hideNodeInfo() {
   flex: 1;
   flex-direction: column;
   padding: 1rem;
-  gap: 0; /* 移除gap以消除空白 */
   overflow: hidden;
   background-color: #ffffff;
   height: 100%;
 }
 
-/* 上方区域 */
-.upper-section {
+/* 左侧面板布局 */
+.left-panel {
   display: flex;
-  gap: 1rem;
-  flex: 7; /* 占据70%的高度 */
-  min-height: 0;
-  padding-bottom: 0.5rem;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
 }
 
 .agent-flow-section {
-  flex: 6.5; /* 占据65%的宽度 */
-  min-width: 300px;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0.5rem;
+}
+
+/* 下方左右分列布局 */
+.lower-section {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  min-height: 200px;
+  padding-top: 0.5rem;
+}
+
+.node-info-section {
+  flex: 1;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
 }
 
 .feature-tree-section {
-  flex: 3.5; /* 占据35%的宽度 */
+  flex: 1;
   min-width: 250px;
   display: flex;
   flex-direction: column;
 }
 
-/* 下方区域 */
-.lower-section {
-  display: flex;
-  gap: 1rem;
-  flex: 3; /* 占据30%的高度 */
-  min-height: 0;
+/* 特征选择信息样式 */
+.feature-selection-info {
+  margin-top: 0.5rem;
+  border-top: 1px solid #dee2e6;
   padding-top: 0.5rem;
 }
 
-.current-features-section {
-  flex: 1;
-  min-width: 300px;
+/* 右侧面板布局（完全留空） */
+.right-panel-empty {
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
 }
 
-.node-info-section {
-  flex: 1;
-  min-width: 300px;
+.empty-reserved-space {
+  width: 100%;
+  height: 100%;
+}
+
+/* 分隔线样式 */
+.divider {
+  height: 1px;
+  background-color: #dee2e6;
+  margin: 0.5rem 0;
+}
+
+/* 展开按钮样式 */
+.expand-button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px 0 0 4px;
+  padding: 0.5rem;
+  cursor: pointer;
+  z-index: 1000;
+  transition: all 0.3s ease;
+}
+
+.expand-button:hover {
+  background-color: #0056b3;
+  padding-left: 1rem;
+}
+
+/* Splitpanes 自定义样式 */
+:deep(.splitpanes.default-theme .splitpanes__splitter) {
+  background-color: #dee2e6;
+  border: none;
+  position: relative;
+  width: 8px;
+  cursor: col-resize;
+}
+
+:deep(.splitpanes.default-theme .splitpanes__splitter:before) {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 30px;
+  background-color: #adb5bd;
+  border-radius: 1px;
+  transition: all 0.2s ease;
+}
+
+:deep(.splitpanes.default-theme .splitpanes__splitter:hover:before) {
+  background-color: #007bff;
+  height: 40px;
+}
+
+:deep(.splitpanes.default-theme .splitpanes__pane) {
+  background-color: transparent;
+  overflow: hidden;
+}
+
+/* 响应式布局 */
+@media (max-width: 1200px) {
+  .left-panel,
+  .right-panel {
+    min-height: auto;
+  }
+
+  .agent-flow-section {
+    min-height: 150px;
+  }
+
+  .enhanced-feature-tree-section {
+    min-height: 250px;
+  }
+
+  .node-info-section {
+    min-height: 120px;
+  }
 }
 
 /* 通用样式 */
