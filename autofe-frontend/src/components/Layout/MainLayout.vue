@@ -9,7 +9,13 @@
 
       <!-- 中间栏：Agent思考过程与特征生成 -->
       <div class="center-content">
-        <router-view />
+        <!-- 执行控制栏 -->
+        <ExecutionControlBar />
+
+        <!-- 路由视图内容 -->
+        <div class="content-wrapper">
+          <router-view />
+        </div>
       </div>
 
       <!-- 右侧栏：执行日志与系统状态 (可折叠) -->
@@ -21,6 +27,7 @@
 <script setup lang="ts">
 import AppSidebar from './Sidebar/AppSidebar.vue'
 import TopNavigation from '../Navigation/TopNavigation.vue'
+import ExecutionControlBar from './ExecutionControlBar.vue'
 import RightSidebar from './Sidebar/RightSidebar.vue'
 </script>
 
@@ -44,6 +51,13 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
   flex-direction: column;
   overflow: hidden;
   min-width: 0; /* 允许flexbox收缩 */
+}
+
+.content-wrapper {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 响应式设计 */

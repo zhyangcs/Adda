@@ -1,194 +1,112 @@
 <template>
-  <nav class="app-sidebar">
-    <!-- 标题 -->
-    <div class="navbar-brand mb-3 text-center">
-      <h4 class="text-white mb-0">Adda System</h4>
-      <small class="text-white-50">ML Analytics Tasks</small>
-    </div>
+  <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
+    <!-- 折叠按钮 -->
+    <button
+      class="collapse-toggle btn btn-sm btn-outline-light"
+      @click="toggleCollapse"
+      :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+    >
+      <ChevronLeft v-if="!isCollapsed" :size="16" />
+      <ChevronRight v-else :size="16" />
+    </button>
 
-    <!-- 独立组件1：任务配置 -->
-    <div class="task-config-component">
-      <div class="component-header">
-        <h6 class="text-white mb-2">
-          <Settings :size="16" class="me-1" />
-          任务配置
-        </h6>
+    <!-- 展开时的内容 -->
+    <div v-if="!isCollapsed" class="sidebar-content">
+      <!-- 独立组件1：任务配置 -->
+      <div class="task-config-component">
+        <div class="component-header">
+          <h6 class="text-white mb-2">
+            <Settings :size="16" class="me-1" />
+            任务配置
+          </h6>
+        </div>
+
+        <div class="component-content px-3">
+          <!-- 任务描述 -->
+          <div class="mb-3">
+            <label class="form-label text-white-50 small">任务描述</label>
+            <textarea
+              v-model="taskStore.config.description"
+              class="form-control form-control-sm"
+              rows="3"
+              placeholder="输入机器学习任务描述..."
+            ></textarea>
+          </div>
+
+          <!-- 数据集选择 -->
+          <div class="mb-3">
+            <label class="form-label text-white-50 small">数据集</label>
+            <select
+              v-model="taskStore.config.dataset"
+              class="form-select form-select-sm"
+            >
+              <option value="" disabled>选择数据集</option>
+              <option value="1">Titanic</option>
+              <option value="2">Heart</option>
+              <option value="3">Bank</option>
+              <option value="4">Diabetes</option>
+              <option value="5">Bike</option>
+              <option value="6">House</option>
+            </select>
+          </div>
+
+          <!-- Agent模型选择 -->
+          <div class="mb-3">
+            <label class="form-label text-white-50 small">Agent模型</label>
+            <select
+              v-model="taskStore.config.model"
+              class="form-select form-select-sm"
+            >
+              <option value="" disabled>选择模型</option>
+              <option value="1">Openai-gpt4-turbo</option>
+              <option value="2">Openai-gpt4o</option>
+              <option value="3">Openai-gpt4o-mini</option>
+              <option value="4">Deepseek-v3</option>
+            </select>
+          </div>
+
+          <!-- 检查格式按钮 -->
+          <button
+            class="btn btn-outline-light btn-sm w-100 mb-3"
+            @click="handleCheckFormat"
+            :disabled="isSubmitting"
+          >
+            <CheckCircle :size="14" class="me-1" />
+            {{ isSubmitting ? '检查中...' : 'Check Format' }}
+          </button>
+        </div>
       </div>
 
-      <div class="component-content px-3">
-        <!-- 任务描述 -->
-        <div class="mb-3">
-          <label class="form-label text-white-50 small">任务描述</label>
-          <textarea
-            v-model="taskStore.config.description"
-            class="form-control form-control-sm"
-            rows="3"
-            placeholder="输入机器学习任务描述..."
-          ></textarea>
-        </div>
-
-        <!-- 数据集选择 -->
-        <div class="mb-3">
-          <label class="form-label text-white-50 small">数据集</label>
-          <select
-            v-model="taskStore.config.dataset"
-            class="form-select form-select-sm"
-          >
-            <option value="" disabled>选择数据集</option>
-            <option value="1">Titanic</option>
-            <option value="2">Heart</option>
-            <option value="3">Bank</option>
-            <option value="4">Diabetes</option>
-            <option value="5">Bike</option>
-            <option value="6">House</option>
-          </select>
-        </div>
-
-        <!-- Agent模型选择 -->
-        <div class="mb-3">
-          <label class="form-label text-white-50 small">Agent模型</label>
-          <select
-            v-model="taskStore.config.model"
-            class="form-select form-select-sm"
-          >
-            <option value="" disabled>选择模型</option>
-            <option value="1">Openai-gpt4-turbo</option>
-            <option value="2">Openai-gpt4o</option>
-            <option value="3">Openai-gpt4o-mini</option>
-            <option value="4">Deepseek-v3</option>
-          </select>
-        </div>
-
-        <!-- 检查格式按钮 -->
-        <button
-          class="btn btn-outline-light btn-sm w-100 mb-3"
-          @click="handleCheckFormat"
-          :disabled="isSubmitting"
-        >
-          <CheckCircle :size="14" class="me-1" />
-          {{ isSubmitting ? '检查中...' : 'Check Format' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- 独立组件2：系统运行模式 -->
-    <div class="execution-mode-component">
-      <div class="component-header">
-        <h6 class="text-white mb-2">
-          <Play :size="16" class="me-1" />
-          {{ isEndToEndPage ? '端到端执行' : '逐步执行' }}
-        </h6>
-      </div>
-
-      <!-- 控制按钮区域 -->
-      <div class="control-buttons px-3">
-        <!-- 端到端模式按钮 -->
-        <div v-if="isEndToEndPage" class="mode-content">
-          <button
-            class="btn btn-success btn-sm w-100 mb-2"
-            @click="handleStart"
-            :disabled="!taskStore.canStartTask || taskStore.isLoading"
-          >
-            <Play :size="16" class="me-1" />
-            Start
-          </button>
-
-          <button
-            class="btn btn-danger btn-sm w-100 mb-2"
-            @click="handleStop"
-            :disabled="!taskStore.isRunning"
-          >
-            <Square :size="16" class="me-1" />
-            End&Clear
-          </button>
-
-          <button
-            class="btn btn-primary btn-sm w-100"
-            @click="handleDownload"
-            :disabled="!featureTreeStore.hasSelection"
-          >
-            <Download :size="16" class="me-1" />
-            Download Model
-          </button>
-        </div>
-
-        <!-- 逐步执行模式按钮 -->
-        <div v-else class="mode-content">
-          <button
-            class="btn btn-success btn-sm w-100 mb-2"
-            @click="handleNextStep"
-            :disabled="!taskStore.canStartTask || taskStore.isLoading"
-          >
-            <SkipForward :size="16" class="me-1" />
-            Next Step
-          </button>
-
-          <button
-            class="btn btn-info btn-sm w-100 mb-2"
-            @click="handleTestPerformance"
-            :disabled="!featureTreeStore.hasSelection"
-          >
-            <BarChart :size="16" class="me-1" />
-            Test Performance
-          </button>
-
-          <button
-            class="btn btn-primary btn-sm w-100 mb-2"
-            @click="handleGenerateModel"
-            :disabled="!featureTreeStore.hasSelection"
-          >
-            <Download :size="16" class="me-1" />
-            Generate & Download Model
-          </button>
-
-          <button
-            class="btn btn-outline-light btn-sm w-100"
-            @click="handleShowThinking"
-          >
-            <Brain :size="16" class="me-1" />
-            Show Agent Thinking
-          </button>
+      <!-- 状态指示器 -->
+      <div class="status-indicator w-100 px-3 mt-auto">
+        <div class="alert alert-info py-2 px-2 small" role="alert">
+          <div class="d-flex align-items-center mb-1">
+            <div class="status-dot me-2" :class="statusDotClass"></div>
+            <span class="text-white">{{ taskStore.statusText }}</span>
+          </div>
+          <div v-if="taskStore.isRunning" class="text-white-50 small">
+            <div class="spinner-border spinner-border-sm me-1" role="status"></div>
+            Processing...
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- 状态指示器 -->
-    <div class="status-indicator w-100 px-3 mt-auto">
-      <div class="alert alert-info py-2 px-2 small" role="alert">
-        <div class="d-flex align-items-center mb-1">
-          <div class="status-dot me-2" :class="statusDotClass"></div>
-          <span class="text-white">{{ taskStore.statusText }}</span>
-        </div>
-        <div v-if="taskStore.isRunning" class="text-white-50 small">
-          <div class="spinner-border spinner-border-sm me-1" role="status"></div>
-          Processing...
-        </div>
-      </div>
-    </div>
-  </nav>
+  </aside>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import {
-  Play, Square, Download, Settings, CheckCircle, SkipForward,
-  BarChart, Brain
-} from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, Settings, CheckCircle } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
-import { useFeatureTreeStore } from '@/stores/featureTree'
-import { useWorkspaceStore } from '@/stores/workspace'
 
 const taskStore = useTaskStore()
-const featureTreeStore = useFeatureTreeStore()
-const workspaceStore = useWorkspaceStore()
-const route = useRoute()
-
 const isSubmitting = ref(false)
+const isCollapsed = ref(false)
 
-// 根据路由判断当前页面模式
-const isEndToEndPage = computed(() => route.path === '/end-to-end')
-const isStepByStepPage = computed(() => route.path === '/step-by-step')
+// 折叠功能
+function toggleCollapse() {
+  isCollapsed.value = !isCollapsed.value
+}
 
 const statusDotClass = computed(() => {
   switch (taskStore.status) {
@@ -212,65 +130,10 @@ async function handleCheckFormat() {
     const success = await taskStore.checkFormat()
     if (success) {
       taskStore.addNotification('Task configuration validated successfully!', 'success')
-      // 初始化完成后加载特征树数据
-      await featureTreeStore.loadTreeData()
     }
   } finally {
     isSubmitting.value = false
   }
-}
-
-async function handleStart() {
-  const success = await taskStore.autoStep()
-  if (success) {
-    await featureTreeStore.loadTreeData()
-  }
-}
-
-async function handleStop() {
-  await taskStore.stopTask()
-  await taskStore.clearTask()
-  featureTreeStore.clearSelection()
-}
-
-async function handleDownload() {
-  if (featureTreeStore.hasSelection) {
-    const success = await featureTreeStore.generateModel()
-    if (success) {
-      taskStore.addNotification('Model downloaded successfully', 'success')
-    } else {
-      taskStore.addNotification('Failed to download model', 'fail')
-    }
-  }
-}
-
-async function handleNextStep() {
-  const success = await taskStore.nextStep()
-  if (success) {
-    await featureTreeStore.loadTreeData()
-  }
-}
-
-async function handleTestPerformance() {
-  if (featureTreeStore.hasSelection) {
-    const performance = await featureTreeStore.testPerformance()
-    taskStore.addNotification(`Performance: AUC = ${performance.toFixed(4)}`, 'success')
-  }
-}
-
-async function handleGenerateModel() {
-  if (featureTreeStore.hasSelection) {
-    const success = await featureTreeStore.generateModel()
-    if (success) {
-      taskStore.addNotification('Model generated and downloaded successfully', 'success')
-    } else {
-      taskStore.addNotification('Failed to generate model', 'fail')
-    }
-  }
-}
-
-function handleShowThinking() {
-  taskStore.addNotification('Agent thinking details panel opened', 'success')
 }
 </script>
 
@@ -286,11 +149,59 @@ function handleShowThinking() {
   flex-direction: column;
   overflow-y: auto;
   box-sizing: border-box;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar.collapsed {
+  width: 50px !important;
+  min-width: 50px !important;
+  max-width: 50px !important;
+}
+
+/* 折叠按钮样式 */
+.collapse-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.collapse-toggle:hover {
+  opacity: 1;
+}
+
+.collapsed .collapse-toggle {
+  position: relative;
+  top: auto;
+  right: auto;
+  margin: 8px auto;
+}
+
+/* 侧边栏内容容器 */
+.sidebar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.app-sidebar.collapsed .sidebar-content {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 独立组件通用样式 */
-.task-config-component,
-.execution-mode-component {
+.task-config-component {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 1rem;
   margin-bottom: 1rem;
@@ -318,23 +229,39 @@ function handleShowThinking() {
   flex-shrink: 0;
 }
 
-/* 系统运行模式组件样式 */
-.execution-mode-component {
-  flex-shrink: 0;
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-sidebar {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+
+  .app-sidebar.collapsed {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+
+  .sidebar-content {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .collapse-toggle {
+    position: relative;
+    top: auto;
+    right: auto;
+    margin: 8px auto;
+  }
 }
 
-.tab-navigation {
-  margin-bottom: 1rem;
-}
-
-.tab-content {
-  width: 100%;
-  min-height: 220px; /* 固定高度，容纳两种模式的按钮 */
-}
-
-.mode-content {
-  width: 100%;
-  min-height: 180px; /* 确保两种模式的内容区域高度一致 */
+/* 状态指示器样式 */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 /* 表单样式 */
@@ -499,8 +426,7 @@ function handleShowThinking() {
 }
 
 /* 确保所有内容都填满宽度 */
-.task-config-component *,
-.execution-mode-component * {
+.task-config-component * {
   box-sizing: border-box;
 }
 </style>
