@@ -24,12 +24,12 @@
             <div class="agents-container">
               <!-- Main Agent -->
               <div
-                class="agent-node"
+                class="agent-node main-agent"
                 :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
                 @click="setActiveAgent('main')"
               >
                 <div class="agent-icon">
-                  <User :size="32" />
+                  <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
                 </div>
                 <div class="agent-label">Main Agent</div>
                 <div class="agent-goal">Feature Engineering</div>
@@ -38,29 +38,99 @@
 
               <!-- Optimization Agent -->
               <div
-                class="agent-node"
+                class="agent-node opt-agent"
                 :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
                 @click="setActiveAgent('optimization')"
               >
                 <div class="agent-icon">
-                  <Settings :size="32" />
+                  <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
                 </div>
-                <div class="agent-label">Optimization Agent</div>
+                <div class="agent-label">Opt Agent</div>
                 <div class="agent-goal">Performance Tuning</div>
                 <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
               </div>
 
-              <!-- 连接线 -->
-              <svg class="connection-lines" viewBox="0 0 300 300">
+              <!-- Node Validation Process -->
+              <div
+                class="agent-node validation-agent"
+                :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
+                @click="setActiveAgent('validation')"
+              >
+                <div class="agent-icon">
+                  <Cog :size="32" />
+                </div>
+                <div class="agent-label">Node Validation</div>
+                <div class="agent-goal">Feature Validation</div>
+                <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+              </div>
+
+              <!-- 连接线 - L型循环 -->
+              <svg class="connection-lines" viewBox="0 0 500 400">
+                <!-- 定义箭头 -->
+                <defs>
+                  <marker
+                    id="arrowhead-main-opt"
+                    markerWidth="10"
+                    markerHeight="7"
+                    refX="9"
+                    refY="3.5"
+                    orient="auto"
+                  >
+                    <polygon
+                      points="0 0, 10 3.5, 0 7"
+                      :fill="connectionActive ? '#007bff' : '#dee2e6'"
+                    />
+                  </marker>
+                  <marker
+                    id="arrowhead-opt-validation"
+                    markerWidth="10"
+                    markerHeight="7"
+                    refX="9"
+                    refY="3.5"
+                    orient="auto"
+                  >
+                    <polygon
+                      points="0 0, 10 3.5, 0 7"
+                      :fill="connectionActiveReverse ? '#007bff' : '#dee2e6'"
+                    />
+                  </marker>
+                  <marker
+                    id="arrowhead-validation-main"
+                    markerWidth="10"
+                    markerHeight="7"
+                    refX="9"
+                    refY="3.5"
+                    orient="auto"
+                  >
+                    <polygon
+                      points="0 0, 10 3.5, 0 7"
+                      :fill="connectionActiveValidation ? '#007bff' : '#dee2e6'"
+                    />
+                  </marker>
+                </defs>
+
+                <!-- Main to Opt (straight arrow: from right edge of Main icon to left edge of Opt icon) -->
                 <path
-                  d="M 150 80 Q 220 150 150 220"
+                  d="M 130 85 L 370 85"
                   class="connection-line"
                   :class="{ active: connectionActive }"
+                  marker-end="url(#arrowhead-main-opt)"
                 />
+
+                <!-- Opt to Validation (polyline: from bottom edge of Opt to left edge of Validation) -->
                 <path
-                  d="M 150 220 Q 80 150 150 80"
-                  class="connection-line"
+                  d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 130 280"
+                  class="connection-line curved"
                   :class="{ active: connectionActiveReverse }"
+                  marker-end="url(#arrowhead-opt-validation)"
+                />
+
+                <!-- Validation to Main (straight arrow: from top edge of Validation to bottom edge of Main) -->
+                <path
+                  d="M 85 280 L 85 170"
+                  class="connection-line"
+                  :class="{ active: connectionActiveValidation }"
+                  marker-end="url(#arrowhead-validation-main)"
                 />
               </svg>
             </div>
@@ -179,7 +249,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
-import { Users, User, Settings, GitBranch } from 'lucide-vue-next'
+import { Users, User, Settings, GitBranch, Cog } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import * as d3 from 'd3'
@@ -188,10 +258,11 @@ const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 
 const treeContainer = ref<HTMLElement>()
-const activeAgent = ref<'main' | 'optimization'>('main')
+const activeAgent = ref<'main' | 'optimization' | 'validation'>('main')
 const workingAgents = ref<string[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
+const connectionActiveValidation = ref(false)
 const isPerformanceLoading = ref(false)
 
 // Agent flow status
@@ -203,7 +274,7 @@ const getCurrentFlowStatus = () => {
 }
 
 // Agent interaction
-function setActiveAgent(agent: 'main' | 'optimization') {
+function setActiveAgent(agent: 'main' | 'optimization' | 'validation') {
   activeAgent.value = agent
   taskStore.addNotification(`Selected ${agent} agent`, 'info')
 }
@@ -220,8 +291,14 @@ function simulateAgentWork() {
       connectionActiveReverse.value = true
 
       setTimeout(() => {
-        workingAgents.value = []
+        workingAgents.value = ['validation']
         connectionActiveReverse.value = false
+        connectionActiveValidation.value = true
+
+        setTimeout(() => {
+          workingAgents.value = []
+          connectionActiveValidation.value = false
+        }, 2000)
       }, 2000)
     }, 2000)
   }
@@ -244,6 +321,7 @@ watch(() => taskStore.status, (newStatus) => {
     workingAgents.value = []
     connectionActive.value = false
     connectionActiveReverse.value = false
+    connectionActiveValidation.value = false
   }
 })
 
@@ -545,23 +623,27 @@ function hideNodeInfo() {
   transition: all 0.3s ease;
 }
 
-.agent-node:nth-child(1) {
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+/* 矩形三角落布局 */
+.main-agent {
+  top: 40px;
+  left: 40px;
 }
 
-.agent-node:nth-child(2) {
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+.opt-agent {
+  top: 40px;
+  right: 40px;
+}
+
+.validation-agent {
+  bottom: 40px;
+  left: 40px;
 }
 
 .agent-icon {
-  width: 60px;
-  height: 60px;
-  background-color: #e9ecef;
-  border-radius: 50%;
+  width: 90px;
+  height: 90px;
+  background-color: transparent;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -569,6 +651,13 @@ function hideNodeInfo() {
   border: 3px solid transparent;
   transition: all 0.3s ease;
   color: #6c757d;
+}
+
+.agent-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .agent-node.active .agent-icon {
@@ -613,20 +702,34 @@ function hideNodeInfo() {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  width: 500px;
+  height: 400px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .connection-line {
   fill: none;
   stroke: #dee2e6;
-  stroke-width: 2;
+  stroke-width: 4;
   stroke-dasharray: 5, 5;
   transition: all 0.3s ease;
+}
+
+.connection-line.curved {
+  stroke-width: 4;
+  fill: none;
 }
 
 .connection-line.active {
   stroke: #007bff;
   stroke-dasharray: none;
   animation: flow 2s ease-in-out;
+}
+
+.connection-line.curved.active {
+  stroke: #007bff;
 }
 
 /* Feature Tree */
