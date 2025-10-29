@@ -43,6 +43,8 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
   display: flex;
   flex: 1;
   height: calc(100vh - 60px); /* 减去导航栏高度 */
+  position: relative;
+  overflow: visible;
 }
 
 .center-content {

@@ -2,7 +2,7 @@
   <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
     <!-- 折叠按钮 -->
     <button
-      class="collapse-toggle btn btn-sm btn-outline-light"
+      class="collapse-toggle"
       @click="toggleCollapse"
       :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
     >
@@ -11,7 +11,7 @@
     </button>
 
     <!-- 展开时的内容 -->
-    <div v-if="!isCollapsed" class="sidebar-content">
+    <div v-show="!isCollapsed" class="sidebar-content">
       <!-- 独立组件1：任务配置 -->
       <div class="task-config-component">
         <div class="component-header">
@@ -150,40 +150,75 @@ async function handleCheckFormat() {
   overflow-y: auto;
   box-sizing: border-box;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
 .app-sidebar.collapsed {
-  width: 50px !important;
-  min-width: 50px !important;
-  max-width: 50px !important;
+  width: 5px !important;
+  min-width: 5px !important;
+  max-width: 5px !important;
+  overflow: visible !important;
+  border: none !important;
+  padding: 0 !important;
+  background-color: transparent !important;
+}
+
+/* 确保折叠状态下内容完全隐藏 */
+.app-sidebar.collapsed .sidebar-content {
+  display: none !important;
+}
+
+/* 确保折叠动画过渡平滑 */
+.sidebar-content {
+  transition: opacity 0.3s ease, display 0.3s ease;
 }
 
 /* 折叠按钮样式 */
 .collapse-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  opacity: 0.8;
-  transition: opacity 0.2s ease;
+  position: absolute !important;
+  right: -12px !important;
+  top: 20px !important;
+  z-index: 1001 !important;
+  border-radius: 50% !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background-color: #f8f9fa !important;
+  border: 1px solid #dee2e6 !important;
+  color: #6c757d !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  cursor: pointer !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
 }
 
 .collapse-toggle:hover {
-  opacity: 1;
+  background-color: #e9ecef !important;
+  border-color: #adb5bd !important;
+  color: #495057 !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
-.collapsed .collapse-toggle {
-  position: relative;
-  top: auto;
-  right: auto;
-  margin: 8px auto;
+.collapse-toggle:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+}
+
+/* 确保折叠按钮在所有情况下都可见 */
+:global(.app-sidebar .collapse-toggle) {
+  z-index: 1001 !important;
+}
+
+.app-sidebar.collapsed .collapse-toggle {
+  position: absolute !important;
+  left: -12px !important;
+  right: auto !important;
+  top: 20px !important;
 }
 
 /* 侧边栏内容容器 */
@@ -192,12 +227,6 @@ async function handleCheckFormat() {
   flex-direction: column;
   height: 100%;
   opacity: 1;
-  transition: opacity 0.3s ease;
-}
-
-.app-sidebar.collapsed .sidebar-content {
-  opacity: 0;
-  pointer-events: none;
 }
 
 /* 独立组件通用样式 */
@@ -246,13 +275,6 @@ async function handleCheckFormat() {
   .sidebar-content {
     opacity: 0;
     pointer-events: none;
-  }
-
-  .collapse-toggle {
-    position: relative;
-    top: auto;
-    right: auto;
-    margin: 8px auto;
   }
 }
 
