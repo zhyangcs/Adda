@@ -1,5 +1,5 @@
 <template>
-  <div class="main-content">
+  <div class="main-content" :class="{ 'splitter-collapsed': rightPanelCollapsed }">
     <!-- 使用Splitpanes实现左右分区布局 -->
     <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
       <!-- 左侧面板：Agent流程图（上方） + Node Information（下方） -->
@@ -250,32 +250,49 @@
         </div>
       </pane>
 
-      <!-- 分隔条 -->
-      <splitter @click="toggleRightPanel" />
-
-      <!-- 右侧面板：完全留空 -->
+    
+      <!-- 右侧面板：SQL Code组件（上方） + Feature Performance组件（下方） -->
       <pane :size="rightPaneSize" min="20" max="60" v-if="!rightPanelCollapsed">
-        <div class="right-panel-empty">
-          <!-- 完全留空的预留空间 -->
-          <div class="empty-reserved-space">
-            <!-- 预留区域，完全空白 -->
+        <div class="right-panel-content">
+          <!-- 上方：SQL Code组件 -->
+          <div class="sql-code-section">
+            <SQLCode :sql-code="sqlCode" />
+          </div>
+
+          <!-- 分隔线 -->
+          <div class="horizontal-divider"></div>
+
+          <!-- 下方：Feature Performance组件 -->
+          <div class="feature-performance-section">
+            <FeaturePerformance
+              :performance-data="performanceData"
+              :time-data="timeData"
+              :shap-data="shapData"
+              @generate-features="handleGenerateFeatures"
+              @refresh-data="handleRefreshData"
+            />
           </div>
         </div>
       </pane>
 
       <!-- 折叠按钮（当右侧面板隐藏时显示） -->
-      <div v-if="rightPanelCollapsed" class="expand-button" @click="toggleRightPanel">
-        <ChevronLeft :size="20" />
+      <div v-if="rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
+        <div class="expand-button">
+          <span class="expand-arrow">‹</span>
+          <span class="expand-tooltip">展开面板 (Ctrl+→)</span>
+        </div>
       </div>
     </splitpanes>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
-import { Users, User, Settings, GitBranch, Cog, ChevronLeft } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { Users, GitBranch, Cog } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
+import SQLCode from '@/components/Features/SQLCode.vue'
+import FeaturePerformance from '@/components/Features/FeaturePerformance.vue'
 import * as d3 from 'd3'
 
 const taskStore = useTaskStore()
@@ -289,6 +306,12 @@ const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
 const isPerformanceLoading = ref(false)
 
+// 右侧面板数据
+const sqlCode = ref('')
+const performanceData = ref<any>(null)
+const timeData = ref<any>(null)
+const shapData = ref<any>(null)
+
 // Splitpanes 相关状态
 const leftPaneSize = ref(75) // 左侧面板默认占75%
 const rightPaneSize = ref(25) // 右侧面板默认占25%（留空）
@@ -296,24 +319,41 @@ const rightPanelCollapsed = ref(false) // 右侧面板折叠状态
 
 // 处理分隔条拖动
 function handleResize(event: any) {
-  const [leftPane] = event
-  leftPaneSize.value = leftPane.size
-  rightPaneSize.value = 100 - leftPane.size
-
-  // 保存用户偏好到localStorage
-  localStorage.setItem('main-content-split-ratio', leftPane.size.toString())
+  console.log('Resize event:', event)
+  // splitpanes 的事件参数可能是单个对象或数组
+  if (Array.isArray(event)) {
+    const [leftPane] = event
+    leftPaneSize.value = leftPane.size
+    rightPaneSize.value = 100 - leftPane.size
+    localStorage.setItem('main-content-split-ratio', leftPane.size.toString())
+  } else if (event && event[0]) {
+    // 如果event是类数组对象
+    const leftPane = event[0]
+    leftPaneSize.value = leftPane.size
+    rightPaneSize.value = 100 - leftPane.size
+    localStorage.setItem('main-content-split-ratio', leftPane.size.toString())
+  } else if (event && event.size !== undefined) {
+    // 如果event直接包含size信息
+    leftPaneSize.value = event.size
+    rightPaneSize.value = 100 - event.size
+    localStorage.setItem('main-content-split-ratio', event.size.toString())
+  }
 }
+
 
 // 切换右侧面板折叠状态
 function toggleRightPanel() {
+  console.log('toggleRightPanel called, current collapsed state:', rightPanelCollapsed.value)
   rightPanelCollapsed.value = !rightPanelCollapsed.value
 
   if (rightPanelCollapsed.value) {
     // 折叠右侧面板，左侧占满
+    console.log('Collapsing right panel')
     leftPaneSize.value = 100
     rightPaneSize.value = 0
   } else {
     // 展开右侧面板，恢复之前比例
+    console.log('Expanding right panel')
     const savedRatio = localStorage.getItem('main-content-split-ratio')
     if (savedRatio) {
       leftPaneSize.value = parseFloat(savedRatio)
@@ -326,6 +366,7 @@ function toggleRightPanel() {
 
   // 保存折叠状态
   localStorage.setItem('right-panel-collapsed', rightPanelCollapsed.value.toString())
+  console.log('New sizes - left:', leftPaneSize.value, 'right:', rightPaneSize.value)
 }
 
 // Agent flow status
@@ -388,6 +429,19 @@ watch(() => taskStore.status, (newStatus) => {
   }
 })
 
+// 键盘快捷键处理
+const handleKeyDown = (event: KeyboardEvent) => {
+  // Ctrl + → 或 Ctrl + ← 切换右侧面板
+  if (event.ctrlKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+    event.preventDefault()
+    toggleRightPanel()
+  }
+  // Esc 键也可以折叠右侧面板
+  if (event.key === 'Escape' && !rightPanelCollapsed.value) {
+    toggleRightPanel()
+  }
+}
+
 onMounted(() => {
   if (taskStore.isInitialized) {
     featureTreeStore.loadTreeData()
@@ -409,6 +463,41 @@ onMounted(() => {
       rightPaneSize.value = 0
     }
   }
+
+  // 添加键盘事件监听器
+  window.addEventListener('keydown', handleKeyDown)
+
+  // 添加splitter点击事件监听器
+  nextTick(() => {
+    const splitters = document.querySelectorAll('.splitpanes__splitter')
+    splitters.forEach((splitter) => {
+      splitter.addEventListener('click', (event: Event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        console.log('Splitter clicked, triggering collapse')
+        toggleRightPanel()
+      })
+
+      splitter.addEventListener('mousedown', (event: Event) => {
+        const mouseEvent = event as MouseEvent
+        const splitterElement = mouseEvent.target as HTMLElement
+        const rect = splitterElement.getBoundingClientRect()
+        const centerY = rect.top + rect.height / 2
+        const clickY = mouseEvent.clientY
+
+        // 如果点击在中央区域（上下各20px范围内），阻止拖拽
+        if (Math.abs(clickY - centerY) < 20) {
+          mouseEvent.preventDefault()
+          mouseEvent.stopPropagation()
+        }
+      })
+    })
+  })
+})
+
+onUnmounted(() => {
+  // 移除键盘事件监听器
+  window.removeEventListener('keydown', handleKeyDown)
 })
 
 // D3.js 树形图渲染 (从FeatureGenerationPanel复制)
@@ -550,6 +639,83 @@ function showNodeInfo(nodeData: any) {
 function hideNodeInfo() {
   featureTreeStore.setSelectedNode(null)
 }
+
+// 右侧面板组件事件处理
+function handleGenerateFeatures() {
+  // 处理生成特征请求
+  taskStore.addNotification('Starting feature generation...', 'info')
+
+  // 模拟生成过程
+  setTimeout(() => {
+    // 生成模拟SQL代码
+    sqlCode.value = `-- Generated Feature SQL Code
+SELECT
+    feature_1,
+    feature_2,
+    feature_1 * feature_2 AS interaction_feature,
+    ABS(feature_1 - feature_2) AS difference_feature,
+    (feature_1 + feature_2) / 2 AS average_feature
+FROM training_data
+WHERE feature_1 IS NOT NULL
+  AND feature_2 IS NOT NULL;
+
+-- Feature transformation complete
+-- Total features generated: 5
+-- Execution time: 0.23s`
+
+    // 生成模拟性能数据
+    performanceData.value = {
+      accuracy: 0.8234,
+      precision: 0.8156,
+      recall: 0.8312,
+      f1Score: 0.8233,
+      auc: 0.8912
+    }
+
+    // 生成模拟时间数据
+    timeData.value = {
+      total: 23.4,
+      generation: 12.7,
+      evaluation: 7.8,
+      selection: 2.9
+    }
+
+    // 生成模拟SHAP数据
+    shapData.value = {
+      meanShap: 0.1456,
+      features: [
+        { name: 'feature_1', value: 0.2341, percentage: 100 },
+        { name: 'feature_2', value: 0.1876, percentage: 80 },
+        { name: 'interaction_feature', value: 0.1453, percentage: 62 },
+        { name: 'difference_feature', value: 0.0987, percentage: 42 },
+        { name: 'average_feature', value: 0.0765, percentage: 33 }
+      ]
+    }
+
+    taskStore.addNotification('Feature generation completed successfully!', 'success')
+  }, 2000)
+}
+
+function handleRefreshData() {
+  // 处理刷新数据请求
+  taskStore.addNotification('Refreshing performance data...', 'info')
+
+  // 模拟数据刷新
+  setTimeout(() => {
+    if (performanceData.value) {
+      // 稍微调整性能数据以模拟刷新
+      performanceData.value = {
+        ...performanceData.value,
+        accuracy: Math.min(0.95, performanceData.value.accuracy + Math.random() * 0.01 - 0.005),
+        precision: Math.min(0.95, performanceData.value.precision + Math.random() * 0.01 - 0.005),
+        recall: Math.min(0.95, performanceData.value.recall + Math.random() * 0.01 - 0.005),
+        f1Score: Math.min(0.95, performanceData.value.f1Score + Math.random() * 0.01 - 0.005)
+      }
+    }
+
+    taskStore.addNotification('Performance data refreshed!', 'success')
+  }, 1000)
+}
 </script>
 
 <style scoped>
@@ -609,16 +775,34 @@ function hideNodeInfo() {
   padding-top: 0.5rem;
 }
 
-/* 右侧面板布局（完全留空） */
-.right-panel-empty {
+/* 右侧面板布局 */
+.right-panel-content {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   background-color: #ffffff;
 }
 
-.empty-reserved-space {
-  width: 100%;
-  height: 100%;
+.sql-code-section {
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-performance-section {
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.horizontal-divider {
+  height: 1px;
+  background-color: #dee2e6;
+  margin: 0.5rem 0;
 }
 
 /* 分隔线样式 */
@@ -651,29 +835,60 @@ function hideNodeInfo() {
 
 /* Splitpanes 自定义样式 */
 :deep(.splitpanes.default-theme .splitpanes__splitter) {
-  background-color: #dee2e6;
-  border: none;
+  background-color: #e9ecef !important;
+  border: none !important;
   position: relative;
-  width: 8px;
-  cursor: col-resize;
+  width: 8px !important;
+  cursor: col-resize !important;
+  transition: all 0.3s ease !important;
 }
 
-:deep(.splitpanes.default-theme .splitpanes__splitter:before) {
+:deep(.splitpanes.default-theme .splitpanes__splitter:hover) {
+  background-color: #dee2e6 !important;
+}
+
+/* 在splitter中添加可点击的折叠区域 */
+:deep(.splitpanes.default-theme .splitpanes__splitter)::after {
   content: '';
   position: absolute;
-  left: 50%;
   top: 50%;
+  left: 50%;
   transform: translate(-50%, -50%);
-  width: 2px;
-  height: 30px;
-  background-color: #adb5bd;
-  border-radius: 1px;
-  transition: all 0.2s ease;
+  width: 8px; /* 与分割条同宽 */
+  height: 40px;
+  background-color: #6c757d;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
 }
 
-:deep(.splitpanes.default-theme .splitpanes__splitter:hover:before) {
-  background-color: #007bff;
-  height: 40px;
+:deep(.splitpanes.default-theme .splitpanes__splitter:hover)::after {
+  background-color: #495057;
+}
+
+/* 添加箭头 */
+:deep(.splitpanes.default-theme .splitpanes__splitter)::before {
+  content: '›';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  z-index: 11;
+  pointer-events: none;
+}
+
+:deep(.splitpanes.default-theme .splitpanes__splitter:hover)::before {
+  color: white;
+}
+
+/* 当面板折叠时的箭头方向 - 使用数据属性 */
+.splitter-collapsed :deep(.splitpanes.default-theme .splitpanes__splitter)::before {
+  content: '‹';
+  color: white;
 }
 
 :deep(.splitpanes.default-theme .splitpanes__pane) {
@@ -1050,6 +1265,48 @@ function hideNodeInfo() {
 :deep(.node text) {
   pointer-events: none;
   user-select: none;
+}
+
+
+/* 展开按钮容器样式 */
+.expand-button-container {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.expand-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px 0 0 4px;
+  padding: 0.75rem 1rem;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.expand-button:hover {
+  background-color: #495057;
+  transform: translateY(-50%) translateX(-4px);
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+}
+
+.expand-arrow {
+  font-size: 20px;
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.expand-tooltip {
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 /* 响应式设计 */
