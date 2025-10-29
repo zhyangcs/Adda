@@ -76,106 +76,78 @@
       <div class="component-header">
         <h6 class="text-white mb-2">
           <Play :size="16" class="me-1" />
-          系统运行模式
+          {{ isEndToEndPage ? '端到端执行' : '逐步执行' }}
         </h6>
       </div>
 
-      <!-- 标签页切换 -->
-      <div class="tab-navigation px-3">
-        <ul class="nav nav-pills nav-fill" role="tablist">
-          <li class="nav-item">
-            <button
-              class="nav-link"
-              :class="{ active: workspaceStore.executionMode === 'end-to-end' }"
-              @click="workspaceStore.setExecutionMode('end-to-end')"
-            >
-              端到端
-            </button>
-          </li>
-          <li class="nav-item">
-            <button
-              class="nav-link"
-              :class="{ active: workspaceStore.executionMode === 'step-by-step' }"
-              @click="workspaceStore.setExecutionMode('step-by-step')"
-            >
-              逐步执行
-            </button>
-          </li>
-        </ul>
-      </div>
+      <!-- 控制按钮区域 -->
+      <div class="control-buttons px-3">
+        <!-- 端到端模式按钮 -->
+        <div v-if="isEndToEndPage" class="mode-content">
+          <button
+            class="btn btn-success btn-sm w-100 mb-2"
+            @click="handleStart"
+            :disabled="!taskStore.canStartTask || taskStore.isLoading"
+          >
+            <Play :size="16" class="me-1" />
+            Start
+          </button>
 
-      <!-- 标签页内容区域 -->
-      <div class="tab-content px-3">
-        <!-- 端到端模式内容 -->
-        <div v-if="workspaceStore.executionMode === 'end-to-end'" class="mode-content">
-          <div class="control-buttons">
-            <button
-              class="btn btn-success btn-sm w-100 mb-2"
-              @click="handleStart"
-              :disabled="!taskStore.canStartTask || taskStore.isLoading"
-            >
-              <Play :size="16" class="me-1" />
-              Start
-            </button>
+          <button
+            class="btn btn-danger btn-sm w-100 mb-2"
+            @click="handleStop"
+            :disabled="!taskStore.isRunning"
+          >
+            <Square :size="16" class="me-1" />
+            End&Clear
+          </button>
 
-            <button
-              class="btn btn-danger btn-sm w-100 mb-2"
-              @click="handleStop"
-              :disabled="!taskStore.isRunning"
-            >
-              <Square :size="16" class="me-1" />
-              End&Clear
-            </button>
-
-            <button
-              class="btn btn-primary btn-sm w-100"
-              @click="handleDownload"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <Download :size="16" class="me-1" />
-              Download Model
-            </button>
-          </div>
+          <button
+            class="btn btn-primary btn-sm w-100"
+            @click="handleDownload"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <Download :size="16" class="me-1" />
+            Download Model
+          </button>
         </div>
 
-        <!-- 逐步执行模式内容 -->
+        <!-- 逐步执行模式按钮 -->
         <div v-else class="mode-content">
-          <div class="control-buttons">
-            <button
-              class="btn btn-success btn-sm w-100 mb-2"
-              @click="handleNextStep"
-              :disabled="!taskStore.canStartTask || taskStore.isLoading"
-            >
-              <SkipForward :size="16" class="me-1" />
-              Next Step
-            </button>
+          <button
+            class="btn btn-success btn-sm w-100 mb-2"
+            @click="handleNextStep"
+            :disabled="!taskStore.canStartTask || taskStore.isLoading"
+          >
+            <SkipForward :size="16" class="me-1" />
+            Next Step
+          </button>
 
-            <button
-              class="btn btn-info btn-sm w-100 mb-2"
-              @click="handleTestPerformance"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <BarChart :size="16" class="me-1" />
-              Test Performance
-            </button>
+          <button
+            class="btn btn-info btn-sm w-100 mb-2"
+            @click="handleTestPerformance"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <BarChart :size="16" class="me-1" />
+            Test Performance
+          </button>
 
-            <button
-              class="btn btn-primary btn-sm w-100 mb-2"
-              @click="handleGenerateModel"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <Download :size="16" class="me-1" />
-              Generate & Download Model
-            </button>
+          <button
+            class="btn btn-primary btn-sm w-100 mb-2"
+            @click="handleGenerateModel"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <Download :size="16" class="me-1" />
+            Generate & Download Model
+          </button>
 
-            <button
-              class="btn btn-outline-light btn-sm w-100"
-              @click="handleShowThinking"
-            >
-              <Brain :size="16" class="me-1" />
-              Show Agent Thinking
-            </button>
-          </div>
+          <button
+            class="btn btn-outline-light btn-sm w-100"
+            @click="handleShowThinking"
+          >
+            <Brain :size="16" class="me-1" />
+            Show Agent Thinking
+          </button>
         </div>
       </div>
     </div>
@@ -198,6 +170,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   Play, Square, Download, Settings, CheckCircle, SkipForward,
   BarChart, Brain
@@ -209,8 +182,13 @@ import { useWorkspaceStore } from '@/stores/workspace'
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 const workspaceStore = useWorkspaceStore()
+const route = useRoute()
 
 const isSubmitting = ref(false)
+
+// 根据路由判断当前页面模式
+const isEndToEndPage = computed(() => route.path === '/end-to-end')
+const isStepByStepPage = computed(() => route.path === '/step-by-step')
 
 const statusDotClass = computed(() => {
   switch (taskStore.status) {

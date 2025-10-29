@@ -1,29 +1,41 @@
 <template>
   <div class="main-layout">
-    <!-- 左侧栏：任务配置与控制 -->
-    <AppSidebar />
+    <!-- 顶部导航栏 -->
+    <TopNavigation />
 
-    <!-- 中间栏：Agent思考过程与特征生成 -->
-    <div class="center-content">
-      <MainContent />
+    <div class="content-area">
+      <!-- 左侧栏：任务配置与控制 -->
+      <AppSidebar />
+
+      <!-- 中间栏：Agent思考过程与特征生成 -->
+      <div class="center-content">
+        <router-view />
+      </div>
+
+      <!-- 右侧栏：执行日志与系统状态 (可折叠) -->
+      <RightSidebar />
     </div>
-
-    <!-- 右侧栏：执行日志与系统状态 (可折叠) -->
-    <RightSidebar />
   </div>
 </template>
 
 <script setup lang="ts">
 import AppSidebar from './Sidebar/AppSidebar.vue'
-import MainContent from './Content/MainContent.vue'
+import TopNavigation from '../Navigation/TopNavigation.vue'
 import RightSidebar from './Sidebar/RightSidebar.vue'
 </script>
 
 <style scoped>
 .main-layout {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   background-color: #f8f9fa;
+}
+
+.content-area {
+  display: flex;
+  flex: 1;
+  height: calc(100vh - 60px); /* 减去导航栏高度 */
 }
 
 .center-content {
@@ -36,7 +48,7 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
 
 /* 响应式设计 */
 @media (max-width: 1200px) {
-  .main-layout {
+  .content-area {
     flex-direction: column;
   }
 
