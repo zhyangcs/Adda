@@ -56,11 +56,11 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-md) var(--spacing-2xl);
-  background: linear-gradient(135deg, #6b46c1 0%, #4c1d95 100%);
-  border-bottom: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
-  height: var(--header-height);
+  padding: 1rem 2rem;
+  background-color: white;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  height: 4rem;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -73,10 +73,10 @@ onMounted(() => {
 
 .welcome-title {
   margin: 0;
-  color: #ffffff;
-  font-size: var(--font-size-xl);
+  color: #0f172a;
+  font-size: 1.25rem;
   font-weight: 600;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 .nav-center {
@@ -87,72 +87,65 @@ onMounted(() => {
 
 .nav-buttons {
   display: flex;
-  gap: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.1);
-  padding: var(--spacing-xs);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
+  gap: 1rem;
+  background-color: #f8fafc;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
 }
 
 .nav-btn {
-  padding: var(--spacing-sm) var(--spacing-xl);
+  padding: 0.5rem 1.5rem;
   border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: var(--font-size-base);
+  background-color: transparent;
+  color: #64748b;
+  font-size: 0.875rem;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
 .nav-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  color: #0f172a;
+  background-color: #f1f5f9;
 }
 
 .nav-btn.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background-color: #3b82f6;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
-.nav-btn.active::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-  border-radius: 8px;
+.nav-btn.active:hover {
+  background-color: #2563eb;
 }
 
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
   .top-navigation {
-    padding: 12px 16px;
+    padding: 0.75rem 1rem;
   }
 
   .welcome-title {
-    font-size: 1.2rem;
+    font-size: 1.125rem;
   }
 
   .nav-buttons {
-    gap: 8px;
+    gap: 0.5rem;
   }
 
   .nav-btn {
-    padding: 6px 16px;
-    font-size: 12px;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
   }
 }
 </style>

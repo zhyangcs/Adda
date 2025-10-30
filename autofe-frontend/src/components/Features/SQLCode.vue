@@ -16,10 +16,6 @@
     </div>
     <div class="sql-code-content" :class="{ 'fullscreen': isFullscreen }">
       <div class="code-header">
-        <div class="badge postgres">
-          <i class="bi bi-database"></i>
-          PostgreSQL
-        </div>
         <div class="line-info">
           {{ sqlCode ? `${lineCount} lines` : 'No code' }}
         </div>
@@ -156,17 +152,6 @@ const toggleFullscreen = () => {
   margin-bottom: 12px;
 }
 
-.badge.postgres {
-  background: linear-gradient(135deg, #336791, #4179A8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 
 .line-info {
   font-size: var(--font-size-xs);

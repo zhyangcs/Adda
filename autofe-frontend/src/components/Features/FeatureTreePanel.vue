@@ -1,37 +1,40 @@
 <template>
   <div class="feature-tree-panel">
-    <div class="section-header">
-      <h6 class="section-title">
-        <GitBranch :size="18" class="me-2" />
-        Feature Generation
-      </h6>
-    </div>
+    <div class="info-card">
+      <div class="info-header">
+        <h6 class="info-title">
+          <GitBranch :size="18" class="me-2" />
+          Feature Generation
+        </h6>
+      </div>
+      <div class="info-content">
+        <div class="feature-tree-container">
+          <div
+            ref="treeContainer"
+            class="tree-visualization"
+            :class="{ 'is-loading': featureTreeStore.isLoading }"
+          >
+            <div
+              v-if="!featureTreeStore.treeData && !featureTreeStore.isLoading"
+              class="empty-state"
+            >
+              <GitBranch :size="48" class="text-muted mb-3" />
+              <h6 class="text-muted">No Feature Tree Available</h6>
+              <p class="text-muted small">
+                Please configure and initialize a task first.
+              </p>
+            </div>
 
-    <div class="feature-tree-container">
-      <div
-        ref="treeContainer"
-        class="tree-visualization"
-        :class="{ 'is-loading': featureTreeStore.isLoading }"
-      >
-        <div
-          v-if="!featureTreeStore.treeData && !featureTreeStore.isLoading"
-          class="empty-state"
-        >
-          <GitBranch :size="48" class="text-muted mb-3" />
-          <h6 class="text-muted">No Feature Tree Available</h6>
-          <p class="text-muted small">
-            Please configure and initialize a task first.
-          </p>
-        </div>
-
-        <div
-          v-if="featureTreeStore.isLoading"
-          class="loading-state"
-        >
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+            <div
+              v-if="featureTreeStore.isLoading"
+              class="loading-state"
+            >
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-2 mb-0 text-muted">Loading feature tree...</p>
+            </div>
           </div>
-          <p class="mt-2 mb-0 text-muted">Loading feature tree...</p>
         </div>
       </div>
     </div>
@@ -235,22 +238,46 @@ onMounted(() => {
   flex-direction: column;
 }
 
-.section-header {
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #e9ecef;
+.info-card {
+  height: 100%;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  /* 确保样式优先级 */
+  background-color: #fafafa !important;
+  border: 1px solid #e0e0e0 !important;
 }
 
-.section-title {
-  color: #495057;
+.info-header {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  border-radius: 8px 8px 0 0;
+  /* 确保样式优先级 */
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e0e0e0 !important;
+}
+
+.info-title {
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0;
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
 }
 
-.feature-tree-container {
+.info-content {
   flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.feature-tree-container {
+  height: 100%;
   background-color: #f0f0f0;
   border-radius: 8px;
   border: 1px solid #dee2e6;

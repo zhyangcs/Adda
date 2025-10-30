@@ -1,13 +1,13 @@
 <template>
   <div class="feature-generation-panel">
-    <div class="card h-100">
-      <div class="card-header">
-        <h5 class="card-title mb-0">
-          <GitBranch :size="20" class="me-2" />
-          ② Feature Generation
-        </h5>
+    <div class="info-card">
+      <div class="info-header">
+        <h6 class="info-title">
+          <GitBranch :size="18" class="me-2" />
+          Feature Generation
+        </h6>
       </div>
-      <div class="card-body d-flex flex-column">
+      <div class="info-content">
         <!-- 特征树容器 -->
         <div class="tree-container mb-3">
           <div
@@ -410,23 +410,42 @@ function hideNodeInfo() {
   overflow: hidden;
 }
 
-.card {
-  border: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+.info-card {
+  height: 100%;
+  background-color: var(--bg-secondary);
   border-radius: 8px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  /* 确保样式优先级 */
+  background-color: #fafafa !important;
+  border: 1px solid #e0e0e0 !important;
 }
 
-.card-header {
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #dee2e6;
-  padding: 1rem 1.5rem;
+.info-header {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  border-radius: 8px 8px 0 0;
+  /* 确保样式优先级 */
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e0e0e0 !important;
 }
 
-.card-title {
-  color: #495057;
+.info-title {
+  color: var(--text-primary);
   font-weight: 600;
+  margin: 0;
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
+}
+
+.info-content {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
 }
 
 .tree-container {

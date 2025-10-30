@@ -20,24 +20,24 @@ onMounted(() => {
 <style>
 /* CSS 变量定义 - 统一管理整个应用的字体和间距 */
 :root {
-  /* 字体大小 - 调大以提升可读性 */
-  --font-size-xs: 0.875rem;   /* 14px */
-  --font-size-sm: 1rem;       /* 16px */
-  --font-size-base: 1.125rem; /* 18px */
-  --font-size-md: 1.375rem;   /* 22px */
-  --font-size-lg: 1.5rem;     /* 24px */
-  --font-size-xl: 1.75rem;    /* 28px */
-  --font-size-2xl: 2.125rem;  /* 34px */
-  --font-size-3xl: 2.5rem;    /* 40px */
+  /* 字体大小 - Gradio 风格的字体大小 */
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-md: 1.125rem;   /* 18px */
+  --font-size-lg: 1.25rem;    /* 20px */
+  --font-size-xl: 1.5rem;     /* 24px */
+  --font-size-2xl: 1.875rem;  /* 30px */
+  --font-size-3xl: 2.25rem;   /* 36px */
 
-  /* 间距 - 相应调大以保持比例协调 */
-  --spacing-xs: 0.375rem;  /* 6px */
-  --spacing-sm: 0.625rem;  /* 10px */
-  --spacing-md: 0.875rem;  /* 14px */
-  --spacing-lg: 1.125rem;  /* 18px */
-  --spacing-xl: 1.5rem;   /* 24px */
-  --spacing-2xl: 1.875rem; /* 30px */
-  --spacing-3xl: 2.25rem;  /* 36px */
+  /* 间距 - 简洁的间距系统 */
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 1rem;      /* 16px */
+  --spacing-lg: 1.5rem;    /* 24px */
+  --spacing-xl: 2rem;      /* 32px */
+  --spacing-2xl: 3rem;     /* 48px */
+  --spacing-3xl: 4rem;     /* 64px */
 
   /* 组件尺寸 - 适当调大 */
   --sidebar-width: 340px;
@@ -45,22 +45,22 @@ onMounted(() => {
   --header-height: 64px;
   --control-bar-height: 68px;
 
-  /* 颜色变量 */
-  --text-primary: #212529;
-  --text-secondary: #6c757d;
-  --text-muted: #adb5bd;
-  --text-placeholder: #dee2e6;
+  /* 颜色变量 - Gradio 风格的颜色 */
+  --text-primary: #0f0f0f;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --text-placeholder: #cccccc;
   --bg-primary: #ffffff;
-  --bg-secondary: #f8f9fa;
-  --bg-light: #e9ecef;
-  --border-color: #dee2e6;
+  --bg-secondary: #fafafa;
+  --bg-light: #f5f5f5;
+  --border-color: #e0e0e0;
   --primary-color: #007bff;
   --primary-hover: #0056b3;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
-  --shadow-lg: 0 10px 25px rgba(0,0,0,0.1), 0 6px 10px rgba(0,0,0,0.06);
+  /* 阴影 - Gradio 风格的轻量阴影 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
 
   /* 字体 */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -68,7 +68,7 @@ onMounted(() => {
 
 /* 全局样式 */
 #app {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--text-primary);
@@ -77,7 +77,7 @@ onMounted(() => {
   margin: 0;
   padding: 0;
   font-size: var(--font-size-base);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* 三栏布局全局样式 */
@@ -100,9 +100,9 @@ onMounted(() => {
   min-width: 0;
 }
 
-/* Bootstrap 自定义 */
+/* Bootstrap 自定义 - using traditional CSS for Tailwind v4 compatibility */
 .btn {
-  transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease;
 }
 
 .btn:hover:not(:disabled) {
@@ -111,7 +111,7 @@ onMounted(() => {
 }
 
 .card {
-  transition: box-shadow 0.2s ease-in-out;
+  transition: box-shadow 0.2s ease;
 }
 
 .card:hover {
@@ -120,8 +120,117 @@ onMounted(() => {
 
 .form-control:focus,
 .form-select:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Gradio 风格的表单元素覆盖 */
+.form-control {
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.form-select {
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 0.25rem;
+  display: block;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Gradio 风格的按钮覆盖 */
+.btn-primary {
+  background-color: #3b82f6;
+  color: white;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.btn-secondary {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #e2e8f0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.2);
+}
+
+.btn-outline-primary {
+  border: 1px solid #3b82f6;
+  background-color: white;
+  color: #3b82f6;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.btn-outline-primary:hover {
+  background-color: #eff6ff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.btn-outline-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 /* 动画效果 */

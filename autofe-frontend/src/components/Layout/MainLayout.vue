@@ -36,13 +36,14 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #f8f9fa;
+  background-color: #f8fafc;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 .content-area {
   display: flex;
   flex: 1;
-  height: calc(100vh - 60px); /* 减去导航栏高度 */
+  height: calc(100vh - 4rem);
   position: relative;
   overflow: visible;
 }
@@ -52,7 +53,8 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-width: 0; /* 允许flexbox收缩 */
+  min-width: 0;
+  background-color: #f8fafc;
 }
 
 .content-wrapper {

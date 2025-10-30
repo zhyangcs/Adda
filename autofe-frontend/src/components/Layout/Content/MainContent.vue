@@ -7,14 +7,15 @@
         <div class="left-panel">
           <!-- 上方：Agent协作流程图 -->
           <div class="agent-flow-section">
-            <div class="section-header">
-              <h6 class="section-title">
-                <Users :size="18" class="me-2" />
-                Agent Thinking Process
-              </h6>
-            </div>
-
-            <div class="agent-flow-diagram">
+            <div class="info-card">
+              <div class="info-header">
+                <h6 class="info-title">
+                  <Users :size="18" class="me-2" />
+                  Agent Thinking Process
+                </h6>
+              </div>
+              <div class="info-content">
+                <div class="agent-flow-diagram">
               <!-- 环形布局的Agent协作图 -->
               <div class="flow-container">
                 <!-- 中心标题 -->
@@ -68,7 +69,7 @@
                   </div>
 
                   <!-- 连接线 - L型循环 -->
-                  <svg class="connection-lines" viewBox="0 0 500 400">
+                  <svg class="connection-lines" viewBox="0 0 500 450">
                     <!-- 定义箭头 -->
                     <defs>
                       <marker
@@ -114,28 +115,30 @@
 
                     <!-- Main to Opt (straight arrow: from right edge of Main icon to left edge of Opt icon) -->
                     <path
-                      d="M 130 85 L 370 85"
+                      d="M 150 75 L 350 75"
                       class="connection-line"
                       :class="{ active: connectionActive }"
                       marker-end="url(#arrowhead-main-opt)"
                     />
 
-                    <!-- Opt to Validation (polyline: from bottom edge of Opt to left edge of Validation) -->
+                    <!-- Opt to Validation (curved arrow: from bottom edge of Opt to top edge of Validation) -->
                     <path
-                      d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 220 280"
+                      d="M 400 135 L 400 250 A 30 30 0 0 1 370 280 L 280 280"
                       class="connection-line curved"
                       :class="{ active: connectionActiveReverse }"
                       marker-end="url(#arrowhead-opt-validation)"
                     />
 
-                    <!-- Validation to Main (straight arrow: from top edge of Validation to bottom edge of Main) -->
+                    <!-- Validation to Main (curved arrow: from left edge of Validation to bottom edge of Main) -->
                     <path
-                      d="M 180 280 L 120 280 A 20 20 0 0 0 100 260 L 100 130"
-                      class="connection-line"
+                      d="M 220 320 L 100 320 A 30 30 0 0 0 70 290 L 70 120"
+                      class="connection-line curved"
                       :class="{ active: connectionActiveValidation }"
                       marker-end="url(#arrowhead-validation-main)"
                     />
                   </svg>
+                </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -570,6 +573,7 @@ function handleRefreshData() {
   flex-direction: column;
   height: 100%;
   gap: 0;
+  padding-right: 1rem;
 }
 
 .agent-flow-section {
@@ -580,13 +584,17 @@ function handleRefreshData() {
   padding-bottom: 0.5rem;
 }
 
+.agent-flow-section .info-card {
+  flex: 1;
+}
+
 /* 下方左右分列布局 */
 .lower-section {
   display: flex;
-  gap: 1rem;
+  gap: 1.5rem;
   flex: 1;
   min-height: 200px;
-  padding-top: 0.5rem;
+  padding-top: 1rem;
 }
 
 .node-info-section {
@@ -611,6 +619,7 @@ function handleRefreshData() {
   flex-direction: column;
   gap: 0;
   background-color: #ffffff;
+  padding-left: 1rem;
 }
 
 .sql-code-section {
@@ -630,7 +639,7 @@ function handleRefreshData() {
 .horizontal-divider {
   height: 1px;
   background-color: #dee2e6;
-  margin: 0.5rem 0;
+  margin: 1.5rem 0;
 }
 
 /* 分隔线样式 */
@@ -663,16 +672,16 @@ function handleRefreshData() {
 
 /* Splitpanes 自定义样式 */
 :deep(.splitpanes.default-theme .splitpanes__splitter) {
-  background-color: #e9ecef !important;
+  background-color: transparent !important;
   border: none !important;
   position: relative;
-  width: 8px !important;
+  width: 12px !important;
   cursor: col-resize !important;
   transition: all 0.3s ease !important;
 }
 
 :deep(.splitpanes.default-theme .splitpanes__splitter:hover) {
-  background-color: #dee2e6 !important;
+  background-color: transparent !important;
 }
 
 /* 在splitter中添加可点击的折叠区域 */
@@ -682,41 +691,49 @@ function handleRefreshData() {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 8px; /* 与分割条同宽 */
-  height: 40px;
-  background-color: #6c757d;
-  cursor: pointer;
+  width: 40px;
+  height: 60px;
+  background-color: transparent;
+  cursor: default;
   transition: all 0.3s ease;
-  z-index: 10;
+  z-index: 1;
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 :deep(.splitpanes.default-theme .splitpanes__splitter:hover)::after {
-  background-color: #495057;
+  background-color: transparent;
 }
 
 /* 添加箭头 */
 :deep(.splitpanes.default-theme .splitpanes__splitter)::before {
-  content: '›';
+  content: '';
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: white;
-  font-size: 14px;
+  color: transparent;
+  font-size: 0;
   font-weight: bold;
   transition: all 0.3s ease;
   z-index: 11;
   pointer-events: none;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 :deep(.splitpanes.default-theme .splitpanes__splitter:hover)::before {
-  color: white;
+  color: transparent;
 }
 
 /* 当面板折叠时的箭头方向 - 使用数据属性 */
 .splitter-collapsed :deep(.splitpanes.default-theme .splitpanes__splitter)::before {
-  content: '‹';
-  color: white;
+  content: '';
+  color: transparent;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 :deep(.splitpanes.default-theme .splitpanes__pane) {
@@ -790,23 +807,18 @@ function handleRefreshData() {
   overflow-y: auto;
 }
 
-/* Agent Flow Diagram */
+/* Agent Flow Diagram - 移除背景和边框，让组件自身样式生效 */
 .agent-flow-diagram {
   flex: 1;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
   position: relative;
-  min-height: 200px;
+  min-height: 350px; /* 增加最小高度以容纳所有节点 */
 }
 
 .flow-container {
   position: relative;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* 移除flex布局，使用绝对定位布局 */
 }
 
 .flow-center {
@@ -834,6 +846,7 @@ function handleRefreshData() {
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 400px; /* 确保有足够的高度 */
 }
 
 .agent-node {
@@ -842,22 +855,29 @@ function handleRefreshData() {
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
+  z-index: 2; /* 确保节点在连接线上方 */
 }
 
-/* 矩形三角落布局 - 修复重叠问题 */
+/* 确保 validation-agent 的 transform 不被覆盖 */
+.validation-agent {
+  transform: translateX(-50%) !important;
+}
+
+/* 三角形布局 - 重新调整位置 */
 .main-agent {
   top: 30px;
-  left: 30px;
+  left: 50px;
 }
 
 .opt-agent {
   top: 30px;
-  right: 30px;
+  right: 50px;
 }
 
 .validation-agent {
-  bottom: 30px;
-  left: 180px;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .agent-icon {
@@ -924,10 +944,11 @@ function handleRefreshData() {
   height: 100%;
   pointer-events: none;
   width: 500px;
-  height: 400px;
+  height: 450px;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  z-index: 0; /* 确保连接线在节点下方 */
 }
 
 .connection-line {

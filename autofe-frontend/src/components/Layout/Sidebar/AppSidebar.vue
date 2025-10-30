@@ -15,19 +15,19 @@
       <!-- 独立组件1：任务配置 -->
       <div class="task-config-component">
         <div class="component-header">
-          <h6 class="text-white mb-2">
+          <h6 class="component-title">
             <Settings :size="16" class="me-1" />
             Task Configuration
           </h6>
         </div>
 
-        <div class="component-content px-3">
+        <div class="component-content">
           <!-- 任务描述 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">Task Description</label>
+            <label class="form-label">Task Description</label>
             <textarea
               v-model="taskStore.config.description"
-              class="form-control form-control-sm"
+              class="form-control"
               rows="3"
               placeholder="Enter machine learning task description..."
             ></textarea>
@@ -35,10 +35,10 @@
 
           <!-- 数据集选择 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">Dataset</label>
+            <label class="form-label">Dataset</label>
             <select
               v-model="taskStore.config.dataset"
-              class="form-select form-select-sm"
+              class="form-select"
             >
               <option value="" disabled>Select Dataset</option>
               <option value="1">Titanic</option>
@@ -139,61 +139,81 @@ async function handleCheckFormat() {
 
 <style scoped>
 .app-sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
-  max-width: var(--sidebar-width);
+  width: 340px;
+  min-width: 340px;
+  max-width: 340px;
   height: 100vh;
-  padding: var(--spacing-lg) 0;
-  background-color: #343a40 !important;
+  padding-top: 1rem;
+  background-color: white;
+  border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  box-sizing: border-box;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  transition: all 0.3s ease;
 }
 
 .app-sidebar.collapsed {
-  width: 5px !important;
-  min-width: 5px !important;
-  max-width: 5px !important;
-  overflow: visible !important;
-  border: none !important;
-  padding: 0 !important;
-  background-color: transparent !important;
+  width: 20px;
+  min-width: 20px;
+  max-width: 20px;
+  overflow: visible;
+  border: none;
+  padding: 0;
+  background-color: transparent;
 }
 
 /* 确保折叠状态下内容完全隐藏 */
 .app-sidebar.collapsed .sidebar-content {
-  display: none !important;
+  display: none;
 }
 
 /* 确保折叠动画过渡平滑 */
 .sidebar-content {
-  transition: opacity 0.3s ease, display 0.3s ease;
+  transition: opacity 0.3s ease;
 }
 
 /* 折叠按钮样式 */
 .collapse-toggle {
-  position: absolute !important;
-  right: -12px !important;
-  top: 20px !important;
-  z-index: 1001 !important;
-  border-radius: 50% !important;
-  width: 24px !important;
-  height: 24px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background-color: #f8f9fa !important;
-  border: 1px solid #dee2e6 !important;
-  color: #6c757d !important;
-  transition: all 0.2s ease !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-  cursor: pointer !important;
-  font-size: 12px !important;
-  line-height: 1 !important;
+  position: absolute;
+  right: -12px;
+  top: 1.25rem;
+  z-index: 50;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.collapse-toggle:hover {
+  background-color: #f8fafc;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.task-config-component {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.component-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+.component-content {
+  padding: 0.75rem;
 }
 
 .collapse-toggle:hover {
@@ -248,7 +268,7 @@ async function handleCheckFormat() {
   display: flex;
   align-items: center;
   font-size: var(--font-size-md);
-  color: white;
+  color: #374151;
 }
 
 .component-content {
@@ -291,31 +311,31 @@ async function handleCheckFormat() {
 /* 表单样式 */
 .form-control,
 .form-select {
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #374151;
   font-size: var(--font-size-base);
   width: 100%;
-  padding: var(--spacing-lg);
+  padding: 0.5rem 0.75rem;
   border-radius: 6px;
 }
 
 .form-control:focus,
 .form-select:focus {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-  color: white;
+  background-color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.125rem rgba(59, 130, 246, 0.25);
+  color: #374151;
 }
 
 .form-control::placeholder {
-  color: rgba(255, 255, 255, 0.6);
+  color: #9ca3af;
 }
 
 .form-label {
-  color: rgba(255, 255, 255, 0.8);
+  color: #4b5563;
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 0.5rem;
   font-size: var(--font-size-base);
 }
 
