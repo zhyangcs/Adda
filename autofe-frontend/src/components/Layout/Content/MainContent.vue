@@ -18,15 +18,22 @@
                 <div class="agent-flow-diagram">
               <!-- 环形布局的Agent协作图 -->
               <div class="flow-container">
-                <!-- 中心标题 -->
-                <div class="flow-center">
-                  <div class="flow-title">Agent Flow</div>
-                  <div class="flow-status">{{ getCurrentFlowStatus() }}</div>
-                </div>
-
-                <!-- Agent图标环形布局 -->
+                <!-- Agent图标正方形布局 -->
                 <div class="agents-container">
-                  <!-- Main Agent -->
+                  <!-- System Agent (左上角) -->
+                  <div
+                    class="agent-node system-agent"
+                    :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
+                    @click="setActiveAgent('system')"
+                  >
+                    <div class="agent-icon">
+                      <Monitor :size="32" />
+                    </div>
+                    <div class="agent-label">System</div>
+                    <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
+                  </div>
+
+                  <!-- Main Agent (右上角) -->
                   <div
                     class="agent-node main-agent"
                     :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
@@ -36,11 +43,10 @@
                       <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
                     </div>
                     <div class="agent-label">Main Agent</div>
-                    <div class="agent-goal">Feature Engineering</div>
                     <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
                   </div>
 
-                  <!-- Optimization Agent -->
+                  <!-- Optimization Agent (右下角) -->
                   <div
                     class="agent-node opt-agent"
                     :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
@@ -50,11 +56,10 @@
                       <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
                     </div>
                     <div class="agent-label">Opt Agent</div>
-                    <div class="agent-goal">Performance Tuning</div>
                     <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
                   </div>
 
-                  <!-- Node Validation Process -->
+                  <!-- Node Validation Process (左下角) -->
                   <div
                     class="agent-node validation-agent"
                     :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
@@ -64,87 +69,21 @@
                       <Cog :size="32" />
                     </div>
                     <div class="agent-label">Node Validation</div>
-                    <div class="agent-goal">Feature Validation</div>
                     <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
                   </div>
 
-                  <!-- 连接线 - L型循环 -->
-                  <svg class="connection-lines" viewBox="0 0 500 450">
-                    <!-- 定义箭头 -->
-                    <defs>
-                      <marker
-                        id="arrowhead-main-opt"
-                        markerWidth="10"
-                        markerHeight="7"
-                        refX="9"
-                        refY="3.5"
-                        orient="auto"
-                      >
-                        <polygon
-                          points="0 0, 10 3.5, 0 7"
-                          :fill="connectionActive ? '#007bff' : '#dee2e6'"
-                        />
-                      </marker>
-                      <marker
-                        id="arrowhead-opt-validation"
-                        markerWidth="10"
-                        markerHeight="7"
-                        refX="9"
-                        refY="3.5"
-                        orient="auto"
-                      >
-                        <polygon
-                          points="0 0, 10 3.5, 0 7"
-                          :fill="connectionActiveReverse ? '#007bff' : '#dee2e6'"
-                        />
-                      </marker>
-                      <marker
-                        id="arrowhead-validation-main"
-                        markerWidth="10"
-                        markerHeight="7"
-                        refX="9"
-                        refY="3.5"
-                        orient="auto"
-                      >
-                        <polygon
-                          points="0 0, 10 3.5, 0 7"
-                          :fill="connectionActiveValidation ? '#007bff' : '#dee2e6'"
-                        />
-                      </marker>
-                    </defs>
-
-                    <!-- Main to Opt (straight arrow: from right edge of Main icon to left edge of Opt icon) -->
-                    <path
-                      d="M 150 75 L 350 75"
-                      class="connection-line"
-                      :class="{ active: connectionActive }"
-                      marker-end="url(#arrowhead-main-opt)"
-                    />
-
-                    <!-- Opt to Validation (curved arrow: from bottom edge of Opt to top edge of Validation) -->
-                    <path
-                      d="M 400 135 L 400 250 A 30 30 0 0 1 370 280 L 280 280"
-                      class="connection-line curved"
-                      :class="{ active: connectionActiveReverse }"
-                      marker-end="url(#arrowhead-opt-validation)"
-                    />
-
-                    <!-- Validation to Main (curved arrow: from left edge of Validation to bottom edge of Main) -->
-                    <path
-                      d="M 220 320 L 100 320 A 30 30 0 0 0 70 290 L 70 120"
-                      class="connection-line curved"
-                      :class="{ active: connectionActiveValidation }"
-                      marker-end="url(#arrowhead-validation-main)"
-                    />
-                  </svg>
-                </div>
-              </div>
+                  <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
+                  <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
+                  <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
+                  <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
+                  <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-  
           <!-- 下方：左右分列的Node Information和Feature Generation -->
           <div class="lower-section">
             <!-- 左边：Node Information -->
@@ -232,7 +171,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { Users, Cog } from 'lucide-vue-next'
+import { Users, Cog, Monitor } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import SQLCode from '@/components/Features/SQLCode.vue'
@@ -242,11 +181,12 @@ import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 
-const activeAgent = ref<'main' | 'optimization' | 'validation'>('main')
+const activeAgent = ref<'system' | 'main' | 'optimization' | 'validation'>('main')
 const workingAgents = ref<string[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
+const connectionActiveSystem = ref(false)
 
 // 右侧面板数据
 const sqlCode = ref('')
@@ -312,16 +252,9 @@ function toggleRightPanel() {
   console.log('New sizes - left:', leftPaneSize.value, 'right:', rightPaneSize.value)
 }
 
-// Agent flow status
-const getCurrentFlowStatus = () => {
-  if (taskStore.status === 'running') {
-    return workingAgents.value.length > 0 ? 'Processing...' : 'Initializing...'
-  }
-  return taskStore.statusText
-}
 
 // Agent interaction
-function setActiveAgent(agent: 'main' | 'optimization' | 'validation') {
+function setActiveAgent(agent: 'system' | 'main' | 'optimization' | 'validation') {
   activeAgent.value = agent
   taskStore.addNotification(`Selected ${agent} agent`, 'info')
 }
@@ -329,22 +262,28 @@ function setActiveAgent(agent: 'main' | 'optimization' | 'validation') {
 // 模拟agent工作状态
 function simulateAgentWork() {
   if (taskStore.status === 'running') {
-    workingAgents.value = ['main']
+    workingAgents.value = ['system']
     connectionActive.value = true
 
     setTimeout(() => {
-      workingAgents.value = ['optimization']
+      workingAgents.value = ['main']
       connectionActive.value = false
       connectionActiveReverse.value = true
 
       setTimeout(() => {
-        workingAgents.value = ['validation']
+        workingAgents.value = ['optimization']
         connectionActiveReverse.value = false
         connectionActiveValidation.value = true
 
         setTimeout(() => {
-          workingAgents.value = []
+          workingAgents.value = ['validation']
           connectionActiveValidation.value = false
+          connectionActiveSystem.value = true
+
+          setTimeout(() => {
+            workingAgents.value = []
+            connectionActiveSystem.value = false
+          }, 2000)
         }, 2000)
       }, 2000)
     }, 2000)
@@ -360,6 +299,7 @@ watch(() => taskStore.status, (newStatus) => {
     connectionActive.value = false
     connectionActiveReverse.value = false
     connectionActiveValidation.value = false
+    connectionActiveSystem.value = false
   }
 })
 
@@ -807,26 +747,6 @@ function handleRefreshData() {
   /* 移除flex布局，使用绝对定位布局 */
 }
 
-.flow-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  z-index: 1;
-}
-
-.flow-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-xs);
-  font-size: var(--font-size-xl);
-}
-
-.flow-status {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
 
 .agents-container {
   position: relative;
@@ -837,44 +757,52 @@ function handleRefreshData() {
 
 .agent-node {
   position: absolute;
-  width: 100px;
+  width: 90px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
   z-index: 2; /* 确保节点在连接线上方 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 确保 validation-agent 的 transform 不被覆盖 */
-.validation-agent {
-  transform: translateX(-50%) !important;
+
+/* 正方形布局 - 四个节点相对于容器中心的位置，考虑元素宽度 */
+.system-agent {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translate(-135px, -135px);
 }
 
-/* 三角形布局 - 重新调整位置 */
 .main-agent {
-  top: 30px;
-  left: 50px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translate(135px, -135px);
 }
 
 .opt-agent {
-  top: 30px;
-  right: 50px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translate(135px, 135px);
 }
 
 .validation-agent {
-  bottom: 40px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%) translate(-135px, 135px);
 }
 
 .agent-icon {
-  width: 90px;
-  height: 90px;
+  width: 70px;
+  height: 70px;
   background-color: transparent;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 0.5rem;
+  margin: 0 auto;
   border: 3px solid transparent;
   transition: all 0.3s ease;
   color: #6c757d;
@@ -903,12 +831,12 @@ function handleRefreshData() {
   font-weight: 600;
   font-size: var(--font-size-md);
   color: var(--text-primary);
-  margin-bottom: var(--spacing-xs);
-}
-
-.agent-goal {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  position: absolute;
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .working-indicator {
@@ -930,7 +858,7 @@ function handleRefreshData() {
   height: 100%;
   pointer-events: none;
   width: 500px;
-  height: 450px;
+  height: 500px;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -1063,6 +991,96 @@ function handleRefreshData() {
 .expand-tooltip {
   font-size: 1rem;
   font-weight: 500;
+}
+
+/* CSS箭头直接在agents-container内，无需额外容器 */
+
+/* 水平箭头基础样式 */
+.arrow-horizontal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 130px;
+  height: 4px;
+  background-color: #dee2e6;
+  transition: all 0.3s ease;
+}
+
+.arrow-horizontal::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 12px solid #dee2e6;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+/* 垂直箭头基础样式 */
+.arrow-vertical {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 130px;
+  background-color: #dee2e6;
+  transition: all 0.3s ease;
+}
+
+.arrow-vertical::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-top: 12px solid #dee2e6;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+}
+
+/* 上横箭头位置 - 匹配新的节点位置 */
+.top-arrow {
+  transform: translate(-50%, -50%) translateY(-135px);
+}
+
+/* 右纵箭头位置 - 匹配新的节点位置 */
+.right-arrow {
+  transform: translate(-50%, -50%) translateX(135px);
+}
+
+/* 下横箭头位置和方向 - 匹配新的节点位置 */
+.bottom-arrow {
+  transform: translate(-50%, -50%) translateY(135px) rotate(180deg);
+}
+
+/* 左纵箭头位置和方向 - 匹配新的节点位置 */
+.left-arrow {
+  transform: translate(-50%, -50%) translateX(-135px) rotate(180deg);
+}
+
+/* 激活状态样式 */
+.arrow-horizontal.active,
+.arrow-vertical.active {
+  background-color: #007bff;
+}
+
+.arrow-horizontal.active::after,
+.arrow-vertical.active::after {
+  border-left-color: #007bff;
+  border-top-color: #007bff;
+}
+
+.bottom-arrow.active::after {
+  border-left-color: #007bff;
+}
+
+.left-arrow.active::after {
+  border-top-color: #007bff;
 }
 
 /* 响应式设计 */

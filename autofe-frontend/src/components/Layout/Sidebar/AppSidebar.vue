@@ -52,7 +52,7 @@
 
           <!-- Agent模型选择 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">Agent Model</label>
+            <label class="form-label">Agent Model</label>
             <select
               v-model="taskStore.config.model"
               class="form-select form-select-sm"
