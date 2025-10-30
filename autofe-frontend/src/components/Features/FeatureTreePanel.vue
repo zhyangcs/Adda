@@ -36,27 +36,23 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- 特征选择信息（合并的Current Feature Set内容） -->
-    <div class="feature-selection-info">
-      <div class="info-header">
-        <h6 class="info-title">Current Feature Set</h6>
-      </div>
-      <div class="info-content">
-        <div class="feature-list">
-          <span v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
-            No features selected (click node for choose/delete)
-          </span>
-          <span v-else class="features-text">
-            {{ featureTreeStore.currentFeatures.join(', ') }}
-          </span>
-        </div>
-        <div class="performance-info">
-          <strong>Performance:</strong>
-          <span class="performance-value">{{ featureTreeStore.performance }}</span>
-          <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
+        <!-- 特征选择信息（简化显示） -->
+        <div class="feature-selection-info">
+          <div class="feature-list">
+            <div v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
+              <span class="feature-label">Current Feature Set:</span> No features selected (click node for choose/delete)
+            </div>
+            <div v-else class="features-container">
+              <span class="feature-label">Current Feature Set:</span>
+              <span class="features-text">{{ featureTreeStore.currentFeatures.join(', ') }}</span>
+            </div>
+          </div>
+          <div class="performance-info">
+            <strong>Performance:</strong>
+            <span class="performance-value">{{ featureTreeStore.performance }}</span>
+            <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -277,12 +273,12 @@ onMounted(() => {
 }
 
 .feature-tree-container {
-  height: 100%;
+  height: 75%; /* 减少到原来的3/4 */
   background-color: #f0f0f0;
   border-radius: 8px;
   border: 1px solid #dee2e6;
   padding: 0.5rem;
-  min-height: 200px;
+  min-height: 150px; /* 相应减少最小高度 */
 }
 
 .tree-visualization {
@@ -300,33 +296,13 @@ onMounted(() => {
   color: #6c757d;
 }
 
-/* 特征选择信息样式 */
+/* 特征选择信息样式（简化显示） */
 .feature-selection-info {
-  margin-top: 0.5rem;
-  border-top: 1px solid #dee2e6;
-  padding-top: 0.5rem;
-}
-
-.info-header {
+  margin-top: 1rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #dee2e6;
-  background-color: #ffffff;
-  border-radius: 8px 8px 0 0;
-}
-
-.info-title {
-  color: #495057;
-  font-weight: 600;
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-.info-content {
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 0 0 8px 8px;
   border: 1px solid #dee2e6;
-  border-top: none;
+  border-radius: 6px;
+  background-color: #f8f9fa;
 }
 
 .feature-list {
@@ -336,6 +312,18 @@ onMounted(() => {
 .no-features {
   color: #6c757d;
   font-style: italic;
+}
+
+.feature-label {
+  color: #495057;
+  font-weight: 500;
+}
+
+.features-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .features-text {
