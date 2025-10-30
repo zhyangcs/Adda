@@ -5,6 +5,15 @@ import io
 
 from adda_connector import AddaConnector
 
+# 导入LLMDagConstructor以支持端到端初始化
+import sys
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from src.llm.llm_dag_util import LLMDagConstructor
+from src.env import test_save_path, dataset_path
+
 app = Flask(__name__)
 
 # 创建Adda系统连接器实例
@@ -192,21 +201,277 @@ def clear_task():
 
 @app.route('/auto-step/', methods=['POST'])
 def auto_step():
+    """
+    真正的端到端自动化特征工程和ML训练流程
+    一次点击完成：根节点初始化 + 节点拓展(astar_k_step) + ML训练
+    不依赖check format按钮，完全独立执行
+    相当于完整执行 test_util.py + run_multimodel_type.py
+    """
     try:
-        if not adda.llm_dag_constructor or adda.llm_dag_constructor.finish:
-            return jsonify({"status": "fail", "message": "任务未启动或已完成"})
-            
-        # 单步执行（正确方式）
-        for i in range(3):  # 分步执行避免清空状态 TODO: 这里的循环实际无用
-            adda.llm_dag_constructor.astar_one_step(i)
-        
-        return jsonify({
+        # 获取请求参数（与start_task完全相同的参数）
+        task_description = request.form.get('taskDescription') if request.form.get('taskDescription') else None
+        if not task_description:
+            # 也支持JSON格式
+            data = json.loads(request.data) if request.data else {}
+            task_description = data.get('taskDescription', '')
+
+        if not task_description:
+            return jsonify({"status": "fail", "message": "缺少必要参数：taskDescription"})
+
+        dataset = request.form.get('dataset') if request.form.get('dataset') else None
+        if not dataset:
+            data = json.loads(request.data) if request.data else {}
+            dataset = data.get('dataset', 'heart')
+
+        model = request.form.get('model') if request.form.get('model') else None
+        if not model:
+            data = json.loads(request.data) if request.data else {}
+            model = data.get('model_type', 'RF')  # 支持model_type或model参数
+
+        # 可选参数
+        data = json.loads(request.data) if request.data else {}
+        max_search_depth = data.get('max_search_depth', 3)  # 最大搜索深度，默认3
+        use_performance_test = data.get('use_performance_test', True)  # 是否执行性能测试
+
+        print(f"Starting end-to-end execution: dataset={dataset}, model={model}, depth={max_search_depth}")
+
+        # ===== 完整的任务初始化（复制start_task的逻辑） =====
+
+        # 1. 从test_util导入任务配置
+        from src.llm.tests.test_util import task_config
+        task_name, target_col, task_type = task_config(dataset.lower())
+
+        # 2. 导入并分割数据集
+        from src.pg.import_table import importTable_with_split
+        from src.env import get_conn
+        importTable_with_split(
+            os.path.join(dataset_path, task_name, "train_new.csv"),
+            f"{task_name}_src_tb",
+            target_col,
+            get_conn(),
+            False,
+            task_type
+        )
+
+        # 3. 读取数据信息
+        from src.llm.tests.test_util import read_data_info
+        data_agenda, desc, csv_path = read_data_info(task_name)
+
+        # 4. 创建新的LLMDagConstructor（强制新建，避免旧状态干扰）
+        import os
+        import shutil
+        import heapq
+
+        # 清理旧状态
+        task_path = os.path.join(test_save_path, task_name)
+        if os.path.exists(task_path):
+            shutil.rmtree(task_path)
+
+        # 初始化LLMDagConstructor
+        adda.llm_dag_constructor = LLMDagConstructor(
+            task_type=task_type,
+            eval_model_type="RF",  # 硬编码为RF（与start_task保持一致）
+            beam_limit=1,
+            do_feature_selection=False,
+            high_order_num=5,
+            token_limit=128000
+        )
+
+        # 5. 设置A*搜索参数
+        adda.llm_dag_constructor.search_type = "ASTAR"
+        import src.llm.llm_dag_node
+        src.llm.llm_dag_node.global_node_id = adda.llm_dag_constructor.node_id
+
+        # 6. 初始化任务参数
+        adda.llm_dag_constructor.init_task_params(data_agenda, desc, target_col, f"{task_name}_src_tb", csv_path, False, task_name)
+
+        # 7. 初始化优先队列
+        adda.llm_dag_constructor.cur_states = []
+        heapq.heappush(adda.llm_dag_constructor.cur_states, adda.llm_dag_constructor.root)
+        adda.llm_dag_constructor.pre_states = adda.llm_dag_constructor.cur_states.copy()
+        adda.llm_dag_constructor.cur_states = adda.llm_dag_constructor.pre_states
+
+        # 8. 设置计数器
+        adda.count_idx = 0
+        adda.llm_dag_constructor.pre_idx = 0
+
+        # 9. 更新LLM模型配置
+        from src.env import update_llm_model
+        if model:
+            update_llm_model(model)
+
+        print(f"Task initialized successfully: {task_name}")
+
+        # ===== 执行A*搜索 =====
+
+        print(f"Starting A* search with max depth: {max_search_depth}")
+
+        # 直接调用astar_k_step执行多步搜索
+        try:
+            adda.llm_dag_constructor.astar_k_step(
+                step_num=max_search_depth,
+                data_agenda=data_agenda,
+                data_desc=desc,
+                target_col=target_col,
+                tb_name=f"{task_name}_src_tb",
+                csv_path=csv_path,
+                do_unfinished=False,  # 强制执行新的搜索
+                task_name=task_name
+            )
+
+            print(f"A* search completed with {max_search_depth} steps")
+
+        except Exception as search_error:
+            print(f"A* search error: {search_error}")
+            return jsonify({
+                "status": "fail",
+                "message": f"A*搜索失败: {str(search_error)}"
+            })
+
+        # 保存状态（为SQL生成做准备）
+        import pickle
+        from src.env import proj_path
+        with open(os.path.join(proj_path, "src", "cur_states.pkl"), "wb") as f:
+            pickle.dump(adda.llm_dag_constructor, f)
+
+        # 获取当前树结构
+        tree_structure = adda._convert_dag_to_tree()
+
+        # 检查是否完成搜索
+        is_finished = adda.llm_dag_constructor.finish
+
+        # 初始化返回数据
+        response_data = {
             "status": "success",
-            "tree": adda._convert_dag_to_tree(),
-            "finished": adda.llm_dag_constructor.finish
-        })
+            "tree": tree_structure,
+            "finished": is_finished,
+            "search_depth": max_search_depth,
+            "message": f"端到端执行完成！搜索深度: {max_search_depth}"
+        }
+
+        # ===== 执行性能测试 =====
+
+        if use_performance_test and is_finished:
+            try:
+                print("Starting performance testing...")
+                performance_result = adda._run_multimodal_performance(
+                    model_type=model,
+                    task_name=task_name
+                )
+
+                if performance_result.get("success", False):
+                    # 性能测试成功
+                    auc = performance_result.get("auc", 0.0)
+                    exec_time = performance_result.get("execution_time", 0.0)
+
+                    response_data.update({
+                        "performance_metrics": {
+                            "auc": auc,
+                            "execution_time": exec_time,
+                            "model_type": performance_result.get("model_type", model),
+                            "task_name": performance_result.get("task_name", task_name),
+                            "task_type": performance_result.get("task_type", task_type),
+                            "row_num": performance_result.get("row_num", 0),
+                            "col_num": performance_result.get("col_num", 0),
+                            "method": performance_result.get("method", "in_database_ml")
+                        },
+                        "sql_code": performance_result.get("sql_code", {}),
+                        "sql_file_paths": performance_result.get("sql_file_paths", {}),
+                        "training_result": {
+                            "success": True,
+                            "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
+                            "model_type": model,
+                            "method": "in_database_ml"
+                        }
+                    })
+
+                    # 添加成功通知
+                    notifications.append({
+                        "notice_description": f"🎉 端到端流程完成！AUC: {auc:.4f}, 搜索深度: {max_search_depth}, 耗时: {exec_time:.2f}s",
+                        "notice_type": "success"
+                    })
+                else:
+                    # 性能测试失败
+                    error_msg = performance_result.get("error", "未知错误")
+                    response_data.update({
+                        "performance_metrics": {
+                            "auc": 0.0,
+                            "execution_time": 0.0,
+                            "model_type": model,
+                            "method": "error",
+                            "error": error_msg
+                        },
+                        "training_result": {
+                            "success": False,
+                            "message": f"性能测试失败: {error_msg}",
+                            "model_type": model,
+                            "method": "error"
+                        }
+                    })
+
+                    # 添加警告通知
+                    notifications.append({
+                        "notice_description": f"特征搜索完成，但性能测试失败: {error_msg}",
+                        "notice_type": "warning"
+                    })
+
+            except Exception as perf_error:
+                # 性能测试异常
+                error_msg = f"性能测试异常: {str(perf_error)}"
+                response_data.update({
+                    "performance_metrics": {
+                        "auc": 0.0,
+                        "execution_time": 0.0,
+                        "model_type": model,
+                        "method": "exception",
+                        "error": error_msg
+                    },
+                    "training_result": {
+                        "success": False,
+                        "message": error_msg,
+                        "model_type": model,
+                        "method": "exception"
+                    }
+                })
+
+                # 添加错误通知
+                notifications.append({
+                    "notice_description": f"特征搜索完成，但性能测试异常: {error_msg}",
+                    "notice_type": "error"
+                })
+
+        # 如果没有执行性能测试或搜索未完成，添加相应的状态信息
+        if not use_performance_test:
+            notifications.append({
+                "notice_description": f"特征搜索完成！搜索深度: {max_search_depth}，未执行性能测试",
+                "notice_type": "info"
+            })
+        elif not is_finished:
+            notifications.append({
+                "notice_description": f"特征搜索执行了 {max_search_depth} 步，但尚未完成最佳特征选择",
+                "notice_type": "info"
+            })
+
+        return jsonify(response_data)
+
     except Exception as e:
-        return jsonify({"status": "fail", "message": str(e)})
+        # 记录详细错误信息
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Auto step error: {error_details}")
+
+        # 添加错误通知
+        notifications.append({
+            "notice_description": f"端到端执行失败: {str(e)}",
+            "notice_type": "error"
+        })
+
+        return jsonify({
+            "status": "fail",
+            "message": str(e),
+            "error_details": error_details
+        })
+
 
 # 添加获取通知列表的接口（如果前端需要）
 @app.route('/get-notifications/', methods=['GET'])
