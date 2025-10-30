@@ -144,9 +144,7 @@
             </div>
           </div>
 
-          <!-- 分隔线 -->
-          <div class="divider"></div>
-
+  
           <!-- 下方：左右分列的Node Information和Feature Generation -->
           <div class="lower-section">
             <!-- 左边：Node Information -->
@@ -206,9 +204,7 @@
             <SQLCode :sql-code="sqlCode" />
           </div>
 
-          <!-- 分隔线 -->
-          <div class="horizontal-divider"></div>
-
+  
           <!-- 下方：Feature Performance组件 -->
           <div class="feature-performance-section">
             <FeaturePerformance
@@ -581,7 +577,7 @@ function handleRefreshData() {
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.375rem;
 }
 
 .agent-flow-section .info-card {
@@ -594,7 +590,7 @@ function handleRefreshData() {
   gap: 1.5rem;
   flex: 1;
   min-height: 200px;
-  padding-top: 1rem;
+  padding-top: 0.375rem;
 }
 
 .node-info-section {
@@ -627,6 +623,7 @@ function handleRefreshData() {
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  padding-bottom: 0.375rem;
 }
 
 .feature-performance-section {
@@ -634,20 +631,9 @@ function handleRefreshData() {
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  padding-top: 0.375rem;
 }
 
-.horizontal-divider {
-  height: 1px;
-  background-color: #dee2e6;
-  margin: 1.5rem 0;
-}
-
-/* 分隔线样式 */
-.divider {
-  height: 1px;
-  background-color: #dee2e6;
-  margin: 0.5rem 0;
-}
 
 /* 展开按钮样式 */
 .expand-button {
