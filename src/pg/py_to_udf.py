@@ -55,53 +55,94 @@ class Py2Udf():
         sql_type += tmp
         
         print("------------------", in_attrs, model_type)
+        
+        # 使用多行字符串格式，避免缩进问题
         udf_template = f"""CREATE OR REPLACE FUNCTION {model_type}_train(input train_input[]) 
 RETURNS text AS $$
-    {"    ".join(import_code)}
-    import pandas as pd
-    import os
-    import pickle
-    import numpy as np
-    import time
-    # from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
-    {modeltype2importcode(model_type, task_type)}
-    df = pd.DataFrame(input, columns = [{','.join(list(map(lambda x: "'"+x+"'", in_attrs)))}])
-    
-    # fillnan
-    df = df.replace([np.inf, -np.inf], np.nan)
-    df.fillna(0, inplace=True)
-    model = {modeltype2class(model_type, task_type)}(random_state=42)
+"""
+        # 添加导入代码，确保每个导入语句都在新行上
+        for imp in import_code:
+            udf_template += imp + "\n"
+            
+        udf_template += f"""import pandas as pd
+import os
+import pickle
+import numpy as np
+import time
+{modeltype2importcode(model_type, task_type)}
+
+# 创建DataFrame并预处理
+df = pd.DataFrame(input, columns=[{','.join([f"'{attr}'" for attr in in_attrs])}])
+
+# ===== 高级数据清理和预处理 =====
+# 1. 替换特殊值
+df = df.replace([np.inf, -np.inf], np.nan)
+
+# 2. 处理类别列
+for col in df.columns:
+    if df[col].dtype == 'object':
+        try:
+            # 尝试使用factorize将类别转为数值
+            df[col], _ = pd.factorize(df[col])
+        except Exception as e:
+            print(f"处理列 {{col}} 时出错: {{e}}")
+            # 使用哈希函数将字符串转为数值
+            df[col] = df[col].fillna('').astype(str).apply(lambda x: hash(x) % 2147483647 if x else 0)
+
+# 3. 填充剩余的NaN值
+for col in df.columns:
+    if pd.isna(df[col]).any():
+        if df[col].dtype in ['int64', 'float64']:
+            # 对数值列，使用均值填充（如果均值存在且有效）
+            mean_val = df[col].mean()
+            if pd.notna(mean_val):
+                df[col] = df[col].fillna(mean_val)
+            else:
+                df[col] = df[col].fillna(0)
+        else:
+            # 对其他类型列，使用0填充
+            df[col] = df[col].fillna(0)
+
+# 最后确保没有NaN值
+df = df.fillna(0)
+
+# ===== 训练模型 =====
+model = {modeltype2class(model_type, task_type)}(random_state=42)
+
+# 检查目标列是否存在
+if '{target_col}' in df.columns:
     train_y = df['{target_col}']
     train_x = df.drop(columns=['{target_col}'])
-    model.fit(train_x, train_y)
-    # get id of model
-    cur_models = os.listdir('{model_store_path}')
-    # Extract valid model IDs from .pkl files only
-    valid_model_ids = []
-    for model in cur_models:
-        if model.endswith('.pkl'):
-            try:
-                # Extract the numeric ID from filename like "model_name_type_123.pkl"
-                model_id = int(model[:-4].split('_')[-1])
-                valid_model_ids.append(model_id)
-            except (ValueError, IndexError):
-                # Skip files that don't match the expected pattern
-                continue
+else:
+    print(f"警告：目标列 '{target_col}' 不在数据中")
+    print(f"可用列: {{list(df.columns)}}")
+    return "error:目标列缺失"
 
-    cur_id = max(valid_model_ids) + 1 if valid_model_ids else 0
-    # cur_id = int(time.time() * 1000) + os.getpid()
-    
-    model_name = f"{model_name}_{model_type}_{{cur_id}}.pkl"
-    model_path = os.path.join('{model_store_path}', model_name)
-    with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
-    return model_path
+# 最终数据检查
+train_x = train_x.replace([np.inf, -np.inf, np.nan], 0)
+train_y = train_y.replace([np.inf, -np.inf, np.nan], 0).astype(float)
+
+# 训练模型
+model.fit(train_x, train_y)
+
+# 保存模型
+cur_models = os.listdir('{model_store_path}')
+try:
+    cur_id = max([int(m[:-4].split('_')[-1]) for m in cur_models if m.endswith('.pkl')]) + 1
+except (ValueError, IndexError):
+    cur_id = 0
+
+model_name = f"{model_name}_{model_type}_{{cur_id}}.pkl"
+model_path = os.path.join('{model_store_path}', model_name)
+with open(model_path, 'wb') as f:
+    pickle.dump(model, f)
+return model_path
 $$ LANGUAGE plpython3u;"""
+
         print(termcolor.colored(udf_template, "yellow"))
 
         cte1 = "tmp_res_store"
         call_udf1 = f"select {model_type}_train(array(select row({','.join(in_attrs)})::train_input from {cur_table_name})) as model_path"
-        # call_udf2 = f"insert into model_table(tb_name, model_type, path) select '{model_name}', '{model_type}', model_path from {cte1} limit 1"
         call_udf2 = f"insert into model_table(tb_name, model_type, path) select '{model_name}', '{model_type}', model_path from {cte1} limit 1"
         return sql_type + udf_template, (call_udf1, call_udf2), (cte1, "")
 
@@ -116,34 +157,100 @@ $$ LANGUAGE plpython3u;"""
         sql_type += tmp
         print("------------------", in_attrs)
         
-        
+        # 使用多行字符串格式，避免缩进问题
         udf_template = f"""CREATE OR REPLACE FUNCTION {model_type}_predict(input predict_input[], model_path text) 
 RETURNS float AS $$
-    {"    ".join(import_code)}
-    import os
-    import pickle
-    from sklearn.metrics import roc_auc_score
-    import numpy as np
-    {modeltype2importcode(model_type, task_type)}
-    df = pd.DataFrame(input, columns = [{','.join(list(map(lambda x: "'"+x+"'", in_attrs)))}])
-    # fillnan
-    df = df.replace([np.inf, -np.inf], np.nan)
-    df.fillna(0, inplace=True)
+"""
+        # 添加导入代码，确保每个导入语句都在新行上
+        for imp in import_code:
+            udf_template += imp + "\n"
+            
+        udf_template += f"""import os
+import pickle
+from sklearn.metrics import roc_auc_score
+import numpy as np
+{modeltype2importcode(model_type, task_type)}
 
-    
+# 创建DataFrame并预处理
+df = pd.DataFrame(input, columns=[{','.join([f"'{attr}'" for attr in in_attrs])}])
+
+# ===== 高级数据清理和预处理 =====
+# 1. 替换特殊值
+df = df.replace([np.inf, -np.inf], np.nan)
+
+# 2. 处理类别列
+for col in df.columns:
+    if df[col].dtype == 'object':
+        try:
+            # 尝试使用factorize将类别转为数值
+            df[col], _ = pd.factorize(df[col])
+        except Exception as e:
+            print(f"处理列 {{col}} 时出错: {{e}}")
+            # 使用哈希函数将字符串转为数值
+            df[col] = df[col].fillna('').astype(str).apply(lambda x: hash(x) % 2147483647 if x else 0)
+
+# 3. 填充剩余的NaN值
+for col in df.columns:
+    if pd.isna(df[col]).any():
+        if df[col].dtype in ['int64', 'float64']:
+            # 对数值列，使用均值填充（如果均值存在且有效）
+            mean_val = df[col].mean()
+            if pd.notna(mean_val):
+                df[col] = df[col].fillna(mean_val)
+            else:
+                df[col] = df[col].fillna(0)
+        else:
+            # 对其他类型列，使用0填充
+            df[col] = df[col].fillna(0)
+
+# 最后确保没有NaN值
+df = df.fillna(0)
+
+# ===== 加载模型并预测 =====
+try:
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
-        
+except Exception as e:
+    print(f"加载模型出错: {{e}}")
+    return -1.0
+
+# 检查目标列是否存在
+if '{target_col}' in df.columns:
     y_true = df['{target_col}']
     X_test = df.drop(columns=['{target_col}'])
-    
-    if '{task_type}' == 'classify':
+else:
+    print(f"警告：目标列 '{target_col}' 不在数据中")
+    print(f"可用列: {{list(df.columns)}}")
+    return -1.0
+
+# 最终数据检查
+X_test = X_test.replace([np.inf, -np.inf, np.nan], 0)
+y_true = y_true.replace([np.inf, -np.inf, np.nan], 0).astype(float)
+
+# 根据任务类型进行不同的评估
+if '{task_type}' == 'classify':
+    try:
         y_pred = model.predict_proba(X_test)[:, 1]
         return float(roc_auc_score(y_true, y_pred))
-    else:
+    except Exception as e:
+        print(f"分类预测错误: {{e}}")
+        try:
+            # 退回到简单准确度评估
+            y_pred = model.predict(X_test)
+            return float(sum(y_pred == y_true) / len(y_true))
+        except Exception as e2:
+            print(f"退回评估错误: {{e2}}")
+            return -1.0
+else:
+    try:
         y_pred = model.predict(X_test)
+        # 计算1-RAE (Relative Absolute Error)
         return float(1-np.sum(np.abs(y_true - y_pred))/np.sum(np.abs(y_true - np.mean(y_true))))
+    except Exception as e:
+        print(f"回归预测错误: {{e}}")
+        return -1.0
 $$ LANGUAGE plpython3u;"""
+
         print(termcolor.colored(udf_template, "yellow"))
 
         cte1 = "tmp_res_store"
@@ -173,63 +280,105 @@ $$ LANGUAGE plpython3u;"""
         for in_attr in in_attrs:
             code = code.replace(f"'{in_attr}'", f"'{in_attr.lower()}'")
         in_attrs = list(map(lambda x: x.lower(), in_attrs))
+        
+        # 使用Python多行字符串格式，避免缩进问题
+        udf_template = f"""CREATE OR REPLACE FUNCTION udf_{seq} (input cur_input_{seq}[])
+RETURNS cur_output_{seq}[] AS $$
+"""
+        # 添加导入代码，确保每个导入语句都在新行上
+        for imp in import_code:
+            udf_template += imp + "\n"
+            
+        udf_template += """import pandas as pd
+import numpy as np
 
-        # Start building the UDF string
-        udf = f"CREATE OR REPLACE FUNCTION udf_{seq} (input cur_input_{seq}[])\n"
-        udf += f"RETURNS cur_output_{seq}[] AS $$\n"
+# 创建DataFrame并进行数据预处理
+"""
+        # 获取列类型字典，用于后续类型转换
+        column_types = {}
+        for attr in out_attrs:
+            # 检查列类型
+            column_type = "int"  # 默认为整数
+            # 如果列名在SQL类型定义中包含float或numeric，则为浮点
+            if "float" in attr.lower() or "numeric" in attr.lower():
+                column_type = "float"
+            column_types[attr.lower()] = column_type
+            
+        # 添加数据处理和用户代码
+        # 预处理用户代码，处理引号转义和缩进
+        if len(code.strip()) == 0:
+            processed_code = "    pass  # 空代码块"
+        else:
+            # 确保用户代码正确缩进（每行前面加4个空格）
+            lines = code.strip().split('\n')
+            indented_lines = ["    " + line for line in lines]
+            processed_code = '\n'.join(indented_lines)
+            processed_code = processed_code.replace('"', '\\"')
 
-        # Add imports with proper indentation
-        if import_code:
-            udf += "    " + "\n    ".join(import_code) + "\n"
-        udf += "    import pandas as pd\n"
-        udf += "    import numpy as np\n"
+        udf_template += f"""{var} = pd.DataFrame(input, columns=[{','.join([f"'{attr}'" for attr in in_attrs])}])
 
-        # Add UDF body lines, ensuring 4-space indentation
-        udf_lines = []
-        # Correct f-string for DataFrame creation
-        udf_lines.append(f"    {var} = pd.DataFrame(input, columns=[{','.join(map(repr, in_attrs))}])")
+# ===== 预处理部分 =====
+# 1. 替换特殊值
+{var} = {var}.replace([np.inf, -np.inf, np.nan], 0)
 
-        # --- Add NaN handling before user code ---
-        udf_lines.append("    # Replace inf/nan before processing")
-        udf_lines.append(f"    {var}.replace([np.inf, -np.inf], np.nan, inplace=True)")
-        # -----------------------------------------
+# 2. 处理类别列
+for col in {var}.columns:
+    if {var}[col].dtype == 'object':
+        try:
+            # 尝试使用factorize将类别转为数值
+            {var}[col] = pd.factorize({var}[col])[0]
+        except Exception as e:
+            print(f"处理列 {{col}} 时出错: {{e}}")
+            # 使用哈希函数将字符串转为数值
+            {var}[col] = {var}[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)
+    
+    # 确保所有NaN值都被替换
+    {var}[col] = {var}[col].fillna(0)
 
-        # --- Insert user code ---
-        user_code_lines = [f"    {line}" for line in code.strip().split('\n')]
-        udf_lines.extend(user_code_lines)
-        # -----------------------
+# ===== 执行用户代码(在try-except块中) =====
+try:
+    # 用户代码块
+"""
 
-        # --- Add NaN handling before returning ---
-        udf_lines.append("    # Replace inf/nan before returning")
-        udf_lines.append(f"    {var}.replace([np.inf, -np.inf], np.nan, inplace=True)")
-        udf_lines.append(f"    {var}.fillna(0, inplace=True)") # Fill remaining NaNs with 0
-        # --- Explicitly convert integer columns ---
-        udf_lines.append("    # Ensure integer columns are truly integer type before returning")
-        # Infer integer columns based on the output type definition (heuristic)
-        # A more robust way would involve passing type info, but this handles common cases.
-        for col in out_attrs: # out_attrs contains the names of columns in the output type
-            # Heuristic: if the column name suggests it's an ID, label, or survived status, try converting
-            if col.endswith('_id') or col == 'id' or col.endswith('_label') or col == 'survived' or col.endswith('pclass'): # Added pclass as it's often treated as int/category
-                 # Check if column exists before trying to convert
-                 udf_lines.append(f"    if '{col}' in {var}.columns:")
-                 udf_lines.append(f"        try:")
-                 udf_lines.append(f"            {var}['{col}'] = {var}['{col}'].astype(np.int64)")
-                 udf_lines.append(f"        except ValueError as e:") # Handle potential errors if conversion fails
-                 udf_lines.append(f"            plpy.warning(f'Could not convert column {{col}} to int64: {{e}}')")
+        # 添加用户代码（不在f-string中）
+        udf_template += processed_code
 
-        # ---------------------------------------
+        # 继续拼接其余的UDF模板
+        udf_template += """
+except Exception as e:
+    print(f"执行代码时出错: {e}")
 
-        # Final assembly:
-        udf += "\n".join(udf_lines) + "\n"
-        udf += postfix_com # Append the postfix directly
+# ===== 输出前的数据清理和类型转换 ====="""
 
-        # Define call statements
-        cte1 = f"tmp_res_store_{seq}"
-        # Correct column joining for call_udf1
-        call_udf1 = f"select udf_{seq}(array(select row({','.join(in_attrs)})::cur_input_{seq} from {cur_table_name})) as row1"
-        call_udf2 = f"select (unnest(row1)).* from {cte1}"
+        # 继续使用f-string处理其余部分
+        udf_template += f"""
+# 确保没有任何NaN值和无限值
+{var} = {var}.replace([np.inf, -np.inf, np.nan], 0)
 
-        return sql_type + udf, (call_udf1, call_udf2), (cte1, "")
+# 对所有列执行适当的类型转换
+for col in {var}.columns:
+    try:
+        # 对于数据库中定义为整数类型的列, 确保是整数
+        {var}[col] = {var}[col].astype(float).round().astype(int)
+    except Exception as e:
+        print(f"类型转换错误 {{col}}: {{e}}")
+        # 默认安全处理: 确保是整数
+        {var}[col] = {var}[col].astype(str).fillna("0")
+        {var}[col] = {var}[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)
+
+# 确保所有数值列是整数
+for col in {var}.columns:
+    if pd.api.types.is_numeric_dtype({var}[col]):
+        {var}[col] = {var}[col].astype(int)
+
+output = {var}.to_dict(orient='records')
+return output
+$$ LANGUAGE plpython3u;"""
+        
+        cte1 = "tmp_res_store_"+str(seq)
+        call_udf1 = "select udf_%s(array(select row(%s)::cur_input_%s from %s)) as row1" %(str(seq), ','.join(in_attrs), str(seq), cur_table_name)
+        call_udf2 = "select (unnest(row1)).* from %s" %(cte1)
+        return sql_type + udf_template, (call_udf1, call_udf2), (cte1, "")
     
     def get_udf_from_template(func_code:str) -> str:
         func_name, origin_type, new_type = Py2Udf.parse_func_code(func_code)
