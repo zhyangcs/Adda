@@ -1,50 +1,25 @@
 <template>
   <div class="end-to-end-content">
-    <!-- 页面标题和状态 -->
-    <div class="page-header">
-      <div class="header-content">
-        <div class="header-title">
-          <i class="bi bi-lightning-charge"></i>
-          <h2>End-to-End Feature Engineering</h2>
-        </div>
-        <div class="header-status">
-          <div class="status-badge" :class="executionStatus">
-            <span class="status-dot"></span>
-            {{ getStatusText() }}
-          </div>
-          <button
-            class="btn-primary"
-            @click="runEndToEndExecution"
-            :disabled="executionStatus === 'running'"
-          >
-            <i class="bi bi-play-circle" v-if="executionStatus !== 'running'"></i>
-            <i class="bi bi-arrow-repeat spinning" v-else></i>
-            {{ executionStatus === 'running' ? 'Running...' : 'Run End-to-End' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 主要内容区域：四部分布局 -->
     <div class="main-grid">
       <!-- 左上：特征信息展示 -->
       <div class="grid-section feature-info-section">
-        <FeatureInfoPanel :feature-data="mockFeatureInfo" />
+        <FeatureInfoPanel :feature-data="currentFeatureInfo" />
       </div>
 
       <!-- 右上：性能对比图表 -->
       <div class="grid-section performance-section">
-        <PerformanceComparisonChart :performance-data="mockPerformanceData" />
+        <PerformanceComparisonChart :performance-data="currentPerformanceData" />
       </div>
 
       <!-- 右下：用时对比图表 -->
       <div class="grid-section time-section">
-        <TimeComparisonChart :time-data="mockTimeData" />
+        <TimeComparisonChart :time-data="currentTimeData" />
       </div>
 
       <!-- 右下：特征重要性可视化 -->
       <div class="grid-section importance-section">
-        <FeatureImportancePanel :importance-data="mockImportanceData" />
+        <FeatureImportancePanel :importance-data="currentImportanceData" />
       </div>
     </div>
 
@@ -81,11 +56,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useTaskStore } from '@/stores/task'
 import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
 import PerformanceComparisonChart from '../../EndToEnd/PerformanceComparisonChart.vue'
 import TimeComparisonChart from '../../EndToEnd/TimeComparisonChart.vue'
 import FeatureImportancePanel from '../../EndToEnd/FeatureImportancePanel.vue'
+import type { FeatureInfo, PerformanceData, TimeData, ImportanceData } from '@/components/EndToEnd/mockData'
+
+// 获取任务store
+const taskStore = useTaskStore()
+
+// 使用真实数据或回退到模拟数据
+const realFeatureInfo = computed(() => {
+  const data = taskStore.autoStepData
+  if (!data) return null
+
+  return {
+    description: data.featureDescription || 'No description available',
+    pythonCode: data.pythonCode || '# No Python code available',
+    sqlCode: data.sqlCode || '-- No SQL code available'
+  } as FeatureInfo
+})
+
+const realPerformanceData = computed(() => {
+  const data = taskStore.autoStepData?.performance
+  if (!data) return null
+
+  return {
+    methods: data.methods || ['Adda', 'AutoFeat', 'FeatureTools', 'DeepFeatureSynthesis'],
+    auc: data.auc || [0.89, 0.82, 0.79, 0.85],
+    f1: data.f1 || [0.87, 0.80, 0.77, 0.83]
+  } as PerformanceData
+})
+
+const realTimeData = computed(() => {
+  const data = taskStore.autoStepData?.timeAnalysis
+  if (!data) return null
+
+  return {
+    methods: data.methods || ['Adda', 'AutoFeat', 'FeatureTools', 'DeepFeatureSynthesis'],
+    totalTime: data.totalTime || [120, 180, 95, 240],
+    trainingTime: data.trainingTime || [45, 120, 60, 180]
+  } as TimeData
+})
+
+const realImportanceData = computed(() => {
+  const data = taskStore.autoStepData?.featureImportance
+  if (!data) return null
+
+  return {
+    shap: data.shap || [
+      { feature: 'age_group', importance: 0.24 },
+      { feature: 'chol_risk_ratio', importance: 0.18 },
+      { feature: 'heart_rate_reserve', importance: 0.15 }
+    ],
+    ig: data.ig || [
+      { feature: 'age_group', importance: 0.31 },
+      { feature: 'chol_risk_ratio', importance: 0.22 }
+    ],
+    rfe: data.rfe || [
+      { feature: 'age_group', importance: 0.28 },
+      { feature: 'risk_score', importance: 0.20 }
+    ],
+    fi: data.fi || [
+      { feature: 'age_group', importance: 0.26 },
+      { feature: 'chol_risk_ratio', importance: 0.19 }
+    ]
+  } as ImportanceData
+})
+
+// 导入模拟数据作为回退
 import {
   mockFeatureInfo,
   mockPerformanceData,
@@ -94,10 +135,25 @@ import {
 } from '../../EndToEnd/mockData'
 
 // 端到端执行相关的状态管理
-const executionStatus = ref<'idle' | 'running' | 'completed' | 'error'>('completed') // 默认显示完成状态
 const progressPercentage = ref(0)
 const loadingMessage = ref('Initializing feature engineering pipeline...')
 const showSuccessNotification = ref(false)
+const executionTimeout = ref<NodeJS.Timeout | null>(null)
+const POLLING_INTERVAL = 5000 // 5秒轮询一次
+
+// 计算属性 - 使用taskStore的状态或本地状态
+const executionStatus = computed(() => {
+  if (taskStore.isRunning) return 'running'
+  if (taskStore.error) return 'error'
+  if (taskStore.autoStepData) return 'completed'
+  return 'idle'
+})
+
+// 计算属性 - 选择使用真实数据或模拟数据
+const currentFeatureInfo = computed(() => realFeatureInfo.value || mockFeatureInfo)
+const currentPerformanceData = computed(() => realPerformanceData.value || mockPerformanceData)
+const currentTimeData = computed(() => realTimeData.value || mockTimeData)
+const currentImportanceData = computed(() => realImportanceData.value || mockImportanceData)
 
 const getStatusText = () => {
   switch (executionStatus.value) {
@@ -115,64 +171,143 @@ const getStatusText = () => {
 }
 
 const runEndToEndExecution = async () => {
-  executionStatus.value = 'running'
-  progressPercentage.value = 0
-  showSuccessNotification.value = false
-
-  const steps = [
-    { message: 'Loading dataset...', duration: 800 },
-    { message: 'Analyzing data patterns...', duration: 1200 },
-    { message: 'Generating features...', duration: 1500 },
-    { message: 'Training models...', duration: 2000 },
-    { message: 'Evaluating performance...', duration: 1000 },
-    { message: 'Computing feature importance...', duration: 800 },
-    { message: 'Finalizing results...', duration: 500 }
-  ]
-
-  const stepIncrement = 100 / steps.length
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i]
-    loadingMessage.value = step.message
-
-    // 模拟进度更新
-    await new Promise(resolve => {
-      const startTime = Date.now()
-      const updateProgress = () => {
-        const elapsed = Date.now() - startTime
-        const progress = Math.min((elapsed / step.duration) * stepIncrement, stepIncrement)
-        progressPercentage.value = Math.min(
-          progressPercentage.value + progress,
-          (i + 1) * stepIncrement
-        )
-
-        if (elapsed < step.duration) {
-          requestAnimationFrame(updateProgress)
-        } else {
-          resolve(true)
-        }
-      }
-      updateProgress()
+  try {
+    // 调试：打印当前配置
+    console.log('EndToEnd Execution - Current Config:', {
+      description: taskStore.config.description,
+      descriptionLength: taskStore.config.description?.length || 0,
+      dataset: taskStore.config.dataset,
+      model: taskStore.config.model
     })
+
+    // 检查配置是否有效
+    if (!taskStore.config.description.trim()) {
+      taskStore.addNotification('Please enter a task description', 'fail')
+      return
+    }
+
+    // 重置状态
+    progressPercentage.value = 0
+    showSuccessNotification.value = false
+    taskStore.error = null
+
+    // 开始执行
+    loadingMessage.value = 'Initializing end-to-end pipeline...'
+    progressPercentage.value = 10
+
+    // 调用autoStep，传入配置进行初始化
+    const success = await taskStore.autoStep(true) // 使用配置
+
+    if (!success) {
+      throw new Error(taskStore.error || 'Failed to start end-to-end execution')
+    }
+
+    loadingMessage.value = 'Running end-to-end analysis...'
+    progressPercentage.value = 30
+
+    // 开始轮询检查任务状态
+    await pollTaskStatus()
+
+  } catch (error) {
+    console.error('End-to-end execution failed:', error)
+    taskStore.error = error instanceof Error ? error.message : 'Unknown error occurred'
+    taskStore.addNotification(`End-to-end execution failed: ${taskStore.error}`, 'fail')
+  }
+}
+
+// 轮询任务状态
+const pollTaskStatus = async () => {
+  let attempts = 0
+  const maxAttempts = 120 // 最多轮询10分钟
+
+  const poll = async () => {
+    attempts++
+
+    try {
+      // 更新进度（模拟进度，实际应该基于后端状态）
+      if (attempts <= 10) {
+        progressPercentage.value = 30 + (attempts * 5)
+        loadingMessage.value = 'Analyzing data patterns...'
+      } else if (attempts <= 30) {
+        progressPercentage.value = 50 + ((attempts - 10) * 1.5)
+        loadingMessage.value = 'Generating features...'
+      } else if (attempts <= 60) {
+        progressPercentage.value = 70 + ((attempts - 30) * 0.5)
+        loadingMessage.value = 'Training models and evaluating performance...'
+      } else {
+        progressPercentage.value = Math.min(90 + ((attempts - 60) * 0.2), 95)
+        loadingMessage.value = 'Computing feature importance and finalizing results...'
+      }
+
+      // 检查是否有结果数据
+      if (taskStore.autoStepData) {
+        // 完成执行
+        progressPercentage.value = 100
+        loadingMessage.value = 'Analysis complete!'
+
+        // 显示成功通知
+        setTimeout(() => {
+          showSuccessNotification.value = true
+          setTimeout(() => {
+            showSuccessNotification.value = false
+          }, 5000)
+        }, 500)
+
+        return
+      }
+
+      // 继续轮询
+      if (attempts < maxAttempts) {
+        executionTimeout.value = setTimeout(poll, POLLING_INTERVAL)
+      } else {
+        // 超时
+        throw new Error('End-to-end execution timed out after 10 minutes')
+      }
+
+    } catch (error) {
+      console.error('Polling error:', error)
+      throw error
+    }
   }
 
-  // 完成执行
-  executionStatus.value = 'completed'
-  progressPercentage.value = 100
-  loadingMessage.value = 'Analysis complete!'
+  // 开始轮询
+  executionTimeout.value = setTimeout(poll, POLLING_INTERVAL)
+}
 
-  // 显示成功通知
-  setTimeout(() => {
-    showSuccessNotification.value = true
-    setTimeout(() => {
-      showSuccessNotification.value = false
-    }, 5000)
-  }, 500)
+// 停止执行
+const stopExecution = () => {
+  if (executionTimeout.value) {
+    clearTimeout(executionTimeout.value)
+    executionTimeout.value = null
+  }
+
+  taskStore.stopTask()
+  progressPercentage.value = 0
+  loadingMessage.value = 'Execution stopped'
 }
 
 onMounted(() => {
   // 初始化端到端执行页面
-  console.log('End-to-end execution page loaded with mock data')
+  console.log('End-to-end execution page loaded')
+
+  // 调试：打印初始配置
+  console.log('Initial Task Config:', {
+    description: taskStore.config.description,
+    descriptionLength: taskStore.config.description?.length || 0,
+    dataset: taskStore.config.dataset,
+    model: taskStore.config.model
+  })
+
+  // 检查任务状态
+  taskStore.checkTaskStatus()
+})
+
+onUnmounted(() => {
+  // 清理定时器
+  if (executionTimeout.value) {
+    clearTimeout(executionTimeout.value)
+    executionTimeout.value = null
+  }
 })
 </script>
 
@@ -203,6 +338,12 @@ onMounted(() => {
 
 .header-title {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header-title-main {
+  display: flex;
   align-items: center;
   gap: 12px;
 }
@@ -219,6 +360,31 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+.data-source-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: rgba(0, 123, 255, 0.1);
+  border: 1px solid rgba(0, 123, 255, 0.2);
+  color: var(--text-secondary);
+  width: fit-content;
+}
+
+.data-source-indicator i {
+  font-size: 16px;
+}
+
+.text-success {
+  color: var(--success-color) !important;
+}
+
+.text-warning {
+  color: var(--warning-color) !important;
+}
+
 .header-status {
   display: flex;
   align-items: center;
@@ -231,7 +397,7 @@ onMounted(() => {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 20px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   border: 1px solid var(--border-color);
 }
@@ -283,7 +449,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   transition: all 0.2s ease;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -296,6 +462,27 @@ onMounted(() => {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.btn-danger {
+  background: var(--danger-color, #dc3545);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  font-size: 16px;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
 }
 
 .spinning {
@@ -401,7 +588,7 @@ onMounted(() => {
 .loading-content p {
   margin: 0 0 24px 0;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .progress-bar {
@@ -421,7 +608,7 @@ onMounted(() => {
 }
 
 .progress-text {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -455,13 +642,13 @@ onMounted(() => {
 
 .notification-content h5 {
   margin: 0 0 4px 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 .notification-content p {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   opacity: 0.9;
 }
 

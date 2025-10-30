@@ -194,7 +194,7 @@ const formatSqlCode = () => {
   gap: 8px;
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 18px;
 }
 
 .panel-actions {
@@ -227,7 +227,7 @@ const formatSqlCode = () => {
 
 .btn-small {
   padding: 4px 6px;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .panel-content {
@@ -265,7 +265,7 @@ const formatSqlCode = () => {
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
@@ -298,7 +298,7 @@ const formatSqlCode = () => {
 
 .markdown-content {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 20px;
 }
 
 .markdown-content :deep(strong) {
@@ -325,7 +325,7 @@ const formatSqlCode = () => {
 }
 
 .code-language {
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -343,7 +343,7 @@ const formatSqlCode = () => {
   border-radius: 0 0 8px 8px;
   overflow: auto;
   flex: 1;
-  font-size: 13px;
+  font-size: 18px;
   line-height: 1.5;
 }
 
@@ -354,6 +354,7 @@ const formatSqlCode = () => {
   color: #24292e;
   white-space: pre;
   overflow-x: auto;
+  font-size: 22px;
 }
 
 /* 语法高亮（简单版本） */
@@ -375,7 +376,7 @@ const formatSqlCode = () => {
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 500;
   display: flex;
   align-items: center;

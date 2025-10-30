@@ -3,7 +3,7 @@
     <div class="section-header">
       <h6 class="section-title">
         <GitBranch :size="18" class="me-2" />
-        Feature Generation - 特征搜索树可视化
+        Feature Generation
       </h6>
     </div>
 

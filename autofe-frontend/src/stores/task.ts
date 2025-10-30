@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { TaskConfig, TaskStatus, TaskResponse, Notification } from '@/types/task'
+import type { TaskConfig, TaskStatus, TaskResponse, Notification, AutoStepData } from '@/types/task'
 import { apiService } from '@/services/APIService'
 
 export const useTaskStore = defineStore('task', () => {
@@ -16,6 +16,7 @@ export const useTaskStore = defineStore('task', () => {
   const isRunning = ref(false)
   const error = ref<string | null>(null)
   const notifications = ref<Notification[]>([])
+  const autoStepData = ref<AutoStepData | null>(null)
 
   // 计算属性
   const canStartTask = computed(() =>
@@ -28,13 +29,13 @@ export const useTaskStore = defineStore('task', () => {
 
   const statusText = computed(() => {
     const statusMap: Record<TaskStatus, string> = {
-      idle: '准备就绪',
-      initializing: '正在初始化...',
-      running: '正在运行...',
-      completed: '已完成',
-      error: '发生错误'
+      idle: 'Ready',
+      initializing: 'Initializing...',
+      running: 'Running...',
+      completed: 'Completed',
+      error: 'Error'
     }
-    return statusMap[status.value] || '未知状态'
+    return statusMap[status.value] || 'Unknown'
   })
 
   // 方法
@@ -99,6 +100,7 @@ export const useTaskStore = defineStore('task', () => {
         isRunning.value = false
         error.value = null
         notifications.value = []
+        autoStepData.value = null
         addNotification('Task cleared successfully', 'success')
       } else {
         addNotification(`Failed to clear task: ${response.message}`, 'fail')
@@ -129,15 +131,26 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  async function autoStep(): Promise<boolean> {
+  async function autoStep(useConfig = false): Promise<boolean> {
     try {
-      if (!isInitialized.value) {
-        addNotification('请先初始化任务', 'fail')
-        return false
+      // 调试：打印参数和配置
+      console.log('TaskStore autoStep - useConfig:', useConfig)
+      if (useConfig) {
+        console.log('TaskStore autoStep - Config to send:', {
+          description: config.value.description,
+          descriptionLength: config.value.description?.length || 0,
+          dataset: config.value.dataset,
+          model: config.value.model
+        })
       }
 
-      const response = await apiService.runAutoPipeline()
+      // 如果指定使用配置，传入配置进行初始化
+      const response = await apiService.runAutoPipeline(useConfig ? config.value : undefined)
       if (response.status === 'success') {
+        if (response.data) {
+          autoStepData.value = response.data
+        }
+        isInitialized.value = true
         addNotification('Auto pipeline executed successfully', 'success')
         return true
       } else {
@@ -188,6 +201,7 @@ export const useTaskStore = defineStore('task', () => {
     isRunning,
     error,
     notifications,
+    autoStepData,
 
     // 计算属性
     canStartTask,

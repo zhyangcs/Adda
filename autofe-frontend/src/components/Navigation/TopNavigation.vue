@@ -56,11 +56,11 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
+  padding: var(--spacing-md) var(--spacing-2xl);
   background: linear-gradient(135deg, #6b46c1 0%, #4c1d95 100%);
-  border-bottom: 1px solid #e5e7eb;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  height: 60px;
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  height: var(--header-height);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -74,7 +74,7 @@ onMounted(() => {
 .welcome-title {
   margin: 0;
   color: #ffffff;
-  font-size: 1.5rem;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -87,19 +87,19 @@ onMounted(() => {
 
 .nav-buttons {
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-lg);
   background: rgba(255, 255, 255, 0.1);
-  padding: 4px;
+  padding: var(--spacing-xs);
   border-radius: 12px;
   backdrop-filter: blur(10px);
 }
 
 .nav-btn {
-  padding: 8px 24px;
+  padding: var(--spacing-sm) var(--spacing-xl);
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   border-radius: 8px;
   cursor: pointer;

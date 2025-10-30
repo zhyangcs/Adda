@@ -86,7 +86,7 @@ const toggleFullscreen = () => {
 
 <style scoped>
 .sql-code-container {
-  background: var(--bg-white);
+  background: var(--bg-primary);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
@@ -100,18 +100,18 @@ const toggleFullscreen = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  background: var(--bg-secondary);
 }
 
 .title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .actions {
@@ -144,7 +144,7 @@ const toggleFullscreen = () => {
 
 .sql-code-content {
   flex: 1;
-  padding: 16px;
+  padding: var(--spacing-lg);
   overflow-y: auto;
   min-height: 0;
 }
@@ -169,7 +169,7 @@ const toggleFullscreen = () => {
 }
 
 .line-info {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
 }
@@ -183,15 +183,15 @@ const toggleFullscreen = () => {
 
 .code-editor pre {
   margin: 0;
-  padding: 16px;
+  padding: var(--spacing-lg);
   overflow-x: auto;
 }
 
 .code-editor code {
   color: #d4d4d4;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -296,8 +296,8 @@ const toggleFullscreen = () => {
 .fullscreen-body pre {
   margin: 0;
   color: #d4d4d4;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 22px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;

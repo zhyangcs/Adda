@@ -122,7 +122,7 @@
 
                     <!-- Opt to Validation (polyline: from bottom edge of Opt to left edge of Validation) -->
                     <path
-                      d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 130 280"
+                      d="M 420 145 L 420 230 A 50 50 0 0 1 370 280 L 220 280"
                       class="connection-line curved"
                       :class="{ active: connectionActiveReverse }"
                       marker-end="url(#arrowhead-opt-validation)"
@@ -130,7 +130,7 @@
 
                     <!-- Validation to Main (straight arrow: from top edge of Validation to bottom edge of Main) -->
                     <path
-                      d="M 85 280 L 85 170"
+                      d="M 180 280 L 120 280 A 20 20 0 0 0 100 260 L 100 130"
                       class="connection-line"
                       :class="{ active: connectionActiveValidation }"
                       marker-end="url(#arrowhead-validation-main)"
@@ -224,7 +224,7 @@
       <div v-if="rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
         <div class="expand-button">
           <span class="expand-arrow">‹</span>
-          <span class="expand-tooltip">展开面板 (Ctrl+→)</span>
+          <span class="expand-tooltip">Expand Panel (Ctrl+→)</span>
         </div>
       </div>
     </splitpanes>
@@ -558,9 +558,9 @@ function handleRefreshData() {
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: 1rem;
+  padding: var(--spacing-lg);
   overflow: hidden;
-  background-color: #ffffff;
+  background-color: var(--bg-primary);
   height: 100%;
 }
 
@@ -752,34 +752,36 @@ function handleRefreshData() {
 }
 
 .section-title {
-  color: #495057;
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0;
   display: flex;
   align-items: center;
+  font-size: var(--font-size-xl);
 }
 
 .info-card {
   height: 100%;
-  background-color: #f8f9fa;
+  background-color: var(--bg-secondary);
   border-radius: 8px;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow-sm);
 }
 
 .info-header {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #dee2e6;
-  background-color: #ffffff;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
   border-radius: 8px 8px 0 0;
 }
 
 .info-title {
-  color: #495057;
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--font-size-md);
 }
 
 .info-content {
@@ -818,13 +820,14 @@ function handleRefreshData() {
 
 .flow-title {
   font-weight: 600;
-  color: #495057;
-  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-xl);
 }
 
 .flow-status {
-  font-size: 0.75rem;
-  color: #6c757d;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 .agents-container {
@@ -841,20 +844,20 @@ function handleRefreshData() {
   transition: all 0.3s ease;
 }
 
-/* 矩形三角落布局 */
+/* 矩形三角落布局 - 修复重叠问题 */
 .main-agent {
-  top: 40px;
-  left: 40px;
+  top: 30px;
+  left: 30px;
 }
 
 .opt-agent {
-  top: 40px;
-  right: 40px;
+  top: 30px;
+  right: 30px;
 }
 
 .validation-agent {
-  bottom: 40px;
-  left: 40px;
+  bottom: 30px;
+  left: 180px;
 }
 
 .agent-icon {
@@ -892,14 +895,14 @@ function handleRefreshData() {
 
 .agent-label {
   font-weight: 600;
-  font-size: 0.875rem;
-  color: #495057;
-  margin-bottom: 0.25rem;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
 }
 
 .agent-goal {
-  font-size: 0.75rem;
-  color: #6c757d;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 .working-indicator {
@@ -965,15 +968,17 @@ function handleRefreshData() {
 
 .detail-label {
   font-weight: 600;
-  color: #495057;
+  color: var(--text-primary);
   min-width: 80px;
   flex-shrink: 0;
+  font-size: var(--font-size-sm);
 }
 
 .detail-value {
-  color: #6c757d;
+  color: var(--text-secondary);
   word-break: break-word;
   flex: 1;
+  font-size: var(--font-size-sm);
 }
 
 .no-node-info {
@@ -981,6 +986,7 @@ function handleRefreshData() {
   font-style: italic;
   text-align: center;
   padding: 2rem 0;
+  font-size: 14px;
 }
 
 /* 动画 */
@@ -1048,7 +1054,7 @@ function handleRefreshData() {
 }
 
 .expand-tooltip {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 500;
 }
 

@@ -4,7 +4,7 @@
     <button
       class="collapse-toggle btn btn-sm btn-outline-secondary"
       @click="toggleCollapse"
-      :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+      :title="isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'"
     >
       <ChevronLeft v-if="!isCollapsed" :size="16" />
       <ChevronRight v-else :size="16" />
@@ -16,14 +16,14 @@
       <div class="sidebar-header">
         <h6 class="mb-0">
           <ScrollText :size="16" class="me-2" />
-          执行日志与系统状态
+          Execution Logs & System Status
         </h6>
       </div>
 
       <!-- 通知列表区域 -->
       <div class="notifications-section">
         <div class="section-title">
-          <small class="text-muted">系统通知</small>
+          <small class="text-muted">System Notifications</small>
           <span class="badge bg-primary" v-if="notifications.length">
             {{ notifications.length }}
           </span>
@@ -55,7 +55,7 @@
           <div v-if="notifications.length === 0" class="empty-notifications">
             <div class="text-center text-muted py-4">
               <Inbox :size="32" class="mb-2" />
-              <p class="small mb-0">暂无系统通知</p>
+              <p class="small mb-0">No system notifications</p>
             </div>
           </div>
         </div>
@@ -95,13 +95,13 @@
       <!-- 系统状态 -->
       <div class="system-status-section">
         <div class="section-title">
-          <small class="text-muted">系统状态</small>
+          <small class="text-muted">System Status</small>
         </div>
 
         <div class="status-indicators">
           <div class="status-item">
             <div class="d-flex justify-content-between align-items-center">
-              <span class="small">任务状态</span>
+              <span class="small">Task Status</span>
               <span class="badge" :class="`bg-${getTaskStatusColor()}`">
                 {{ taskStore.statusText }}
               </span>
@@ -110,7 +110,7 @@
 
           <div class="status-item">
             <div class="d-flex justify-content-between align-items-center">
-              <span class="small">特征数量</span>
+              <span class="small">Feature Count</span>
               <span class="badge bg-info">
                 {{ featureTreeStore.currentFeatures.length }}
               </span>
@@ -119,7 +119,7 @@
 
           <div class="status-item">
             <div class="d-flex justify-content-between align-items-center">
-              <span class="small">执行模式</span>
+              <span class="small">Execution Mode</span>
               <span class="badge bg-secondary">
                 {{ getExecutionModeText() }}
               </span>
@@ -222,7 +222,7 @@ function getTaskStatusColor() {
 }
 
 function getExecutionModeText() {
-  return workspaceStore.executionMode === 'end-to-end' ? '端到端' : '逐步执行'
+  return workspaceStore.executionMode === 'end-to-end' ? 'End-to-End' : 'Step-by-Step'
 }
 
 // 监听通知变化，自动跳转到最新页
@@ -235,9 +235,9 @@ onMounted(() => {
 
 <style scoped>
 .right-sidebar {
-  width: 300px;
-  background-color: #ffffff;
-  border-left: 1px solid #dee2e6;
+  width: var(--right-sidebar-width);
+  background-color: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
@@ -272,16 +272,17 @@ onMounted(() => {
 }
 
 .sidebar-header {
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #dee2e6;
-  margin-bottom: 1rem;
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--spacing-lg);
 }
 
 .sidebar-header h6 {
-  color: #495057;
+  color: var(--text-primary);
   font-weight: 600;
   display: flex;
   align-items: center;
+  font-size: var(--font-size-md);
 }
 
 .notifications-section {
@@ -334,7 +335,7 @@ onMounted(() => {
 }
 
 .notification-content {
-  font-size: 0.875rem;
+  font-size: var(--font-size-base);
 }
 
 .notification-text {

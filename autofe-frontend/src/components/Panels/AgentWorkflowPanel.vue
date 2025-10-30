@@ -4,14 +4,14 @@
       <div class="card-header">
         <h5 class="card-title mb-0">
           <Workflow :size="20" class="me-2" />
-          基于智能体的特征生成
+          Agent-Based Feature Generation
         </h5>
       </div>
       <div class="card-body d-flex flex-column">
         <!-- 工作流程图 -->
         <div class="workflow-container mb-4">
           <div class="workflow-header">
-            <h6 class="mb-3">Agent 工作流程</h6>
+            <h6 class="mb-3">Agent Workflow</h6>
             <div class="workflow-controls">
               <button
                 class="btn btn-sm btn-primary"
@@ -19,14 +19,14 @@
                 :disabled="isWorkflowRunning"
               >
                 <Play :size="14" class="me-1" />
-                {{ isWorkflowRunning ? '运行中...' : '开始工作流' }}
+                {{ isWorkflowRunning ? 'Running...' : 'Start Workflow' }}
               </button>
               <button
                 class="btn btn-sm btn-secondary"
                 @click="resetWorkflow"
               >
                 <RotateCcw :size="14" class="me-1" />
-                重置
+                Reset
               </button>
             </div>
           </div>
@@ -97,7 +97,7 @@
 
         <!-- 当前Agent信息面板 -->
         <div class="agent-panel mb-4">
-          <h6 class="mb-3">当前Agent详情</h6>
+          <h6 class="mb-3">Current Agent Details</h6>
           <div
             v-if="selectedAgent"
             class="agent-details"

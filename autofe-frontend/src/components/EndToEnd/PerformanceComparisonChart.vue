@@ -155,7 +155,7 @@ const setMetric = (metric: 'auc' | 'f1') => {
 }
 
 const createChart = () => {
-  if (!chartRef.value || chartData.value.length === 0) return
+  if (!chartRef.value) return
 
   const container = chartRef.value
   const width = container.clientWidth
@@ -170,7 +170,8 @@ const createChart = () => {
   )
 
   if (validData.length === 0) {
-    console.warn('No valid data available for performance comparison chart')
+    // 显示无数据提示而不是报错
+    showNoDataMessage(container)
     return
   }
 
@@ -287,7 +288,7 @@ const createChart = () => {
     .attr('x', d => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
     .attr('y', d => yScale(d.value) - 5)
     .attr('text-anchor', 'middle')
-    .style('font-size', '12px')
+    .style('font-size', '16px')
     .style('font-weight', 'bold')
     .style('fill', d => d.isAdda ? '#007bff' : '#6c757d')
     .style('opacity', 0)
@@ -326,6 +327,31 @@ const updateTooltipPosition = (event: MouseEvent) => {
 
 const hideTooltip = () => {
   tooltip.value.show = false
+}
+
+const showNoDataMessage = (container: HTMLElement) => {
+  // 清除现有内容
+  d3.select(container).selectAll('*').remove()
+
+  const noDataDiv = d3.select(container)
+    .append('div')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('height', '300px')
+    .style('color', '#6c757d')
+    .style('font-size', '14px')
+
+  noDataDiv.append('i')
+    .attr('class', 'bi bi-bar-chart-line')
+    .style('font-size', '48px')
+    .style('margin-bottom', '16px')
+    .style('opacity', '0.5')
+
+  noDataDiv.append('div')
+    .style('text-align', 'center')
+    .html('No performance data available<br><small>Run the analysis to see performance metrics</small>')
 }
 
 const exportChart = () => {
@@ -399,7 +425,7 @@ watch(() => props.performanceData, () => {
   gap: 8px;
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 18px;
 }
 
 .panel-actions {
@@ -421,7 +447,7 @@ watch(() => props.performanceData, () => {
   border: none;
   padding: 6px 12px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
@@ -483,7 +509,7 @@ watch(() => props.performanceData, () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
 }
 
@@ -519,14 +545,14 @@ watch(() => props.performanceData, () => {
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--text-secondary);
   text-transform: uppercase;
   font-weight: 500;
 }
 
 .stat-value {
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -545,7 +571,7 @@ watch(() => props.performanceData, () => {
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 14px;
   pointer-events: none;
   z-index: 1000;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -619,6 +645,6 @@ watch(() => props.performanceData, () => {
 
 :deep(.tick text) {
   fill: #6c757d;
-  font-size: 11px;
+  font-size: 16px;
 }
 </style>

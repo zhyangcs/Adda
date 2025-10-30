@@ -97,7 +97,8 @@ const isStepByStepPage = computed(() => route.path === '/step-by-step')
 
 // 执行按钮事件处理函数
 async function handleStart() {
-  const success = await taskStore.autoStep()
+  // 如果是端到端页面，传入配置进行初始化
+  const success = await taskStore.autoStep(isEndToEndPage.value)
   if (success) {
     await featureTreeStore.loadTreeData()
   }
@@ -171,21 +172,22 @@ function handleShowThinking() {
 
 <style scoped>
 .execution-control-bar {
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 12px 20px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-xl);
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 60px;
+  min-height: var(--control-bar-height);
   position: sticky;
   top: 0;
   z-index: 10;
+  box-shadow: var(--shadow-sm);
 }
 
 .button-group {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm);
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
@@ -200,6 +202,7 @@ function handleShowThinking() {
   display: flex;
   align-items: center;
   white-space: nowrap;
+  font-size: 16px;
 }
 
 .btn:hover:not(:disabled) {

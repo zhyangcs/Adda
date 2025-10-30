@@ -553,7 +553,7 @@ watch(() => props.importanceData, () => {
   gap: 8px;
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 18px;
 }
 
 .panel-actions {
@@ -615,7 +615,7 @@ watch(() => props.importanceData, () => {
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
@@ -668,7 +668,7 @@ watch(() => props.importanceData, () => {
 
 .rankings-header h6 {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -678,7 +678,7 @@ watch(() => props.importanceData, () => {
   color: white;
   padding: 4px 8px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -716,7 +716,7 @@ watch(() => props.importanceData, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: white;
   flex-shrink: 0;
@@ -736,7 +736,7 @@ watch(() => props.importanceData, () => {
 }
 
 .feature-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
@@ -759,7 +759,7 @@ watch(() => props.importanceData, () => {
 }
 
 .importance-value {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   font-family: 'Monaco', 'Menlo', monospace;
@@ -775,13 +775,13 @@ watch(() => props.importanceData, () => {
 
 .comparison-header h6 {
   margin: 0 0 12px 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .comparison-table {
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .table-header {
@@ -841,14 +841,14 @@ watch(() => props.importanceData, () => {
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--text-secondary);
   text-transform: uppercase;
   font-weight: 500;
 }
 
 .stat-value {
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -927,6 +927,6 @@ watch(() => props.importanceData, () => {
 
 :deep(.tick text) {
   fill: #6c757d;
-  font-size: 10px;
+  font-size: 16px;
 }
 </style>

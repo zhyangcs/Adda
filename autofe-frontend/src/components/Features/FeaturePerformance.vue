@@ -275,7 +275,7 @@ const exportData = () => {
 
 <style scoped>
 .feature-performance-container {
-  background: var(--bg-white);
+  background: var(--bg-primary);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
@@ -289,18 +289,18 @@ const exportData = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  background: var(--bg-secondary);
 }
 
 .title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .actions {
@@ -342,7 +342,7 @@ const exportData = () => {
 
 .performance-content {
   flex: 1;
-  padding: 16px;
+  padding: var(--spacing-lg);
   overflow-y: auto;
   min-height: 0;
 }
@@ -354,9 +354,9 @@ const exportData = () => {
 }
 
 .metric-card {
-  background: var(--bg-light);
+  background: var(--bg-secondary);
   border-radius: 8px;
-  padding: 16px;
+  padding: var(--spacing-lg);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
 }
@@ -380,7 +380,7 @@ const exportData = () => {
 
 .metric-header h6 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -393,13 +393,13 @@ const exportData = () => {
 }
 
 .metric-value .value {
-  font-size: 24px;
+  font-size: 36px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .metric-value .unit {
-  font-size: 12px;
+  font-size: 18px;
   color: var(--text-secondary);
   text-transform: uppercase;
 }
@@ -414,7 +414,7 @@ const exportData = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .detail-item span {
@@ -472,7 +472,7 @@ const exportData = () => {
 }
 
 .shap-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
   color: #f59e0b;
 }
@@ -486,8 +486,8 @@ const exportData = () => {
 .shap-bar-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: var(--spacing-sm);
+  font-size: 16px;
 }
 
 .feature-name {

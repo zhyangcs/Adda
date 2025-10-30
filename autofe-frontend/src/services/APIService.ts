@@ -127,8 +127,55 @@ class APIService {
     return response.json()
   }
 
-  async runAutoPipeline(): Promise<TaskResponse> {
-    return this.post('/auto-step/')
+  async runAutoPipeline(config?: TaskConfig): Promise<TaskResponse> {
+    if (config) {
+      // 调试：打印配置信息
+      console.log('AutoStep API Call - Config:', {
+        description: config.description,
+        descriptionLength: config.description?.length || 0,
+        dataset: config.dataset,
+        model: config.model
+      })
+
+      // 传入任务配置，与checkFormat相同的逻辑
+      const formData = new FormData()
+
+      // 确保description存在且不为空
+      if (!config.description || config.description.trim() === '') {
+        throw new Error('Task description is required')
+      }
+
+      formData.append('taskDescription', config.description.trim())
+
+      // 将数字值转换为对应的文本
+      const datasetMap: Record<string, string> = {
+        '1': 'Titanic',
+        '2': 'Heart',
+        '3': 'Bank',
+        '4': 'Diabetes',
+        '5': 'Bike',
+        '6': 'House'
+      }
+
+      const modelMap: Record<string, string> = {
+        '1': 'Openai-gpt4-turbo',
+        '2': 'Openai-gpt4o',
+        '3': 'Openai-gpt4o-mini',
+        '4': 'Deepseek-v3'
+      }
+
+      formData.append('dataset', datasetMap[config.dataset] || config.dataset)
+      formData.append('model', modelMap[config.model] || config.model)
+
+      const response = await fetch('/auto-step/', {
+        method: 'POST',
+        body: formData
+      })
+
+      return response.json()
+    } else {
+      return this.post('/auto-step/')
+    }
   }
 }
 

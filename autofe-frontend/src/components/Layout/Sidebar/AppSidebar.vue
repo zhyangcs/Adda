@@ -4,7 +4,7 @@
     <button
       class="collapse-toggle"
       @click="toggleCollapse"
-      :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+      :title="isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'"
     >
       <ChevronLeft v-if="!isCollapsed" :size="16" />
       <ChevronRight v-else :size="16" />
@@ -17,30 +17,30 @@
         <div class="component-header">
           <h6 class="text-white mb-2">
             <Settings :size="16" class="me-1" />
-            任务配置
+            Task Configuration
           </h6>
         </div>
 
         <div class="component-content px-3">
           <!-- 任务描述 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">任务描述</label>
+            <label class="form-label text-white-50 small">Task Description</label>
             <textarea
               v-model="taskStore.config.description"
               class="form-control form-control-sm"
               rows="3"
-              placeholder="输入机器学习任务描述..."
+              placeholder="Enter machine learning task description..."
             ></textarea>
           </div>
 
           <!-- 数据集选择 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">数据集</label>
+            <label class="form-label text-white-50 small">Dataset</label>
             <select
               v-model="taskStore.config.dataset"
               class="form-select form-select-sm"
             >
-              <option value="" disabled>选择数据集</option>
+              <option value="" disabled>Select Dataset</option>
               <option value="1">Titanic</option>
               <option value="2">Heart</option>
               <option value="3">Bank</option>
@@ -52,12 +52,12 @@
 
           <!-- Agent模型选择 -->
           <div class="mb-3">
-            <label class="form-label text-white-50 small">Agent模型</label>
+            <label class="form-label text-white-50 small">Agent Model</label>
             <select
               v-model="taskStore.config.model"
               class="form-select form-select-sm"
             >
-              <option value="" disabled>选择模型</option>
+              <option value="" disabled>Select Model</option>
               <option value="1">Openai-gpt4-turbo</option>
               <option value="2">Openai-gpt4o</option>
               <option value="3">Openai-gpt4o-mini</option>
@@ -72,7 +72,7 @@
             :disabled="isSubmitting"
           >
             <CheckCircle :size="14" class="me-1" />
-            {{ isSubmitting ? '检查中...' : 'Check Format' }}
+            {{ isSubmitting ? 'Checking...' : 'Check Format' }}
           </button>
         </div>
       </div>
@@ -139,11 +139,11 @@ async function handleCheckFormat() {
 
 <style scoped>
 .app-sidebar {
-  width: 330px;
-  min-width: 330px;
-  max-width: 330px;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
   height: 100vh;
-  padding: 1rem 0;
+  padding: var(--spacing-lg) 0;
   background-color: #343a40 !important;
   display: flex;
   flex-direction: column;
@@ -238,8 +238,8 @@ async function handleCheckFormat() {
 }
 
 .component-header {
-  padding: 0 1rem;
-  margin-bottom: 1rem;
+  padding: 0 var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
 }
 
 .component-header h6 {
@@ -247,6 +247,8 @@ async function handleCheckFormat() {
   margin: 0;
   display: flex;
   align-items: center;
+  font-size: var(--font-size-md);
+  color: white;
 }
 
 .component-content {
@@ -292,8 +294,10 @@ async function handleCheckFormat() {
   background-color: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
-  font-size: 0.875rem;
+  font-size: var(--font-size-base);
   width: 100%;
+  padding: var(--spacing-lg);
+  border-radius: 6px;
 }
 
 .form-control:focus,
@@ -311,7 +315,8 @@ async function handleCheckFormat() {
 .form-label {
   color: rgba(255, 255, 255, 0.8);
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-base);
 }
 
 /* 标签页样式 */
