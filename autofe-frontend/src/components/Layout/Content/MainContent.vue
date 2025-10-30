@@ -407,7 +407,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
 
   // 添加性能测试事件监听器
-  window.addEventListener('test-performance', handleTestPerformanceEvent)
+  window.addEventListener('test-performance', handleTestPerformanceEvent as EventListener)
 
   // 添加splitter点击事件监听器
   nextTick(() => {
@@ -439,7 +439,7 @@ onMounted(() => {
 onUnmounted(() => {
   // 移除事件监听器
   window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('test-performance', handleTestPerformanceEvent)
+  window.removeEventListener('test-performance', handleTestPerformanceEvent as EventListener)
 })
 
 // 处理性能测试事件
@@ -451,19 +451,27 @@ function handleTestPerformanceEvent(event: CustomEvent) {
     toggleRightPanel()
   }
 
-  // 调用性能测试函数
-  testPerformance()
+  // 调用性能测试函数，传递选中的节点ID
+  testPerformance(features)
 }
 
 // 右侧面板组件事件处理
 async function handleGenerateFeatures() {
-  // 处理测试性能请求
-  await testPerformance()
+  // 处理测试性能请求，使用当前选中的节点ID
+  await testPerformance(featureTreeStore.selectedNodeIds)
 }
 
-async function testPerformance() {
+async function testPerformance(selectedNodeIds?: string[]) {
   if (isLoadingPerformance.value) {
-    taskStore.addNotification('Performance test already in progress...', 'warning')
+    taskStore.addNotification('Performance test already in progress...', 'info')
+    return
+  }
+
+  // 确定要使用的节点ID
+  const nodeIds = selectedNodeIds || featureTreeStore.selectedNodeIds
+
+  if (!nodeIds || nodeIds.length === 0) {
+    taskStore.addNotification('Please select at least one feature to test performance', 'info')
     return
   }
 
@@ -477,7 +485,7 @@ async function testPerformance() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        // 如果需要传递参数，可以在这里添加
+        selectedNodeIds: nodeIds
       })
     })
 
@@ -533,7 +541,7 @@ async function testPerformance() {
     }
   } catch (error) {
     console.error('Error testing performance:', error)
-    taskStore.addNotification(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
+    taskStore.addNotification(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'fail')
   } finally {
     isLoadingPerformance.value = false
   }

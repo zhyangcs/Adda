@@ -134,33 +134,33 @@ async function handleNextStep() {
 }
 
 async function handleTestPerformance() {
-  if (featureTreeStore.selectedFeatures.length === 0) {
-    taskStore.addNotification('Please select at least one feature to test performance', 'warning')
+  if (featureTreeStore.selectedNodeIds.length === 0) {
+    taskStore.addNotification('Please select at least one feature to test performance', 'info')
     return
   }
 
   // 发射全局事件，让MainContent组件接收
   window.dispatchEvent(new CustomEvent('test-performance', {
-    detail: { features: featureTreeStore.selectedFeatures }
+    detail: { features: featureTreeStore.selectedNodeIds }
   }))
 }
 
 async function handleGenerateModel() {
-  if (featureTreeStore.selectedFeatures.length === 0) {
-    taskStore.addNotification('Please select at least one feature to generate model', 'warning')
+  if (featureTreeStore.selectedNodeIds.length === 0) {
+    taskStore.addNotification('Please select at least one feature to generate model', 'info')
     return
   }
 
-  await taskStore.generateModel(featureTreeStore.selectedFeatures)
+  await taskStore.generateModel(featureTreeStore.selectedNodeIds)
 }
 
 async function handleDownload() {
-  if (featureTreeStore.selectedFeatures.length === 0) {
-    taskStore.addNotification('Please select at least one feature to download', 'warning')
+  if (featureTreeStore.selectedNodeIds.length === 0) {
+    taskStore.addNotification('Please select at least one feature to download', 'info')
     return
   }
 
-  await taskStore.downloadModel(featureTreeStore.selectedFeatures)
+  await taskStore.downloadModel(featureTreeStore.selectedNodeIds)
 }
 
 function handleShowThinking() {

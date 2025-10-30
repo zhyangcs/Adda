@@ -214,7 +214,7 @@ class PythonPolisher:
                 scores.append(cursor.fetchone()[0])
                 
             if len(scores) == 0:
-                return [], [], []    
+                return [], [], []
             best_pipe_idx = scores.index(max(scores))
         else:
             cursor = get_conn().cursor()

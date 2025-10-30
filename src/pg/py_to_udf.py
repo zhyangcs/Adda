@@ -76,7 +76,19 @@ RETURNS text AS $$
     model.fit(train_x, train_y)
     # get id of model
     cur_models = os.listdir('{model_store_path}')
-    cur_id = max([int(model[:-4].split('_')[-1]) for model in cur_models]) + 1 if cur_models else 0
+    # Extract valid model IDs from .pkl files only
+    valid_model_ids = []
+    for model in cur_models:
+        if model.endswith('.pkl'):
+            try:
+                # Extract the numeric ID from filename like "model_name_type_123.pkl"
+                model_id = int(model[:-4].split('_')[-1])
+                valid_model_ids.append(model_id)
+            except (ValueError, IndexError):
+                # Skip files that don't match the expected pattern
+                continue
+
+    cur_id = max(valid_model_ids) + 1 if valid_model_ids else 0
     # cur_id = int(time.time() * 1000) + os.getpid()
     
     model_name = f"{model_name}_{model_type}_{{cur_id}}.pkl"

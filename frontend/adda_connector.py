@@ -127,10 +127,15 @@ class AddaConnector:
             # # 预处理结束
             print("successfuly init the task")
 
+            # 添加手动创建的特征节点用于测试（节省LLM API token）
+            if task_name == "mock_data":
+                self._add_mock_feature_nodes()
+
             # 生成前端需要的树形结构
             tree_structure = self._convert_dag_to_tree()
+            print(f"Generated tree structure: {tree_structure}")
             return True, "任务启动成功", tree_structure
-            
+
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -182,41 +187,161 @@ class AddaConnector:
         except Exception as e:
             return False, f"Error generating feature: {str(e)}", None
     
-    def test_performance(self, selected_node_ids):
-        """测试选定特征的性能（真实评估逻辑）"""
+    def test_performance(self, selected_node_ids, model_type="RF", use_in_db_ml=True):
+        """
+        测试选定节点特征组合的性能
+        支持真正的in-database ML训练和测试
+
+        Args:
+            selected_node_ids: 选择的节点ID列表
+            model_type: 模型类型 (RF, XGB, LightGBM)
+            use_in_db_ml: 是否使用in-database ML (默认True)
+
+        Returns:
+            Tuple of (success, message, performance_info)
+        """
         try:
             if not self.llm_dag_constructor:
                 return False, "No active task, please start a task first", None
-            
+
+            if not selected_node_ids:
+                return False, "No nodes selected for performance testing", None
+
+            # 验证节点是否存在
+            existing_node_ids = [str(n.node_id) for n in self.llm_dag_constructor.dag.nodes()]
+            invalid_nodes = [nid for nid in selected_node_ids if str(nid) not in existing_node_ids]
+            if invalid_nodes:
+                return False, f"Invalid node IDs: {invalid_nodes}", None
+
+            # 检查是否只选择了根节点（根节点无法直接用于训练）
+            if len(selected_node_ids) == 1 and selected_node_ids[0] == "1":
+                return False, "根节点仅包含原始数据，无法直接用于模型训练。请先点击'Next Step'按钮生成特征节点，然后选择生成的特征节点进行测试。", None
+
+            # 如果使用in-database ML，调用新的多节点训练方法
+            if use_in_db_ml:
+                return self._test_performance_in_db(selected_node_ids, model_type)
+            else:
+                # 保持原有的模拟方法作为备选
+                return self._test_performance_simulation(selected_node_ids)
+
+        except Exception as e:
+            return False, f"Error testing performance: {str(e)}", None
+
+    def _test_performance_in_db(self, selected_node_ids, model_type):
+        """
+        使用in-database ML进行性能测试
+        """
+        try:
+            from train_node_model import NodeModelTrainer
+
+            # 创建训练器
+            trainer = NodeModelTrainer()
+
+            # 获取任务名称（如果有的话）
+            task_name = None
+            if hasattr(self.llm_dag_constructor, 'task_name'):
+                task_name = self.llm_dag_constructor.task_name
+
+            # 根据选择的节点数量决定使用单节点还是多节点训练
+            if len(selected_node_ids) == 1:
+                # 单节点训练
+                success, result_info, performance_metrics = trainer.train_on_single_node(
+                    selected_node_ids[0],
+                    self.llm_dag_constructor,
+                    task_name=task_name,
+                    model_type=model_type
+                )
+            else:
+                # 多节点训练
+                success, result_info, performance_metrics = trainer.train_on_multiple_nodes(
+                    selected_node_ids,
+                    self.llm_dag_constructor,
+                    task_name=task_name,
+                    model_type=model_type
+                )
+
+            if success:
+                # 格式化返回结果
+                auc = performance_metrics.get("auc", 0.0)
+                exec_time = performance_metrics.get("execution_time", 0.0)
+
+                # 根据任务类型确定指标
+                task_type = self.llm_dag_constructor.task_type
+                metric = "AUC" if task_type == "classify" else "1-RAE"
+
+                # 构建详细的结果消息
+                node_desc = f"node {selected_node_ids[0]}" if len(selected_node_ids) == 1 else f"nodes {', '.join(selected_node_ids)}"
+                message = f"In-DB ML {metric}: {auc:.4f} for {node_desc} ({model_type}, {exec_time:.2f}s)"
+
+                # 组合性能信息
+                performance_info = {
+                    "auc": auc,
+                    "execution_time": exec_time,
+                    "model_type": model_type,
+                    "selected_nodes": selected_node_ids,
+                    "in_db_ml": True,
+                    "node_count": len(selected_node_ids),
+                    "result_info": result_info,
+                    "sql_code": result_info.get("sql_code", {}),
+                    "sql_file_paths": result_info.get("sql_file_paths", {})
+                }
+
+                return True, message, performance_info
+            else:
+                return False, f"In-DB ML training failed: {result_info}", None
+
+        except Exception as e:
+            return False, f"In-DB ML performance test failed: {str(e)}", None
+
+    def _test_performance_simulation(self, selected_node_ids):
+        """
+        使用原有的模拟方法进行性能测试（作为备选方案）
+        """
+        try:
             # 合并所有选中节点的特征
-            selected_nodes = [n for n in self.llm_dag_constructor.dag.nodes 
+            selected_nodes = [n for n in self.llm_dag_constructor.dag.nodes
                             if n.node_id in selected_node_ids]
-            
+
             # 按DAG层级排序确保特征叠加顺序
             dag = self.llm_dag_constructor.dag
             root_node = next(n for n in dag.nodes if isinstance(n, LLMDAGNODE) and dag.in_degree(n) == 0)
             sorted_nodes = sorted(selected_nodes, key=lambda n: len(nx.shortest_path(dag, root_node, n)))
-            
+
             # 合并特征并去重
             merged_df = pd.concat([n.out_cur_df for n in sorted_nodes], axis=1)
             merged_df = merged_df.loc[:,~merged_df.columns.duplicated()]
-            
+
             # 处理目标列
             target_col = self.llm_dag_constructor.target_col
             encoded_target = f"{target_col}_Label"
             if encoded_target in merged_df:
                 merged_df = merged_df.rename(columns={encoded_target: target_col})
-            
+
             # 调用核心评估方法
             score, _, _ = self.llm_dag_constructor.get_scores(merged_df)
-            
+
             # 根据任务类型格式化结果
             task_type = self.llm_dag_constructor.task_type
             metric = "AUC" if task_type == "classify" else "1-RAE"
-            return True, f"{metric}: {score:.4f}", None
-            
+
+            # 构建结果消息
+            node_desc = f"node {selected_node_ids[0]}" if len(selected_node_ids) == 1 else f"nodes {', '.join(selected_node_ids)}"
+            message = f"Simulation {metric}: {score:.4f} for {node_desc}"
+
+            # 性能信息
+            performance_info = {
+                "score": score,
+                "metric": metric,
+                "selected_nodes": selected_node_ids,
+                "in_db_ml": False,
+                "node_count": len(selected_node_ids),
+                "method": "simulation"
+            }
+
+            return True, message, performance_info
+
         except Exception as e:
-            return False, f"Error testing performance: {str(e)}", None
+            return False, f"Simulation performance test failed: {str(e)}", None
     
     def generate_model(self, selected_node_ids):
         """生成真实模型（基于LLMDagConstructor的最佳代码）"""
@@ -400,3 +525,193 @@ class AddaConnector:
         elif "apply(" in task_code:
             return "应用自定义函数"
         return "特征转换操作"
+
+    def train_on_single_node(self, node_id, task_name=None, model_type="RF", dataset_path=None):
+        """
+        对单个节点进行in-DB ML模型训练
+        完全基于run_multimodel_type.py的逻辑实现
+
+        参数:
+            node_id: 节点ID
+            task_name: 数据集类型（如: heart, diabetes, titanic等）
+            model_type: 模型类型（RF/XGB/LightGBM等）
+            dataset_path: 数据集路径（可选，通常不指定，内部会根据task_name构建）
+
+        返回:
+            tuple: (成功状态, 结果信息, 性能指标)
+        """
+        try:
+            # 导入训练模块
+            from train_node_model import NodeModelTrainer
+
+            # 创建训练器实例
+            trainer = NodeModelTrainer()
+
+            # 如果没有指定task_name，尝试从当前DAG构造器获取
+            if not task_name and self.llm_dag_constructor:
+                # 这里可能需要从DAG构造器中提取任务信息
+                # 暂时使用默认值
+                task_name = None
+
+            # 执行单节点训练
+            success, result_info, performance_metrics = trainer.train_on_single_node(
+                node_id=node_id,
+                llm_dag_constructor=self.llm_dag_constructor,
+                task_name=task_name,
+                model_type=model_type,
+                dataset_path=dataset_path
+            )
+
+            return success, result_info, performance_metrics
+
+        except Exception as e:
+            error_msg = f"单节点训练失败: {str(e)}"
+            print(f"Error in train_on_single_node: {error_msg}")
+            return False, error_msg, None
+
+    def _add_mock_feature_nodes(self):
+        """手动添加mock特征节点，节省LLM API token"""
+        try:
+            from src.llm.llm_dag_node import LLMDAGNODE
+            import pandas as pd
+            import numpy as np
+
+            print("添加mock特征节点...")
+
+            # 获取根节点
+            root_node = None
+            for node in self.llm_dag_constructor.dag.nodes():
+                if hasattr(node, 'node_id') and node.node_id == 1:
+                    root_node = node
+                    break
+
+            if not root_node:
+                print("未找到根节点")
+                return
+
+            # 创建mock数据
+            df = pd.DataFrame({
+                'age': [25, 35, 45, 55, 65, 30, 40, 50, 60, 70],
+                'sex': [1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+                'cp': [120, 130, 140, 150, 160, 125, 135, 145, 155, 165],
+                'trestbps': [120, 130, 140, 150, 160, 125, 135, 145, 155, 165],
+                'chol': [200, 220, 240, 260, 280, 210, 230, 250, 270, 290],
+                'fbs': [1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+                'restecg': [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                'thalach': [150, 140, 130, 120, 110, 145, 135, 125, 115, 105],
+                'exang': [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                'oldpeak': [2.0, 3.0, 1.0, 4.0, 0.5, 2.5, 3.5, 1.5, 4.5, 0.0],
+                'slope': [1, 2, 3, 1, 2, 3, 1, 2, 3, 1],
+                'ca': [0, 1, 2, 0, 1, 2, 0, 1, 2, 0],
+                'thal': [1, 2, 3, 1, 2, 3, 1, 2, 3, 1],
+                'tenyearchd': [0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+            })
+
+            # 定义特征节点
+            mock_nodes = [
+                {
+                    'node_id': 2,
+                    'feature_name': 'risk_score_v2',
+                    'task_code': '''
+# 节点2: 风险分数计算v2
+def calculate_risk_score_v2(row):
+    ratio_bp = row['cp'] / row['trestbps'] if row['trestbps'] > 0 else 0
+
+    if row['fbs'] == 1:
+        glucose_factor = row['chol'] / df['chol'].mean()
+        ratio_bp += glucose_factor
+
+    risk_score = (ratio_bp * row['age']) / (row['thalach'] + 1)
+    return risk_score
+
+df['risk_score_v2'] = df.apply(calculate_risk_score_v2, axis=1)
+                    ''',
+                    'op_type': 'Transformation',
+                    'score': 0.72,
+                    'exec_time': 0.15,
+                    'operation_desc': '计算心血管风险分数v2'
+                },
+                {
+                    'node_id': 3,
+                    'feature_name': 'risk_factor_score',
+                    'task_code': '''
+# 节点3: 风险因子分数
+df['risk_factor_score'] = (
+    df['age'] * df['cp'] +
+    df['chol'] * df['fbs'] +
+    df['oldpeak'] * df['exang']
+) / 100
+                    ''',
+                    'op_type': 'Aggregation',
+                    'score': 0.68,
+                    'exec_time': 0.12,
+                    'operation_desc': '聚合风险因子分数'
+                },
+                {
+                    'node_id': 4,
+                    'feature_name': 'health_index',
+                    'task_code': '''
+# 节点4: 健康指数
+df['health_index'] = (
+    np.sqrt(df['age'] * df['cp']) +
+    np.log1p(df['chol']) +
+    df['thalach'] / df['age'] -
+    df['oldpeak'] * df['slope']
+)
+                    ''',
+                    'op_type': 'Transformation',
+                    'score': 0.75,
+                    'exec_time': 0.18,
+                    'operation_desc': '计算综合健康指数'
+                }
+            ]
+
+            # 创建节点对象并添加到DAG
+            for node_data in mock_nodes:
+                try:
+                    # 创建一个包含新特征的DataFrame
+                    df_with_feature = df.copy()
+
+                    # 执行特征代码
+                    exec(node_data['task_code'], {'df': df_with_feature, 'np': np})
+
+                    node = LLMDAGNODE(
+                        node_id=node_data['node_id'],
+                        task_code=node_data['task_code'],
+                        read_set=set(df.columns),
+                        write_set=set(df_with_feature.columns),
+                        in_cur_df=df.copy(),
+                        out_cur_df=df_with_feature,
+                        column_info={col: 'float' for col in df_with_feature.columns},
+                        op_list=[],
+                        op_type=node_data['op_type'],
+                        init_scores=[],
+                        final_score=node_data['score'],
+                        operation_desc=node_data['operation_desc'],
+                        sql_code=f"SELECT *, {node_data['feature_name']} FROM features",
+                        dependency=[root_node],
+                        attr_imp_list=[],
+                        op_sql=[],
+                        in_train=True,
+                        in_test=True,
+                        exec_time=node_data['exec_time'],
+                        attr_imp_order=[],
+                        whole_code=node_data['task_code']
+                    )
+
+                    # 添加到DAG
+                    self.llm_dag_constructor.dag.add_node(node)
+                    self.llm_dag_constructor.dag.add_edge(root_node, node)
+
+                    print(f"成功添加节点 {node.node_id}: {node_data['feature_name']}")
+
+                except Exception as e:
+                    print(f"创建节点 {node_data['node_id']} 失败: {e}")
+                    continue
+
+            print(f"Mock特征节点添加完成，共添加 {len(mock_nodes)} 个节点")
+
+        except Exception as e:
+            print(f"添加mock特征节点失败: {e}")
+            import traceback
+            traceback.print_exc()
