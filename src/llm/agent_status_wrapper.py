@@ -136,14 +136,24 @@ class AgentStatusWrapper:
             thinking_data: 思考数据字典，包含agent、thinking等信息
         """
         try:
+            print(f"[DEBUG] send_agent_thinking called with: {thinking_data}")
+
             # 确保必要字段存在
             if 'agent' not in thinking_data:
                 logger.warning("Agent thinking data missing 'agent' field")
+                print("[WARNING] Agent thinking data missing 'agent' field")
                 return
 
             if 'thinking' not in thinking_data:
                 logger.warning("Agent thinking data missing 'thinking' field")
+                print("[WARNING] Agent thinking data missing 'thinking' field")
                 return
+
+            # 过滤掉RAG example模板内容，避免显示冗长的示例
+            thinking_content = thinking_data['thinking']
+            if 'Here are' in thinking_content and 'examples' in thinking_content and 'illustrating the impact' in thinking_content:
+                print(f"[DEBUG] Filtered out RAG example content for {thinking_data['agent']}")
+                return  # 不发送RAG示例内容
 
             # 添加时间戳
             thinking_data['timestamp'] = time.time()
@@ -152,12 +162,16 @@ class AgentStatusWrapper:
             agent = thinking_data['agent']
             self.current_thinking[agent] = thinking_data.copy()
 
+            print(f"[DEBUG] About to send thinking data for {agent}: {thinking_data['thinking'][:50]}...")
+
             # 推送到WebSocket（通过全局消息系统）
             _send_to_all_websockets('agent_thinking', thinking_data)
 
+            print(f"[DEBUG] Successfully sent thinking data for {agent}")
             logger.debug(f"Sent agent thinking: {agent}")
 
         except Exception as e:
+            print(f"[ERROR] Error sending agent thinking: {e}")
             logger.error(f"Error sending agent thinking: {e}")
 
     def start_agent_work(self, agent: str, work_type: str, details: Dict[str, Any] = None):
@@ -211,35 +225,41 @@ class AgentStatusWrapper:
 
     def send_detailed_thinking(self, agent: str, main_content: str, details: Dict[str, Any] = None, examples: List[str] = None):
         """
-        发送详细的Agent思考过程，支持多层级信息展示
+        Send detailed agent thinking process with multi-level information display
 
         Args:
-            agent: Agent标识符
-            main_content: 主要思考内容
-            details: 详细信息字典
-            examples: 示例列表，用于展示具体实例
+            agent: Agent identifier
+            main_content: Main thinking content
+            details: Detailed information dictionary
+            examples: Example list for showing specific instances
         """
         try:
             thinking_content = main_content
 
-            # 添加详细信息
+            # Add detailed information
             if details:
-                thinking_content += "\n\n详细信息："
+                thinking_content += "\n\nDetails:"
                 for key, value in details.items():
                     if isinstance(value, (list, tuple)):
                         thinking_content += f"\n- {key}: {', '.join(map(str, value[:3]))}"
                         if len(value) > 3:
-                            thinking_content += f" (共{len(value)}项)"
+                            thinking_content += f" (total {len(value)} items)"
                     elif isinstance(value, dict):
-                        thinking_content += f"\n- {key}: {list(value.keys())[:2]}..."  # 显示前几个键
+                        thinking_content += f"\n- {key}: {list(value.keys())[:2]}..."  # Show first few keys
                     else:
                         thinking_content += f"\n- {key}: {value}"
 
-            # 添加示例信息
+            # Add examples - make them clean and readable
             if examples:
-                thinking_content += "\n\n具体示例："
-                for i, example in enumerate(examples[:2], 1):  # 最多显示2个示例
-                    thinking_content += f"\n{i}. {example}"
+                thinking_content += "\n\nExamples:"
+                for i, example in enumerate(examples[:2], 1):  # Show max 2 examples
+                    # Clean up the example to remove code artifacts
+                    clean_example = example.replace('# Import necessary libraries:', '').replace('import pandas as pd', '').replace('import numpy as np', '').strip()
+                    clean_example = clean_example.replace('# Core code definition:', '').strip()
+                    if clean_example:
+                        thinking_content += f"\n{i}. {clean_example}"
+                    else:
+                        thinking_content += f"\n{i}. {example}"
 
             self.send_agent_thinking({
                 "type": "agent_thinking",
@@ -251,89 +271,90 @@ class AgentStatusWrapper:
             logger.error(f"Error sending detailed thinking: {e}")
 
     def format_rag_thinking(self, node_id: int, similar_nodes: List, similarity_scores: List = None, technique_focus: str = None):
-        """格式化RAG生成的详细思考信息"""
-        main_content = f"正在为节点 {node_id} 生成RAG示例，找到了 {len(similar_nodes)} 个相似节点"
+        """Format RAG generation thinking information"""
+        main_content = f"Generating RAG examples for node {node_id}, found {len(similar_nodes)} similar nodes"
 
         details = {
-            "相似节点数量": len(similar_nodes),
-            "主要技术": technique_focus or "特征工程变换"
+            "Similar Nodes Count": len(similar_nodes),
+            "Main Technique": technique_focus or "Feature engineering transformation"
         }
 
         examples = []
         if similar_nodes and len(similar_nodes) > 0:
             for i, node in enumerate(similar_nodes[:2]):
                 if hasattr(node, 'operation_desc') and hasattr(node, 'node_id'):
-                    score = f" (相似度: {similarity_scores[i]:.2f})" if similarity_scores and i < len(similarity_scores) else ""
-                    examples.append(f"节点{node.node_id}{score}: '{node.operation_desc[:80]}...'")
+                    score = f" (similarity: {similarity_scores[i]:.2f})" if similarity_scores and i < len(similarity_scores) else ""
+                    examples.append(f"Node {node.node_id}{score}: '{node.operation_desc[:80]}...'")
 
         self.send_detailed_thinking("system", main_content, details, examples)
 
     def format_feature_generation_thinking(self, successful_nodes: List, failed_nodes: List = None, total_complexity: float = 0, execution_time: float = 0):
-        """格式化特征生成的详细思考信息"""
+        """Format feature generation thinking information - send separate messages per node"""
         print(f"[DEBUG] format_feature_generation_thinking called with {len(successful_nodes)} nodes")
 
-        main_content = f"成功生成了 {len(successful_nodes)} 个特征节点"
+        # Send summary message first
+        self.send_agent_thinking({
+            "type": "agent_thinking",
+            "agent": "mainagent",
+            "thinking": f"Generated {len(successful_nodes)} feature nodes"
+        })
 
-        # 提取特征类型和代码信息
-        feature_types = []
-        code_snippets = []
-        input_features = []
-        output_features = []
+        # Send each node as a separate message
+        for i, node in enumerate(successful_nodes[:3], 1):  # Show first 3 nodes
+            thinking_content = f"Node {i}:\n"
 
-        for node in successful_nodes[:3]:  # 分析前3个节点
-            if hasattr(node, 'operation_desc'):
-                feature_types.append(node.operation_desc[:40] + "...")
+            # Show feature description (from nl agent)
+            if hasattr(node, 'operation_desc') and node.operation_desc:
+                thinking_content += f"Description: {node.operation_desc}\n"
+
+            # Show generated code (from code agent)
             if hasattr(node, 'task_code') and node.task_code:
-                snippet = node.task_code[:100].replace('\n', ' ').strip()
-                code_snippets.append(snippet + "..." if len(node.task_code) > 100 else snippet)
-            if hasattr(node, 'read_set'):
-                input_features.extend(list(node.read_set)[:2])
-            if hasattr(node, 'write_set'):
-                output_features.extend(list(node.write_set)[:2])
+                # Clean up the code display
+                code_lines = node.task_code.strip().split('\n')
+                # Remove import statements and keep only the core logic
+                core_lines = [line for line in code_lines if not line.strip().startswith(('import', 'from', '#'))]
+                if core_lines:
+                    thinking_content += f"Code:\n"
+                    for line in core_lines[:5]:  # Show max 5 lines of code
+                        thinking_content += f"  {line}\n"
+                    if len(core_lines) > 5:
+                        thinking_content += f"  ...\n"
 
-        details = {
-            "平均复杂度": f"{total_complexity / max(len(successful_nodes), 1):.1f}",
-            "执行时间": f"{execution_time:.2f}s",
-            "输入特征数": len(set(input_features)),
-            "输出特征数": len(set(output_features)),
-            "失败节点数": len(failed_nodes) if failed_nodes else 0
-        }
+            # Send individual node message
+            self.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": thinking_content.strip()
+            })
 
-        examples = code_snippets[:2] if code_snippets else ["生成数值变换特征", "生成聚合统计特征"]
-
-        print(f"[DEBUG] About to send detailed thinking for mainagent with {len(examples)} examples")
-        print(f"[DEBUG] Examples: {examples}")
-
-        self.send_detailed_thinking("mainagent", main_content, details, examples)
-
-        print(f"[DEBUG] Detailed thinking sent for mainagent")
+        print(f"[DEBUG] Separate messages sent for {len(successful_nodes)} nodes")
 
     def format_optimization_thinking(self, complex_nodes: List, optimization_strategies: List = None, complexity_reduction: float = 0):
-        """格式化优化的详细思考信息"""
-        main_content = f"检测到 {len(complex_nodes)} 个复杂节点，应用分治策略进行优化"
+        """Format optimization thinking information"""
+        main_content = f"Detected {len(complex_nodes)} complex nodes, applying divide and conquer strategy"
 
         details = {
-            "优化策略": optimization_strategies or ["分治处理", "代码简化"],
-            "复杂度降低": f"{complexity_reduction:.1f}%" if complexity_reduction > 0 else "计算中..."
+            "Optimization Strategies": optimization_strategies or ["Divide and conquer", "Code simplification"],
+            "Complexity Reduction": f"{complexity_reduction:.1f}%" if complexity_reduction > 0 else "Calculating..."
         }
 
         examples = []
         for i, node in enumerate(complex_nodes[:2]):
             if hasattr(node, 'node_id') and hasattr(node, 'operation_desc'):
                 complexity = getattr(node, 'code_complexity', 0)
-                examples.append(f"节点{node.node_id} (复杂度:{complexity}): '{node.operation_desc[:60]}...'")
+                examples.append(f"Node {node.node_id} (complexity:{complexity}): '{node.operation_desc[:60]}...'")
 
         self.send_detailed_thinking("optimizationagent", main_content, details, examples)
 
     def format_validation_thinking(self, node_id: int, final_score: float, feature_count: int, performance_metrics: Dict = None, top_features: List = None):
-        """格式化验证的详细思考信息"""
-        status = "通过" if final_score > 0.5 else "需改进"
-        main_content = f"节点 {node_id} 性能验证{status}，评估分数: {final_score:.4f}"
+        """Format validation thinking information"""
+        status = "Passed" if final_score > 0.5 else "Needs Improvement"
+        main_content = f"Node {node_id} performance validation {status}, evaluation score: {final_score:.4f}"
 
         details = {
-            "特征总数": feature_count,
-            "验证状态": status,
-            "置信度": f"{final_score * 100:.1f}%"
+            "Total Features": feature_count,
+            "Validation Status": status,
+            "Confidence": f"{final_score * 100:.1f}%"
         }
 
         if performance_metrics:
@@ -344,9 +365,9 @@ class AgentStatusWrapper:
 
         examples = []
         if top_features:
-            examples = [f"特征{i+1}: {feature}" for i, feature in enumerate(top_features[:3])]
+            examples = [f"Feature {i+1}: {feature}" for i, feature in enumerate(top_features[:3])]
         else:
-            examples = [f"关键特征组合分析 (共{feature_count}个特征)", "模型性能评估完成"]
+            examples = [f"Key feature combination analysis (total {feature_count} features)", "Model performance evaluation completed"]
 
         self.send_detailed_thinking("nodevalidator", main_content, details, examples)
 
@@ -533,13 +554,14 @@ def analyze_agents_activity_from_nodes(status_wrapper, generated_nodes, original
         }
         status_wrapper.send_agent_status(main_agent_analysis)
 
-        # 添加Main Agent思考过程
-        if code_generated_count > 0:
-            status_wrapper.send_agent_thinking({
-                "type": "agent_thinking",
-                "agent": "mainagent",
-                "thinking": f"成功生成了 {code_generated_count} 个节点的特征代码，平均复杂度为 {total_complexity / max(code_generated_count, 1):.1f}。"
-            })
+        # 移除Main Agent的冗余思考过程，避免重复显示技术信息
+        # 注释掉这条消息，因为具体的节点信息会通过 format_feature_generation_thinking 分别发送
+        # if code_generated_count > 0:
+        #     status_wrapper.send_agent_thinking({
+        #         "type": "agent_thinking",
+        #         "agent": "mainagent",
+        #         "thinking": f"成功生成了 {code_generated_count} 个节点的特征代码，平均复杂度为 {total_complexity / max(code_generated_count, 1):.1f}。"
+        #     })
 
         # 3. 分析Optimization Agent活动 (分治处理)
         optimization_detected = False

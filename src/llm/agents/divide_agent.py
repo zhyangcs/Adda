@@ -94,12 +94,46 @@ class DivideAgent():
 
         combined_code = "\n".join(code_list)
         print(termcolor.colored(f"Combined Code: {combined_code}", "yellow"))
+
+        # 添加超时机制防止长时间阻塞
+        import signal
+        import threading
+
         exec_env = get_script_scope("")
         exec_env = {'df': node_list[0].in_cur_df.copy(deep=True)}
+
+        # 用于存储执行结果和异常
+        exec_result = {'success': False, 'result': None, 'exception': None}
+
+        def execute_with_timeout():
+            """在单独线程中执行代码以避免阻塞"""
+            try:
+                exec(combined_code, exec_env)
+                exec_result['success'] = True
+                exec_result['result'] = exec_env['df']
+            except Exception as e:
+                exec_result['exception'] = e
+
         try:
-            exec(combined_code, exec_env)
+            # 使用线程执行代码，设置30秒超时
+            exec_thread = threading.Thread(target=execute_with_timeout)
+            exec_thread.daemon = True  # 设为守护线程
+            exec_thread.start()
+
+            # 等待执行完成，最多30秒
+            exec_thread.join(timeout=30.0)
+
+            if exec_thread.is_alive():
+                # 超时了，强制返回错误
+                print(termcolor.colored("Code execution timeout (30s), skipping combination", "red"))
+                return None, False
+
+            if exec_result['exception']:
+                raise exec_result['exception']
+
             whole_operation_desc = "\n".join(operation_desc_list)
-            return LLMDAGNODE(allocate_node_id(), combined_code, read_set, write_set, node_list[0].in_cur_df, exec_env['df'], column_info, whole_operation_desc, OpTypeEnum.UNSUPPORT, pd.DataFrame(), -1, "", [], [], None, True, False, 0.0), True
+            return LLMDAGNODE(allocate_node_id(), combined_code, read_set, write_set, node_list[0].in_cur_df, exec_result['result'], column_info, whole_operation_desc, OpTypeEnum.UNSUPPORT, pd.DataFrame(), -1, "", [], [], None, True, False, 0.0), True
+
         except Exception as e:
             print(termcolor.colored(f"Error in combining nodes: {e}", "red"))
             return None, False

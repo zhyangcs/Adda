@@ -33,7 +33,10 @@ class WebSocketServer:
             cors_allowed_origins="*",
             async_mode='eventlet',
             logger=False,
-            engineio_logger=False
+            engineio_logger=False,
+            ping_timeout=60,  # 60秒ping超时
+            ping_interval=25,  # 25秒ping间隔
+            http_open_timeout=60  # HTTP连接超时
         )
         self.setup_handlers()
         logger.info("WebSocket server initialized")

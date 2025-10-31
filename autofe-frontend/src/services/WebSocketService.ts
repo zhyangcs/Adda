@@ -37,7 +37,9 @@ class WebSocketService {
       reconnection: true,
       reconnectionDelay: 3000,
       reconnectionAttempts: 10,
-      timeout: 20000,
+      timeout: 60000, // 增加到60秒
+      pingTimeout: 60000, // 增加ping超时时间
+      pingInterval: 25000, // 增加ping间隔到25秒
       transports: ['websocket', 'polling'] // 优先使用websocket
     })
 

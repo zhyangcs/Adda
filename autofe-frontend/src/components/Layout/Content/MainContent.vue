@@ -371,19 +371,19 @@ function processGlobalMessageQueue() {
   // 显示消息
   displayMessage(message)
 
-  // 智能显示时间 - 短消息快速显示，长消息适中显示
+  // 确保气泡框至少留存5秒 - 避免一闪而过
   const contentLength = message.content.length
   let displayDuration: number
 
   if (contentLength < 100) {
-    // 短消息：1.5-2.5秒
-    displayDuration = Math.max(1500, contentLength * 25)
+    // 短消息：最少5秒
+    displayDuration = Math.max(5000, contentLength * 25)
   } else if (contentLength < 300) {
-    // 中等消息：2-3.5秒
-    displayDuration = Math.max(2000, Math.min(3500, contentLength * 20))
+    // 中等消息：最少5秒，最多6秒
+    displayDuration = Math.max(5000, Math.min(6000, contentLength * 20))
   } else {
-    // 长消息：3-4.5秒
-    displayDuration = Math.max(3000, Math.min(4500, contentLength * 15))
+    // 长消息：最少5秒，最多8秒
+    displayDuration = Math.max(5000, Math.min(8000, contentLength * 15))
   }
 
   // 设置消失定时器
@@ -1449,10 +1449,10 @@ function handleRefreshData() {
   background: white;
   border: 2px solid #e3f2fd;
   border-radius: 12px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   color: #37474f;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   line-height: 1.5;
   font-weight: 500;
   max-width: 400px;
@@ -1475,6 +1475,30 @@ function handleRefreshData() {
   right: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* 上方节点（system和main agent）的气泡特殊处理 */
+.system-agent .left-bubble {
+  top: -8px; /* 从图标顶部向上偏移8px，增加间距 */
+  transform: translateY(0); /* 重置变换 */
+}
+
+.main-agent .right-bubble {
+  top: -8px; /* 从图标顶部向上偏移8px，增加间距 */
+  transform: translateY(0); /* 重置变换 */
+}
+
+/* 下方节点（optimization和validation）的气泡特殊处理 */
+.opt-agent .right-bubble {
+  top: auto; /* 取消top定位 */
+  bottom: -8px; /* 从图标底部向下偏移8px，增加间距 */
+  transform: translateY(0); /* 重置变换 */
+}
+
+.validation-agent .left-bubble {
+  top: auto; /* 取消top定位 */
+  bottom: -8px; /* 从图标底部向下偏移8px，增加间距 */
+  transform: translateY(0); /* 重置变换 */
 }
 
 .left-bubble::before {
@@ -1503,6 +1527,36 @@ function handleRefreshData() {
   border-bottom: 9px solid transparent;
   border-left: 9px solid #e3f2fd;
   z-index: 100;
+}
+
+/* 上方节点气泡箭头特殊处理 */
+.system-agent .left-bubble::before,
+.system-agent .left-bubble::after {
+  top: 35px; /* 从气泡上边缘往下1/2图标高度（70px/2 = 35px） */
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.main-agent .right-bubble::before,
+.main-agent .right-bubble::after {
+  top: 35px; /* 从气泡上边缘往下1/2图标高度（70px/2 = 35px） */
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+/* 下方节点气泡箭头特殊处理 */
+.opt-agent .right-bubble::before,
+.opt-agent .right-bubble::after {
+  top: auto;
+  bottom: 35px; /* 从气泡下边缘往上1/2图标高度（70px/2 = 35px） */
+  transform: translateY(50%);
+}
+
+.validation-agent .left-bubble::before,
+.validation-agent .left-bubble::after {
+  top: auto;
+  bottom: 35px; /* 从气泡下边缘往上1/2图标高度（70px/2 = 35px） */
+  transform: translateY(50%);
 }
 
 /* 右侧气泡 */
@@ -1562,8 +1616,58 @@ function handleRefreshData() {
   }
 }
 
+/* 为特殊定位的气泡提供不同的动画 */
+@keyframes thinking-bubble-appear-top {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes thinking-bubble-disappear-top {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.8);
+  }
+}
+
+@keyframes thinking-bubble-appear-bottom {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes thinking-bubble-disappear-bottom {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.8);
+  }
+}
+
 .bubble-disappearing {
   animation: thinking-bubble-disappear 0.2s ease-in forwards;
+}
+
+/* 所有节点使用标准的气泡动画 */
+.thinking-bubble {
+  animation: thinking-bubble-appear 0.3s ease-out;
 }
 
 /* Test按钮样式 */
