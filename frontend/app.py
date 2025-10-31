@@ -235,10 +235,24 @@ def auto_step():
             data = json.loads(request.data) if request.data else {}
             model = data.get('model_type', 'RF')  # 支持model_type或model参数
 
-        # 可选参数
-        data = json.loads(request.data) if request.data else {}
-        max_search_depth = data.get('max_search_depth', 2)  # 最大搜索深度，默认3
-        use_performance_test = data.get('use_performance_test', True)  # 是否执行性能测试
+        # 可选参数 - 修复参数解析逻辑
+        if request.form:
+            # 表单数据格式
+            max_search_depth = request.form.get('max_search_depth', '2')
+            use_performance_test = request.form.get('use_performance_test', 'true')
+        else:
+            # JSON格式
+            data = json.loads(request.data) if request.data else {}
+            max_search_depth = data.get('max_search_depth', 2)
+            use_performance_test = data.get('use_performance_test', True)
+
+        # 转换参数类型
+        try:
+            max_search_depth = int(max_search_depth)
+        except (ValueError, TypeError):
+            max_search_depth = 2
+
+        use_performance_test = str(use_performance_test).lower() in ['true', '1', 'yes']
 
         print(f"Starting end-to-end execution: dataset={dataset}, model={model}, depth={max_search_depth}")
 
@@ -376,6 +390,28 @@ def auto_step():
             "message": f"端到端执行完成！搜索深度: {max_search_depth}"
         }
 
+        # ===== 获取最佳特征信息（始终执行，不依赖性能测试）=====
+        if is_finished:
+            try:
+                print("Getting best features info...")
+                best_features_info = adda._get_best_features_info(task_name)
+                response_data["best_features"] = best_features_info
+
+                if best_features_info.get("success", False):
+                    print(f"Successfully retrieved best features: {best_features_info.get('feature_count', 0)} features")
+                else:
+                    print(f"Failed to get best features: {best_features_info.get('error', 'Unknown error')}")
+
+            except Exception as e:
+                print(f"Error getting best features: {str(e)}")
+                response_data["best_features"] = {
+                    "success": False,
+                    "error": f"获取最佳特征信息失败: {str(e)}",
+                    "python_code": "",
+                    "sql_code": "",
+                    "feature_descriptions": []
+                }
+
         # ===== 执行性能测试 =====
 
         if use_performance_test and is_finished:
@@ -391,70 +427,118 @@ def auto_step():
                 print(f"Debug: Expected pickle file at {pickle_file}")
                 print(f"Debug: Pickle file exists: {os.path.exists(pickle_file)}")
 
-                performance_result = adda._run_multimodal_performance(
-                    model_type=ml_model_type,  # 使用ML模型类型，不是LLM模型
-                    task_name=task_name
-                )
+                # 确保LLMDagConstructor已正确完成并设置了pipes
+                if not hasattr(adda.llm_dag_constructor, 'output_nodes') or not adda.llm_dag_constructor.output_nodes:
+                    print("Debug: No output_nodes found, ensuring compute_best_code is called")
+                    adda.llm_dag_constructor.compute_best_code()
 
-                if performance_result.get("success", False):
-                    # 性能测试成功
-                    auc = performance_result.get("auc", 0.0)
-                    exec_time = performance_result.get("execution_time", 0.0)
-
-                    # ===== 获取最佳特征信息 =====
-                    best_features_info = adda._get_best_features_info(task_name)
-
-                    response_data.update({
-                        "performance_metrics": {
-                            "auc": auc,
-                            "execution_time": exec_time,
-                            "model_type": performance_result.get("model_type", model),
-                            "task_name": performance_result.get("task_name", task_name),
-                            "task_type": performance_result.get("task_type", task_type),
-                            "row_num": performance_result.get("row_num", 0),
-                            "col_num": performance_result.get("col_num", 0),
-                            "method": performance_result.get("method", "in_database_ml")
-                        },
-                        "sql_code": performance_result.get("sql_code", {}),
-                        "sql_file_paths": performance_result.get("sql_file_paths", {}),
-                        "best_features": best_features_info,
-                        "training_result": {
-                            "success": True,
-                            "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
-                            "model_type": model,
-                            "method": "in_database_ml"
-                        }
-                    })
-
-                    # 添加成功通知
-                    notifications.append({
-                        "notice_description": f"🎉 端到端流程完成！AUC: {auc:.4f}, 搜索深度: {max_search_depth}, 耗时: {exec_time:.2f}s",
-                        "notice_type": "success"
-                    })
-                else:
-                    # 性能测试失败
-                    error_msg = performance_result.get("error", "未知错误")
+                # 验证pipes是否有效
+                if not hasattr(adda.llm_dag_constructor, 'pipes') or not adda.llm_dag_constructor.pipes:
+                    print("Debug: No pipes found even after compute_best_code, skipping performance test")
                     response_data.update({
                         "performance_metrics": {
                             "auc": 0.0,
                             "execution_time": 0.0,
                             "model_type": model,
-                            "method": "error",
-                            "error": error_msg
+                            "method": "skipped",
+                            "error": "没有生成有效的特征管道"
                         },
                         "training_result": {
                             "success": False,
-                            "message": f"性能测试失败: {error_msg}",
+                            "message": "特征搜索完成，但没有生成可用于训练的特征管道。请尝试增加搜索深度。",
                             "model_type": model,
-                            "method": "error"
+                            "method": "skipped"
                         }
                     })
 
-                    # 添加警告通知
                     notifications.append({
-                        "notice_description": f"特征搜索完成，但性能测试失败: {error_msg}",
+                        "notice_description": f"特征搜索完成，但没有生成有效的特征管道。请尝试增加搜索深度。",
                         "notice_type": "warning"
                     })
+                else:
+                    # 计算有效pipes数量
+                    valid_pipes_count = len([pipe for pipe in adda.llm_dag_constructor.pipes if pipe is not None])
+                    print(f"Debug: Found {valid_pipes_count} valid pipes out of {len(adda.llm_dag_constructor.pipes)} total pipes")
+
+                    if valid_pipes_count == 0:
+                        print("Debug: All pipes are None, skipping performance test")
+                        response_data.update({
+                            "performance_metrics": {
+                                "auc": 0.0,
+                                "execution_time": 0.0,
+                                "model_type": model,
+                                "method": "skipped",
+                                "error": "所有特征管道都无效"
+                            },
+                            "training_result": {
+                                "success": False,
+                                "message": "特征搜索完成，但所有生成的特征管道都无效。请检查数据质量。",
+                                "model_type": model,
+                                "method": "skipped"
+                            }
+                        })
+
+                        notifications.append({
+                            "notice_description": f"特征搜索完成，但所有特征管道都无效。请检查数据质量。",
+                            "notice_type": "warning"
+                        })
+                    else:
+                        # 执行性能测试
+                        performance_result = adda._run_multimodal_performance(
+                            model_type=ml_model_type,  # 使用ML模型类型，不是LLM模型
+                            task_name=task_name
+                        )
+
+                        if performance_result.get("success", False):
+                            # 性能测试成功
+                            auc = performance_result.get("auc", 0.0)
+                            exec_time = performance_result.get("execution_time", 0.0)
+
+                            response_data.update({
+                                "performance_metrics": {
+                                    "auc": auc,
+                                    "execution_time": exec_time,
+                                    "model_type": performance_result.get("model_type", model),
+                                    "task_name": performance_result.get("task_name", task_name),
+                                    "task_type": performance_result.get("task_type", task_type),
+                                    "row_num": performance_result.get("row_num", 0),
+                                    "col_num": performance_result.get("col_num", 0),
+                                    "method": performance_result.get("method", "in_database_ml")
+                                },
+                                "sql_code": performance_result.get("sql_code", {}),
+                                "sql_file_paths": performance_result.get("sql_file_paths", {}),
+                                "best_features": best_features_info,
+                                "training_result": {
+                                    "success": True,
+                                    "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
+                                    "model_type": model,
+                                    "method": "in_database_ml"
+                                }
+                            })
+
+                            # 添加成功通知
+                            notifications.append({
+                                "notice_description": f"🎉 端到端流程完成！AUC: {auc:.4f}, 搜索深度: {max_search_depth}, 耗时: {exec_time:.2f}s",
+                                "notice_type": "success"
+                            })
+                        else:
+                            # 性能测试失败
+                            error_msg = performance_result.get("error", "未知错误")
+                            response_data.update({
+                                "performance_metrics": {
+                                    "auc": 0.0,
+                                    "execution_time": 0.0,
+                                    "model_type": model,
+                                    "method": "error",
+                                    "error": error_msg
+                                },
+                                "training_result": {
+                                    "success": False,
+                                    "message": f"性能测试失败: {error_msg}",
+                                    "model_type": model,
+                                    "method": "error"
+                                }
+                            })
 
             except Exception as perf_error:
                 # 性能测试异常

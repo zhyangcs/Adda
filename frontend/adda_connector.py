@@ -599,7 +599,44 @@ class AddaConnector:
             # 9. 设置表名
             pipeCtor.tb_name = db_tb_name
 
-            # 10. 初始化PythonPolisher（完全按照run_multimodel_type.py的参数）
+            # 10. 检查是否有有效的pipes（关键修复）
+            if not hasattr(pipeCtor, 'pipes') or not pipeCtor.pipes:
+                print("Debug: No pipes found in DAG constructor, attempting to compute best code")
+                try:
+                    # 尝试计算最佳代码（现在这个方法会自动调用get_best_code来设置code_path）
+                    pipeCtor.compute_best_code()
+
+                    if not hasattr(pipeCtor, 'pipes') or not pipeCtor.pipes:
+                        return {
+                            "success": False,
+                            "error": "没有生成有效的特征管道。请尝试增加搜索深度或检查数据质量。",
+                            "auc": 0.0,
+                            "execution_time": 0.0,
+                            "sql_code": {}
+                        }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"计算最佳特征失败: {str(e)}。请尝试增加搜索深度或检查数据质量。",
+                        "auc": 0.0,
+                        "execution_time": 0.0,
+                        "sql_code": {}
+                    }
+
+            # 过滤掉None pipes
+            valid_pipes = [pipe for pipe in pipeCtor.pipes if pipe is not None]
+            if not valid_pipes:
+                return {
+                    "success": False,
+                    "error": "所有特征管道都无效。这可能是由于数据质量问题或搜索深度不足导致的。",
+                    "auc": 0.0,
+                    "execution_time": 0.0,
+                    "sql_code": {}
+                }
+
+            print(f"Debug: Found {len(valid_pipes)} valid pipes out of {len(pipeCtor.pipes)} total pipes")
+
+            # 11. 初始化PythonPolisher（完全按照run_multimodel_type.py的参数）
             pipes = pipeCtor.pipes
             polisher = PythonPolisher(
                 db_tb_name,
@@ -618,10 +655,10 @@ class AddaConnector:
                 model_type=model_type
             )
 
-            # 11. 执行代码优化
+            # 12. 执行代码优化
             polisher.polish_code()
 
-            # 12. 创建model_table并清理旧模型（完全复制run_multimodel_type.py的逻辑）
+            # 13. 创建model_table并清理旧模型（完全复制run_multimodel_type.py的逻辑）
             create_table_sql = """
             CREATE TABLE IF NOT EXISTS model_table (
                 tb_name TEXT,
@@ -642,18 +679,44 @@ class AddaConnector:
             os.system(f"rm -f {model_store_path}/{db_tb_name}_{model_type}_*.pkl")
             conn.commit()
 
-            # 13. 生成SQL并执行训练（核心步骤）
-            auc_answer = polisher.generate_sql()
-            speed_record = polisher.speed_record
+            # 14. 生成SQL并执行训练（核心步骤）- 修复空scores错误
+            try:
+                print("Debug: Starting SQL generation...")
+                scores, auc_result, best_auc = polisher.generate_sql()
+                speed_record = polisher.speed_record
 
-            # 14. 恢复目录名称
+                # 检查返回结果是否有效
+                if not scores or not auc_result:
+                    return {
+                        "success": False,
+                        "error": "SQL生成失败：没有有效的特征管道可用于生成SQL。这通常意味着没有生成任何有效特征。",
+                        "auc": 0.0,
+                        "execution_time": 0.0,
+                        "sql_code": {}
+                    }
+
+                auc_answer = best_auc
+                print(f"Debug: SQL generation completed successfully, AUC: {auc_answer}")
+
+            except Exception as sql_error:
+                error_msg = f"SQL生成失败: {str(sql_error)}"
+                print(f"Debug: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "auc": 0.0,
+                    "execution_time": 0.0,
+                    "sql_code": {}
+                }
+
+            # 15. 恢复目录名称
             if os.path.exists(exec_name):
                 os.rename(exec_name, origin_name)
 
-            # 15. 读取生成的SQL文件
+            # 16. 读取生成的SQL文件
             sql_code = self._read_generated_sql_files(dir_path, 0)  # 第一个pipeline
 
-            # 16. 准备返回结果
+            # 17. 准备返回结果
             execution_time = speed_record.get("sql", [0])[0] if speed_record and "sql" in speed_record else 0.0
 
             result = {
@@ -845,11 +908,15 @@ class AddaConnector:
             # 回溯到根节点，收集所有操作描述
             while hasattr(current_node, 'node_id') and current_node.node_id != 1:
                 if hasattr(current_node, 'operation_desc') and current_node.operation_desc:
+                    # 获取op_type的字符串表示，确保JSON可序列化
+                    op_type = getattr(current_node, 'op_type', None)
+                    op_type_str = str(op_type) if op_type else 'Unknown'
+
                     descriptions.append({
                         "node_id": current_node.node_id,
                         "description": current_node.operation_desc,
                         "feature_name": list(current_node.write_set)[0] if current_node.write_set else "",
-                        "op_type": getattr(current_node, 'op_type', 'Unknown'),
+                        "op_type": op_type_str,
                         "score": getattr(current_node, 'final_score', 0.0),
                         "exec_time": getattr(current_node, 'exec_time', 0.0)
                     })
