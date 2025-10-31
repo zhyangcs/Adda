@@ -90,8 +90,8 @@ class DivideAgent():
                 operation_desc_list.append(node.operation_desc)
             elif type(node.operation_desc) == list:
                 operation_desc_list += node.operation_desc
-            
-        
+
+
         combined_code = "\n".join(code_list)
         print(termcolor.colored(f"Combined Code: {combined_code}", "yellow"))
         exec_env = get_script_scope("")
@@ -99,10 +99,10 @@ class DivideAgent():
         try:
             exec(combined_code, exec_env)
             whole_operation_desc = "\n".join(operation_desc_list)
-            return LLMDAGNODE(allocate_node_id(), combined_code, read_set, write_set, node_list[0].in_cur_df, exec_env['df'], column_info, whole_operation_desc, OpTypeEnum.UNSUPPORT, pd.DataFrame(), -1, "", [], [], None, True, False, 0.0)
+            return LLMDAGNODE(allocate_node_id(), combined_code, read_set, write_set, node_list[0].in_cur_df, exec_env['df'], column_info, whole_operation_desc, OpTypeEnum.UNSUPPORT, pd.DataFrame(), -1, "", [], [], None, True, False, 0.0), True
         except Exception as e:
             print(termcolor.colored(f"Error in combining nodes: {e}", "red"))
-            return None
+            return None, False
         
     def recur_divide(self, cur_node:LLMDAGNODE):
         """

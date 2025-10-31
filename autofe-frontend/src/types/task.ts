@@ -19,6 +19,16 @@ export interface AutoStepData {
   performance?: PerformanceData
   timeAnalysis?: TimeAnalysisData
   featureImportance?: FeatureImportanceData
+  e2e_data?: {
+    featureInfo?: {
+      description?: string
+      pythonCode?: string
+      sqlCode?: string
+    }
+    performanceData?: PerformanceData
+    timeData?: TimeAnalysisData
+    importanceData?: FeatureImportanceData
+  }
   // 其他可能的返回数据
   [key: string]: any
 }

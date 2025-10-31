@@ -58,6 +58,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useTaskStore } from '@/stores/task'
+import { apiService } from '@/services/APIService'
 import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
 import PerformanceComparisonChart from '../../EndToEnd/PerformanceComparisonChart.vue'
 import TimeComparisonChart from '../../EndToEnd/TimeComparisonChart.vue'
@@ -126,13 +127,13 @@ const realImportanceData = computed(() => {
   } as ImportanceData
 })
 
-// 导入模拟数据作为回退
-import {
-  mockFeatureInfo,
-  mockPerformanceData,
-  mockTimeData,
-  mockImportanceData
-} from '../../EndToEnd/mockData'
+// 从auto-step获取的数据，作为默认数据
+const apiE2EData = ref<{
+  featureInfo?: FeatureInfo
+  performanceData?: PerformanceData
+  timeData?: TimeData
+  importanceData?: ImportanceData
+} | null>(null)
 
 // 端到端执行相关的状态管理
 const progressPercentage = ref(0)
@@ -149,11 +150,30 @@ const executionStatus = computed(() => {
   return 'idle'
 })
 
-// 计算属性 - 选择使用真实数据或模拟数据
-const currentFeatureInfo = computed(() => realFeatureInfo.value || mockFeatureInfo)
-const currentPerformanceData = computed(() => realPerformanceData.value || mockPerformanceData)
-const currentTimeData = computed(() => realTimeData.value || mockTimeData)
-const currentImportanceData = computed(() => realImportanceData.value || mockImportanceData)
+// 计算属性 - 优先使用auto-step返回的数据，然后是taskStore的真实数据，最后是本地mock数据
+const currentFeatureInfo = computed(() => {
+  if (apiE2EData.value?.featureInfo) return apiE2EData.value.featureInfo
+  if (realFeatureInfo.value) return realFeatureInfo.value
+  return mockFeatureInfo
+})
+
+const currentPerformanceData = computed(() => {
+  if (apiE2EData.value?.performanceData) return apiE2EData.value.performanceData
+  if (realPerformanceData.value) return realPerformanceData.value
+  return mockPerformanceData
+})
+
+const currentTimeData = computed(() => {
+  if (apiE2EData.value?.timeData) return apiE2EData.value.timeData
+  if (realTimeData.value) return realTimeData.value
+  return mockTimeData
+})
+
+const currentImportanceData = computed(() => {
+  if (apiE2EData.value?.importanceData) return apiE2EData.value.importanceData
+  if (realImportanceData.value) return realImportanceData.value
+  return mockImportanceData
+})
 
 const getStatusText = () => {
   switch (executionStatus.value) {
@@ -241,6 +261,12 @@ const pollTaskStatus = async () => {
 
       // 检查是否有结果数据
       if (taskStore.autoStepData) {
+        // 提取e2e数据（如果存在）
+        if (taskStore.autoStepData.e2e_data) {
+          apiE2EData.value = taskStore.autoStepData.e2e_data
+          console.log('Updated E2E data from auto-step:', apiE2EData.value)
+        }
+
         // 完成执行
         progressPercentage.value = 100
         loadingMessage.value = 'Analysis complete!'
@@ -289,6 +315,9 @@ const stopExecution = () => {
 onMounted(() => {
   // 初始化端到端执行页面
   console.log('End-to-end execution page loaded')
+
+  // 重置E2E数据
+  apiE2EData.value = null
 
   // 调试：打印初始配置
   console.log('Initial Task Config:', {

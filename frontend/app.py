@@ -12,9 +12,16 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.llm.llm_dag_util import LLMDagConstructor
-from src.env import test_save_path, dataset_path
+from src.env import test_save_path, dataset_path, proj_path
+
+# 导入WebSocket服务器
+from websocket_server import get_websocket_server
 
 app = Flask(__name__)
+
+# 初始化WebSocket服务器
+ws_server = get_websocket_server()
+ws_server.init_app(app)
 
 # 创建Adda系统连接器实例
 adda = AddaConnector()
@@ -230,20 +237,21 @@ def auto_step():
 
         # 可选参数
         data = json.loads(request.data) if request.data else {}
-        max_search_depth = data.get('max_search_depth', 3)  # 最大搜索深度，默认3
+        max_search_depth = data.get('max_search_depth', 2)  # 最大搜索深度，默认3
         use_performance_test = data.get('use_performance_test', True)  # 是否执行性能测试
 
         print(f"Starting end-to-end execution: dataset={dataset}, model={model}, depth={max_search_depth}")
 
         # ===== 完整的任务初始化（复制start_task的逻辑） =====
 
-        # 1. 从test_util导入任务配置
+        # 1. 导入所有需要的模块
         from src.llm.tests.test_util import task_config
+        from src.env import test_save_path, dataset_path, proj_path
         task_name, target_col, task_type = task_config(dataset.lower())
 
         # 2. 导入并分割数据集
         from src.pg.import_table import importTable_with_split
-        from src.env import get_conn
+        from src.pg.sql_utils import get_conn
         importTable_with_split(
             os.path.join(dataset_path, task_name, "train_new.csv"),
             f"{task_name}_src_tb",
@@ -258,7 +266,6 @@ def auto_step():
         data_agenda, desc, csv_path = read_data_info(task_name)
 
         # 4. 创建新的LLMDagConstructor（强制新建，避免旧状态干扰）
-        import os
         import shutil
         import heapq
 
@@ -328,11 +335,31 @@ def auto_step():
                 "message": f"A*搜索失败: {str(search_error)}"
             })
 
-        # 保存状态（为SQL生成做准备）
+        # 保存状态（为SQL生成做准备）- 修复路径问题
         import pickle
-        from src.env import proj_path
-        with open(os.path.join(proj_path, "src", "cur_states.pkl"), "wb") as f:
+        from src.env import proj_path, test_save_path
+
+        print(f"Debug: test_save_path={test_save_path}, task_name={task_name}")
+
+        # 确保保存路径与run_multimodal_performance期望的读取路径一致
+        save_path = os.path.join(test_save_path, task_name)
+        os.makedirs(save_path, exist_ok=True)
+
+        pickle_file = os.path.join(save_path, "cur_states.pkl")
+        print(f"Debug: Saving pickle to {pickle_file}")
+
+        with open(pickle_file, "wb") as f:
             pickle.dump(adda.llm_dag_constructor, f)
+
+        print(f"Debug: Successfully saved pickle file with {len(adda.llm_dag_constructor.dag.nodes())} nodes")
+
+        # 同时保存到src目录作为备份（保持向后兼容）
+        backup_path = os.path.join(proj_path, "src")
+        os.makedirs(backup_path, exist_ok=True)
+        with open(os.path.join(backup_path, "cur_states.pkl"), "wb") as f:
+            pickle.dump(adda.llm_dag_constructor, f)
+
+        print(f"Debug: Also saved backup to {os.path.join(backup_path, 'cur_states.pkl')}")
 
         # 获取当前树结构
         tree_structure = adda._convert_dag_to_tree()
@@ -354,8 +381,18 @@ def auto_step():
         if use_performance_test and is_finished:
             try:
                 print("Starting performance testing...")
+
+                # 修复LLM/ML模型混淆问题：model是LLM模型，ml_model_type才是ML模型
+                ml_model_type = "RF"  # 默认使用RF作为ML模型类型
+                print(f"Debug: Performance test with task_name={task_name}, LLM model={model}, ML model={ml_model_type}")
+
+                # 检查pickle文件是否存在
+                pickle_file = os.path.join(test_save_path, task_name, "cur_states.pkl")
+                print(f"Debug: Expected pickle file at {pickle_file}")
+                print(f"Debug: Pickle file exists: {os.path.exists(pickle_file)}")
+
                 performance_result = adda._run_multimodal_performance(
-                    model_type=model,
+                    model_type=ml_model_type,  # 使用ML模型类型，不是LLM模型
                     task_name=task_name
                 )
 
@@ -363,6 +400,9 @@ def auto_step():
                     # 性能测试成功
                     auc = performance_result.get("auc", 0.0)
                     exec_time = performance_result.get("execution_time", 0.0)
+
+                    # ===== 获取最佳特征信息 =====
+                    best_features_info = adda._get_best_features_info(task_name)
 
                     response_data.update({
                         "performance_metrics": {
@@ -377,6 +417,7 @@ def auto_step():
                         },
                         "sql_code": performance_result.get("sql_code", {}),
                         "sql_file_paths": performance_result.get("sql_file_paths", {}),
+                        "best_features": best_features_info,
                         "training_result": {
                             "success": True,
                             "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
@@ -540,5 +581,76 @@ def train_node_model():
     except Exception as e:
         return jsonify({"status": "fail", "message": str(e)})
 
+@app.route('/manual-test-websocket/', methods=['POST'])
+def manual_test_websocket():
+    """
+    手动测试WebSocket状态更新
+    """
+    try:
+        from src.llm.agent_status_wrapper import agent_status_wrapper
+
+        # 测试系统通知
+        agent_status_wrapper.send_system_notification(
+            "手动测试：WebSocket连接工作正常！",
+            "success"
+        )
+
+        # 测试Agent状态更新 - Main Agent
+        agent_status_wrapper.send_agent_status({
+            "type": "agent_status",
+            "agent": "mainagent",
+            "status": "working",
+            "work_type": "手动测试任务",
+            "details": {
+                "phase": "testing_websocket",
+                "progress": 60,
+                "operation": "WebSocket连接测试"
+            },
+            "data": {
+                "summary": "正在执行WebSocket连接手动测试..."
+            }
+        })
+
+        # 测试Agent思考过程
+        agent_status_wrapper.send_agent_thinking({
+            "type": "agent_thinking",
+            "agent": "mainagent",
+            "thinking": "这是一个手动测试的思考消息。我正在验证WebSocket连接是否正常工作，以及前端是否能正确接收Agent状态更新和思考过程。",
+            "category": "testing"
+        })
+
+        # 3秒后发送完成状态
+        import threading
+        def send_complete_status():
+            import time
+            time.sleep(3)
+            agent_status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "completed",
+                "work_type": "手动测试任务",
+                "result": {
+                    "success": True,
+                    "message": "WebSocket手动测试完成！"
+                }
+            })
+            agent_status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": "测试完成！WebSocket连接工作正常，前端应该能看到完整的状态更新过程。",
+                "category": "testing"
+            })
+
+        threading.Thread(target=send_complete_status).start()
+
+        return jsonify({
+            "status": "success",
+            "message": "手动WebSocket测试消息已发送！请检查前端和测试页面。"
+        })
+
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)})
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    # 使用WebSocket服务器运行应用
+    ws_server.run(host='0.0.0.0', port=5000, debug=True) 

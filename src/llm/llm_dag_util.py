@@ -34,6 +34,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 from src.llm.utils.common_utils import *
 import concurrent.futures
+from src.llm.agent_status_wrapper import agent_status_wrapper, analyze_agents_activity_from_nodes
 
 
 warnings.filterwarnings("ignore")
@@ -105,8 +106,10 @@ class LLMDagConstructor():
         self.high_order_num = high_order_num
         self.token_limit = token_limit
         self.nl_agent = NLAgent(self.eval_model_type)
-        
-        
+
+        # 初始化Agent状态包装器
+        self.status_wrapper = agent_status_wrapper
+
     def init_task_params(self, data_agenda:list[str], data_desc:list[str], target_col:str, tb_name:str = None, csv_path:str = None, do_unfinished:bool = False, task_name:str = None):
         """
         初始化任务参数（参考test_util.py的TestDir类）
@@ -224,10 +227,10 @@ class LLMDagConstructor():
         def gen_code_node(next_node):
             """
             生成特征节点的代码并验证其可执行性
-            
+
             参数:
                 next_node: LLMDAGNODE对象，待生成代码的节点
-                
+
             返回:
                 tuple: (next_node, success)
                     - next_node: 处理后的节点对象，如果生成失败则为None
@@ -236,30 +239,30 @@ class LLMDagConstructor():
             try:
                 # 1. 使用code_agent生成特征转换代码
                 could_exec_code = code_agent.feature_to_code(next_node)
-                
+
                 # 2. 检查是否需要分治处理
                 # 条件1: 当前步骤小于高阶特征数且代码生成失败
                 # 条件2: 代码复杂度超过阈值
                 if cur_step_idx < self.high_order_num and not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info):
                     # 使用分治策略重新生成代码
                     next_node, could_exec_code = divide_agent.divide_code(next_node)
-                    
+
                 # 3. 如果代码生成成功，尝试生成修复特征
                 if could_exec_code:
                     could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
                 else:
                     could_exec_fix = False
-                    
+
                 # 4. 生成节点的嵌入向量（用于相似度计算）
                 next_node = self.generate_emb(next_node)
-                
+
                 # 5. 返回结果
                 # 只有当代码生成和修复特征都成功时，才返回成功
                 if could_exec_code and could_exec_fix:
                     return next_node, True
                 else:
                     return None, False
-            
+
             except Exception as e:
                 # 6. 异常处理
                 print(termcolor.colored(f"Error: {e}", "red"))
@@ -268,6 +271,51 @@ class LLMDagConstructor():
         # 1. NLAgent generate the description
         nodes = topKSimilarNodes(cur_node, self.dag, src.env.topK_rag)
         example_prompt = nodes2example(nodes, self.dag)
+
+        # 添加System Agent状态推送
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "system",
+                "status": "working",
+                "details": {
+                    "operation": "example_generation",
+                    "current_node": cur_node.node_id,
+                    "similar_nodes_count": len(nodes)
+                },
+                "data": {
+                    "examples_summary": f"Generated {len(nodes)} examples for RAG",
+                    "nodes_for_example": [node.node_id for node in nodes]
+                }
+            })
+
+            # 增强的System Agent思考过程 - 使用详细格式化函数
+            if nodes:
+                try:
+                    # 计算相似度分数用于详细展示
+                    similarity_scores = []
+                    for similar_node in nodes:
+                        # 简单的相似度计算（基于节点操作描述的相似性）
+                        semantic_sim = 0.8  # 占位符，实际应该从topKSimilarNodes获取
+                        structural_sim = 0.7  # 占位符
+                        similarity_scores.append(semantic_sim + structural_sim)
+
+                    technique_focus = f"{cur_node.operation_desc[:30]}..." if hasattr(cur_node, 'operation_desc') else "特征工程变换"
+                    self.status_wrapper.format_rag_thinking(
+                        node_id=cur_node.node_id,
+                        similar_nodes=nodes,
+                        similarity_scores=similarity_scores,
+                        technique_focus=technique_focus
+                    )
+                except Exception as e:
+                    print(f"Warning: Error sending RAG thinking: {e}")
+                    # 发送一个简化的思考消息作为备选
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "system",
+                        "thinking": f"正在为节点 {cur_node.node_id} 生成RAG示例。找到了 {len(nodes)} 个相似节点，将用于指导特征生成。"
+                    })
+
         next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt)
 
         # 2. CodeAgent generate the code and fixing code
@@ -303,19 +351,120 @@ class LLMDagConstructor():
         #         print(termcolor.colored(f"Error: {e}", "red"))
         #         continue
         
+        # 【新增】Main Agent工作状态 - 开始处理
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "working",
+                "work_type": "批量特征生成",
+                "details": {
+                    "current_node": cur_node.node_id,
+                    "step_index": cur_step_idx,
+                    "total_nodes": len(next_state)
+                },
+                "data": {
+                    "nodes_to_process": len(next_state),
+                    "operation": f"处理 {cur_node.operation_desc}"
+                }
+            })
+            # 详细的Main Agent开始思考
+            operation_details = f"正在处理: {cur_node.operation_desc[:60]}..." if hasattr(cur_node, 'operation_desc') else "特征生成操作"
+            self.status_wrapper.send_detailed_thinking(
+                "mainagent",
+                f"开始批量生成 {len(next_state)} 个特征节点，当前处理节点：{cur_node.node_id}",
+                {
+                    "操作类型": operation_details,
+                    "目标特征": self.target_col,
+                    "当前步骤": cur_step_idx,
+                    "预期生成数量": len(next_state)
+                },
+                [f"节点{cur_node.node_id}: {operation_details}"]
+            )
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = executor.map(gen_code_node, next_state[:])
         # print(termcolor.colored(f"Get fully {len(results)}"))
+
+        successful_nodes = []
+        failed_nodes = []
+
         for next_node, success in results:
             if success:
                 next_states_with_code.append(next_node)
+                successful_nodes.append(next_node)
                 self.dag.add_node(next_node)
                 self.dag.add_edge(cur_node, next_node)
                 self.attrname2node[list(next_node.write_set)[0]] = next_node
                 self.draw_current(next_node.node_id)
             else:
+                failed_nodes.append(next_node)
                 print(termcolor.colored(f"Drop node for code", "red"))
-        
+
+        # 【新增】Main Agent完成状态 - 批量处理完成
+        if hasattr(self, 'status_wrapper'):
+            if successful_nodes:
+                self.status_wrapper.send_agent_status({
+                    "type": "agent_status",
+                    "agent": "mainagent",
+                    "status": "completed",
+                    "work_type": "批量特征生成",
+                    "details": {
+                        "current_node": cur_node.node_id,
+                        "step_index": cur_step_idx,
+                        "successful_nodes": len(successful_nodes),
+                        "failed_nodes": len(failed_nodes)
+                    },
+                    "result": {
+                        "success": True,
+                        "generated_nodes": len(successful_nodes),
+                        "node_ids": [node.node_id for node in successful_nodes]
+                    }
+                })
+                # 使用增强的特征生成思考函数
+                total_complexity = 0
+                execution_time = 0
+
+                for node in successful_nodes:
+                    # 安全计算复杂度
+                    if hasattr(node, 'task_code') and node.task_code:
+                        try:
+                            complexity = get_code_complexity(node.task_code)
+                            if complexity is not None and isinstance(complexity, (int, float)):
+                                total_complexity += complexity
+                        except Exception as e:
+                            print(f"Warning: Error calculating complexity for node {getattr(node, 'node_id', 'unknown')}: {e}")
+                            total_complexity += 1  # Default complexity
+
+                    # 安全计算执行时间
+                    exec_time = getattr(node, 'exec_time', 0)
+                    if exec_time is not None and isinstance(exec_time, (int, float)):
+                        execution_time += exec_time
+
+                try:
+                    self.status_wrapper.format_feature_generation_thinking(
+                        successful_nodes=successful_nodes,
+                        failed_nodes=failed_nodes,
+                        total_complexity=total_complexity,
+                        execution_time=execution_time
+                    )
+                except Exception as e:
+                    print(f"Warning: Error sending feature generation thinking: {e}")
+                    # 发送一个简化的思考消息作为备选
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "mainagent",
+                        "thinking": f"成功生成了 {len(successful_nodes)} 个特征节点，平均复杂度约为 {total_complexity / max(len(successful_nodes), 1):.1f}。"
+                    })
+            else:
+                self.status_wrapper.send_agent_status({
+                    "type": "agent_status",
+                    "agent": "mainagent",
+                    "status": "error",
+                    "work_type": "批量特征生成",
+                    "error": "所有节点生成都失败了"
+                })
+
         return next_states_with_code
  
     def draw_current(self, idx:int = 0):
@@ -425,6 +574,10 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         cur_node.utility = monte_carlo_like_heuristic_func(self.dag.out_degree(cur_node)+1, total_node_num, cur_node.final_score)
         self.pre_states = self.cur_states.copy()
         self.node_id = src.llm.llm_dag_node.global_node_id
+
+        # 【新增】后置分析各Agent活动并发送WebSocket状态
+        if hasattr(self, 'status_wrapper') and next_states:
+            analyze_agents_activity_from_nodes(self.status_wrapper, next_states, cur_node, cur_feature_idx)
         
     def astar_k_step(self, step_num:int, data_agenda:list[str] = None, data_desc:list[str] = None, target_col:str = None, tb_name:str=None, csv_path:str=None, do_unfinished:bool = False, task_name:str = None):
         """A*算法多步执行入口函数
@@ -520,6 +673,66 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         '''
         print(termcolor.colored(f"the node{node.node_id} is evaluating : \n {node.task_code}, \n {node.out_cur_df.info()}", "yellow"))
         node.final_score, node.scores, node.attr_imp_order = self.get_scores(node.out_cur_df)
+
+        # 添加Node Validator状态推送
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "nodevalidator",
+                "status": "working",
+                "details": {
+                    "node_id": node.node_id,
+                    "validation_phase": "scoring"
+                },
+                "data": {
+                    "final_score": node.final_score,
+                    "feature_count": len(node.column_info),
+                    "performance_metrics": {
+                        "accuracy": node.final_score,
+                        "improvement": "calculating..."  # 可以添加改进计算逻辑
+                    }
+                }
+            })
+
+            # 增强的Node Validator思考过程
+            try:
+                performance_metrics = {
+                    "评估分数": node.final_score,
+                    "特征数量": len(node.column_info),
+                    "节点ID": node.node_id
+                }
+
+                # 添加更多性能指标（如果有的话）
+                if hasattr(node, 'scores') and node.scores:
+                    if len(node.scores) >= 2:
+                        performance_metrics["交叉验证分数"] = node.scores[0]
+                        performance_metrics["测试分数"] = node.scores[1]
+
+                # 提取重要特征（如果有的话）
+                top_features = []
+                if hasattr(node, 'attr_imp_order') and node.attr_imp_order:
+                    top_features = node.attr_imp_order[:3]  # 取前3个重要特征
+                elif hasattr(node, 'column_info'):
+                    # 如果没有重要性排序，取前几个特征名作为示例
+                    feature_names = list(node.column_info.keys())[:3]
+                    top_features = feature_names
+
+                self.status_wrapper.format_validation_thinking(
+                    node_id=node.node_id,
+                    final_score=node.final_score,
+                    feature_count=len(node.column_info),
+                    performance_metrics=performance_metrics,
+                    top_features=top_features
+                )
+            except Exception as e:
+                print(f"Warning: Error sending validation thinking: {e}")
+                # 发送一个简化的思考消息作为备选
+                self.status_wrapper.send_agent_thinking({
+                    "type": "agent_thinking",
+                    "agent": "nodevalidator",
+                    "thinking": f"正在验证节点 {node.node_id} 的性能。当前有 {len(node.column_info)} 个特征，评估分数为 {node.final_score:.4f}。"
+                })
+
         return node.final_score
 
     def get_scores(self, df:pd.DataFrame):

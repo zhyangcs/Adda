@@ -22,6 +22,7 @@ from src.pg.python_polish import *
 from src.pg.func_utils import *
 from src.env import *                # 环境配置
 from src.llm.tests.test_util import task_config  # 任务配置加载器
+from src.llm.agent_status_wrapper import agent_status_wrapper  # Agent状态包装器
 import warnings
 import termcolor
 import pandas as pd
@@ -48,6 +49,10 @@ class AddaConnector:
         }
         self.current_model = None    # 当前训练好的模型
         self.llm_dag_constructor = None  # LLM DAG构造器实例
+
+        # 连接WebSocket服务器到Agent状态包装器
+        # 注意：这里需要延迟设置，因为WebSocket服务器在Flask应用启动后才完全初始化
+        self._setup_websocket_connection()
         self.force_new = True
         self.count_idx = 0
     
@@ -538,9 +543,17 @@ class AddaConnector:
             origin_name = os.path.join(test_save_path, f"{actual_task_name}{postfix}")
             exec_name = os.path.join(test_save_path, actual_task_name)
 
-            # 4. 重命名目录（复制run_multimodel_type.py的逻辑）
-            if os.path.exists(origin_name):
-                os.rename(origin_name, exec_name)
+            print(f"Debug: _run_multimodal_performance - dir_path={dir_path}")
+            print(f"Debug: _run_multimodal_performance - postfix={postfix}")
+            print(f"Debug: _run_multimodal_performance - origin_name={origin_name}")
+            print(f"Debug: _run_multimodal_performance - exec_name={exec_name}")
+            print(f"Debug: _run_multimodal_performance - origin_name exists: {os.path.exists(origin_name)}")
+
+            # 4. 修复目录重命名逻辑 - 跳过重命名，直接使用现有目录
+            # 因为auto-step已经将pickle文件保存在正确位置
+            print(f"Debug: Skipping directory rename, using existing directory structure")
+            # if os.path.exists(origin_name):
+            #     os.rename(origin_name, exec_name)
 
             # 5. 设置数据库连接
             conn = get_conn()
@@ -569,13 +582,19 @@ class AddaConnector:
             # 8. 加载LLMDagConstructor状态（关键步骤）
             last_pipector_path = os.path.join(test_save_path, actual_task_name, "cur_states.pkl")
 
+            print(f"Debug: Looking for pickle file at {last_pipector_path}")
+            print(f"Debug: Pickle file exists: {os.path.exists(last_pipector_path)}")
+
             # 如果pickle文件不存在，尝试使用当前的DAG构造器
             if not os.path.exists(last_pipector_path):
-                print(f"Pickle文件不存在，使用当前DAG构造器状态")
+                print(f"Debug: Pickle file not found at standard path, using current DAG constructor state")
                 pipeCtor = self.llm_dag_constructor
+                print(f"Debug: Using current DAG constructor with {len(pipeCtor.dag.nodes())} nodes")
             else:
+                print(f"Debug: Loading pickle file from {last_pipector_path}")
                 with open(last_pipector_path, "rb") as f:
                     pipeCtor = pickle.load(f)
+                print(f"Debug: Successfully loaded pickle file with {len(pipeCtor.dag.nodes())} nodes")
 
             # 9. 设置表名
             pipeCtor.tb_name = db_tb_name
@@ -744,6 +763,128 @@ class AddaConnector:
             print(f"Warning: Failed to get SQL file paths: {e}")
 
         return file_paths
+
+    def _get_best_features_info(self, task_name):
+        """
+        获取最佳特征信息，包括Python代码、SQL代码和特征描述
+        """
+        try:
+            # 1. 确保LLMDagConstructor已初始化
+            if not self.llm_dag_constructor:
+                print("LLMDagConstructor未初始化，无法获取最佳特征信息")
+                return {
+                    "success": False,
+                    "error": "LLMDagConstructor未初始化",
+                    "python_code": "",
+                    "sql_code": "",
+                    "feature_descriptions": []
+                }
+
+            # 2. 确保compute_best_code已被执行
+            if not hasattr(self.llm_dag_constructor, 'output_nodes') or not self.llm_dag_constructor.output_nodes:
+                print("尚未执行compute_best_code，正在执行...")
+                self.llm_dag_constructor.compute_best_code()
+
+            # 3. 获取最佳节点
+            best_nodes = self.llm_dag_constructor.output_nodes
+            if not best_nodes:
+                print("未找到最佳节点")
+                return {
+                    "success": False,
+                    "error": "未找到最佳节点",
+                    "python_code": "",
+                    "sql_code": "",
+                    "feature_descriptions": []
+                }
+
+            # 4. 提取最佳特征信息
+            best_node = best_nodes[0]  # 取第一个最佳节点
+
+            # 获取Python代码
+            python_code = getattr(best_node, 'whole_code', '')
+            if not python_code:
+                python_code = getattr(best_node, 'task_code', '')
+
+            # 获取特征描述 - 沿着DAG路径收集所有节点的描述
+            feature_descriptions = self._extract_feature_descriptions(best_node)
+
+            # 获取SQL代码 - 如果存在的话
+            sql_code = self._get_best_node_sql_code(best_node, task_name)
+
+            return {
+                "success": True,
+                "node_id": best_node.node_id,
+                "final_score": best_node.final_score,
+                "python_code": python_code,
+                "sql_code": sql_code,
+                "feature_descriptions": feature_descriptions,
+                "feature_count": len(feature_descriptions),
+                "operation_desc": getattr(best_node, 'operation_desc', ''),
+                "exec_time": getattr(best_node, 'exec_time', 0.0)
+            }
+
+        except Exception as e:
+            error_msg = f"获取最佳特征信息失败: {str(e)}"
+            print(termcolor.colored(error_msg, "red"))
+            return {
+                "success": False,
+                "error": error_msg,
+                "python_code": "",
+                "sql_code": "",
+                "feature_descriptions": []
+            }
+
+    def _extract_feature_descriptions(self, node):
+        """
+        从节点回溯到根节点，提取路径上所有节点的特征描述
+        """
+        descriptions = []
+        try:
+            current_node = node
+
+            # 回溯到根节点，收集所有操作描述
+            while hasattr(current_node, 'node_id') and current_node.node_id != 1:
+                if hasattr(current_node, 'operation_desc') and current_node.operation_desc:
+                    descriptions.append({
+                        "node_id": current_node.node_id,
+                        "description": current_node.operation_desc,
+                        "feature_name": list(current_node.write_set)[0] if current_node.write_set else "",
+                        "op_type": getattr(current_node, 'op_type', 'Unknown'),
+                        "score": getattr(current_node, 'final_score', 0.0),
+                        "exec_time": getattr(current_node, 'exec_time', 0.0)
+                    })
+
+                # 移动到前驱节点
+                predecessors = list(self.llm_dag_constructor.dag.predecessors(current_node))
+                if predecessors:
+                    current_node = predecessors[0]
+                else:
+                    break
+
+            # 反转列表，使其从根节点到叶子节点
+            descriptions.reverse()
+
+            return descriptions
+
+        except Exception as e:
+            print(f"提取特征描述失败: {str(e)}")
+            return []
+
+    def _get_best_node_sql_code(self, node, task_name):
+        """
+        获取最佳节点对应的SQL代码
+        """
+        try:
+            # 尝试从生成的SQL文件中读取
+            dir_path = os.path.join(test_save_path, task_name)
+            if os.path.exists(dir_path):
+                # 读取第一个pipeline的SQL代码
+                sql_code = self._read_generated_sql_files(dir_path, 0)
+                return sql_code.get("all_sql", "")
+            return ""
+        except Exception as e:
+            print(f"获取SQL代码失败: {str(e)}")
+            return ""
 
     def train_on_single_node(self, node_id, task_name=None, model_type="RF", dataset_path=None):
         """
@@ -933,3 +1074,26 @@ df['health_index'] = (
             print(f"添加mock特征节点失败: {e}")
             import traceback
             traceback.print_exc()
+
+    def _setup_websocket_connection(self):
+        """设置WebSocket连接到Agent状态包装器"""
+        try:
+            # 导入WebSocket服务器（延迟导入避免循环依赖）
+            from websocket_server import get_websocket_server
+
+            print("[WS SETUP] Importing WebSocket server...")
+            # 获取WebSocket服务器实例
+            ws_server = get_websocket_server()
+            print(f"[WS SETUP] Got WebSocket server: {ws_server}")
+
+            # 将WebSocket服务器连接到Agent状态包装器
+            print("[WS SETUP] Connecting WebSocket server to Agent status wrapper...")
+            agent_status_wrapper.set_websocket_server(ws_server)
+            print("[WS SETUP] WebSocket server connected to Agent status wrapper successfully")
+
+        except Exception as e:
+            print(f"[WS SETUP ERROR] Failed to setup WebSocket connection: {e}")
+            import traceback
+            traceback.print_exc()
+            # 即使WebSocket连接失败，也不影响正常功能
+            pass
