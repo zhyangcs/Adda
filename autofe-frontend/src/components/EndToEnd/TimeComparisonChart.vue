@@ -96,10 +96,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as d3 from 'd3'
-import type { TimeData } from './mockData'
+import type { TimeData } from '@/types'
 
 const props = defineProps<{
-  timeData: TimeData
+  timeData: TimeData | null
 }>()
 
 const chartRef = ref<HTMLElement>()
@@ -123,11 +123,13 @@ let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let currentChart: any = null
 
 const chartData = computed(() => {
+  if (!props.timeData) return []
+
   return props.timeData.methods.map((method, index) => {
-    const totalTime = props.timeData.totalTime[index]
-    const trainingTime = props.timeData.trainingTime[index]
+    const totalTime = props.timeData.totalTime[index] || 0
+    const trainingTime = props.timeData.trainingTime[index] || 0
     const otherTime = totalTime - trainingTime
-    const trainingRatio = Math.round((trainingTime / totalTime) * 100)
+    const trainingRatio = totalTime > 0 ? Math.round((trainingTime / totalTime) * 100) : 0
 
     return {
       method,
@@ -137,24 +139,28 @@ const chartData = computed(() => {
       trainingRatio,
       isAdda: method === 'Adda'
     }
-  }).sort((a, b) => a.totalTime - b.totalTime) // 按总时间升序排序
+  }).sort((a, b) => (a.totalTime || 0) - (b.totalTime || 0)) // 按总时间升序排序
 })
 
 const fastestMethod = computed(() => {
+  if (chartData.value.length === 0) return 'N/A'
   const fastest = chartData.value[0]
   return fastest ? fastest.method : 'N/A'
 })
 
 const speedImprovement = computed(() => {
+  if (chartData.value.length === 0) return '1.0'
+
   const addaData = chartData.value.find(d => d.isAdda)
-  if (!addaData) return 0
+  if (!addaData) return '1.0'
 
   const slowestTime = chartData.value[chartData.value.length - 1]?.totalTime || 1
-  return (slowestTime / addaData.totalTime).toFixed(1)
+  return ((slowestTime || 1) / (addaData.totalTime || 1)).toFixed(1)
 })
 
 const averageTotalTime = computed(() => {
-  const total = chartData.value.reduce((sum, d) => sum + d.totalTime, 0)
+  if (chartData.value.length === 0) return '0 s'
+  const total = chartData.value.reduce((sum, d) => sum + (d.totalTime || 0), 0)
   return formatTime(total / chartData.value.length)
 })
 
@@ -186,21 +192,6 @@ const createChart = () => {
   const width = container.clientWidth
   const height = 320
 
-  // 确保有有效的数据
-  const validData = chartData.value.filter(d =>
-    d.method &&
-    typeof d.totalTime === 'number' &&
-    d.totalTime > 0 &&
-    typeof d.trainingTime === 'number' &&
-    d.trainingTime >= 0
-  )
-
-  if (validData.length === 0) {
-    // 显示无数据提示而不是报错
-    showNoDataMessage(container)
-    return
-  }
-
   // 清除现有图表
   d3.select(container).selectAll('*').remove()
 
@@ -215,6 +206,21 @@ const createChart = () => {
 
   const g = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
+
+  // 确保有有效的数据
+  const validData = chartData.value.filter(d =>
+    d.method &&
+    typeof d.totalTime === 'number' &&
+    d.totalTime > 0 &&
+    typeof d.trainingTime === 'number' &&
+    d.trainingTime >= 0
+  )
+
+  if (validData.length === 0) {
+    // 显示空图表
+    showEmptyChart(g, innerWidth, innerHeight)
+    return
+  }
 
   // 转换时间单位
   const timeScale = timeUnit.value === 'minutes' ? 60 : 1
@@ -269,19 +275,13 @@ const createChart = () => {
   const stackedData = validData.map(d => ({
     method: d.method,
     isAdda: d.isAdda,
-    values: [
-      { type: 'training', value: d.trainingTime / timeScale },
-      { type: 'other', value: d.otherTime / timeScale }
-    ]
+    training: d.trainingTime / timeScale,
+    other: d.otherTime / timeScale
   }))
 
   // 堆叠生成器
   const stack = d3.stack()
     .keys(['training', 'other'])
-    .value((d: any, key) => {
-      const found = d.values.find((v: any) => v.type === key)
-      return found ? found.value : 0
-    })
 
   const series = stack(stackedData)
 
@@ -298,20 +298,30 @@ const createChart = () => {
 
   // 绘制每个柱子的分段
   const bars = groups.selectAll('rect')
-    .data((d: any) => series.map(s => ({
-      method: d.method,
-      isAdda: d.isAdda,
-      key: s.key,
-      value: s[d.method - 1]?.data[s.key] || 0,
-      start: s[d.method - 1]?.[0] || 0,
-      end: s[d.method - 1]?.[1] || 0
-    })))
+    .data((d: any, groupIndex: number) => series.map(s => {
+      const seriesData = s[groupIndex]
+      return {
+        method: d.method,
+        isAdda: d.isAdda,
+        key: s.key,
+        value: d[s.key] || 0,
+        start: seriesData?.[0] || 0,
+        end: seriesData?.[1] || 0
+      }
+    }))
     .enter().append('rect')
     .attr('class', 'stacked-bar')
     .attr('x', (d: any) => xScale(d.method) || 0)
     .attr('width', xScale.bandwidth())
-    .attr('y', (d: any) => yScale(d.end))
-    .attr('height', (d: any) => yScale(d.start) - yScale(d.end))
+    .attr('y', (d: any) => {
+      const endValue = isNaN(d.end) || d.end < 0 ? 0 : d.end
+      return yScale(endValue)
+    })
+    .attr('height', (d: any) => {
+      const startValue = isNaN(d.start) || d.start < 0 ? 0 : d.start
+      const endValue = isNaN(d.end) || d.end < 0 ? 0 : d.end
+      return yScale(startValue) - yScale(endValue)
+    })
     .attr('fill', (d: any) => colorScale(d.key as string))
     .attr('rx', 2)
     .style('cursor', 'pointer')
@@ -329,8 +339,15 @@ const createChart = () => {
     .append('rect')
     .attr('x', (d: any) => (xScale(d.method) || 0) - 2)
     .attr('width', xScale.bandwidth() + 4)
-    .attr('y', (d: any) => yScale(d.totalTime / timeScale))
-    .attr('height', (d: any) => innerHeight - yScale(d.totalTime / timeScale))
+    .attr('y', (d: any) => {
+      const value = d.totalTime / timeScale
+      return isNaN(value) || value < 0 ? innerHeight : yScale(value)
+    })
+    .attr('height', (d: any) => {
+      const value = d.totalTime / timeScale
+      const yPos = isNaN(value) || value < 0 ? innerHeight : yScale(value)
+      return innerHeight - yPos
+    })
     .attr('fill', 'none')
     .attr('stroke', '#007bff')
     .attr('stroke-width', 2)
@@ -346,7 +363,11 @@ const createChart = () => {
   groups
     .append('text')
     .attr('x', (d: any) => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
-    .attr('y', (d: any) => yScale(d.totalTime / timeScale) - 8)
+    .attr('y', (d: any) => {
+      const value = d.totalTime / timeScale
+      const yPos = isNaN(value) || value < 0 ? innerHeight : yScale(value)
+      return yPos - 8
+    })
     .attr('text-anchor', 'middle')
     .style('font-size', '14px')
     .style('font-weight', 'bold')
@@ -366,13 +387,17 @@ const createChart = () => {
         .duration(200)
         .attr('opacity', 0.8)
 
-      showTooltip(event, {
-        method: d.method,
-        totalTime: d.totalTime,
-        trainingTime: d.trainingTime,
-        otherTime: d.otherTime,
-        trainingRatio: d.trainingRatio
-      })
+      // 从原始数据中获取完整信息
+      const originalData = chartData.value.find(item => item.method === d.method)
+      if (originalData) {
+        showTooltip(event, {
+          method: originalData.method,
+          totalTime: originalData.totalTime,
+          trainingTime: originalData.trainingTime,
+          otherTime: originalData.otherTime,
+          trainingRatio: originalData.trainingRatio
+        })
+      }
     })
     .on('mousemove', function(event) {
       updateTooltipPosition(event)
@@ -411,6 +436,57 @@ const updateTooltipPosition = (event: MouseEvent) => {
 
 const hideTooltip = () => {
   tooltip.value.show = false
+}
+
+const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, width: number, height: number) => {
+  // 绘制空的坐标轴
+  const xScale = d3.scaleBand()
+    .domain([])
+    .range([0, width])
+    .padding(0.2)
+
+  const yScale = d3.scaleLinear()
+    .domain([0, 1])
+    .nice()
+    .range([height, 0])
+
+  // X轴
+  g.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(xScale))
+
+  // Y轴
+  g.append('g')
+    .call(d3.axisLeft(yScale))
+
+  // Y轴标签
+  g.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('y', 0 - 50)
+    .attr('x', 0 - (height / 2))
+    .attr('dy', '1em')
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Time')
+
+  // X轴标签
+  g.append('text')
+    .attr('transform', `translate(${width / 2}, ${height + 50})`)
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Methods')
+
+  // 空状态提示
+  g.append('text')
+    .attr('x', width / 2)
+    .attr('y', height / 2)
+    .attr('text-anchor', 'middle')
+    .style('font-size', '14px')
+    .style('fill', '#6c757d')
+    .style('opacity', 0.6)
+    .text('No data available')
 }
 
 const showNoDataMessage = (container: HTMLElement) => {

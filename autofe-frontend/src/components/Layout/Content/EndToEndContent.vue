@@ -63,7 +63,7 @@ import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
 import PerformanceComparisonChart from '../../EndToEnd/PerformanceComparisonChart.vue'
 import TimeComparisonChart from '../../EndToEnd/TimeComparisonChart.vue'
 import FeatureImportancePanel from '../../EndToEnd/FeatureImportancePanel.vue'
-import type { FeatureInfo, PerformanceData, TimeData, ImportanceData } from '@/components/EndToEnd/mockData'
+import type { FeatureInfo, PerformanceData, TimeData, ImportanceData } from '@/types'
 
 // 获取任务store
 const taskStore = useTaskStore()
@@ -139,7 +139,7 @@ const apiE2EData = ref<{
 const progressPercentage = ref(0)
 const loadingMessage = ref('Initializing feature engineering pipeline...')
 const showSuccessNotification = ref(false)
-const executionTimeout = ref<NodeJS.Timeout | null>(null)
+const executionTimeout = ref<number | null>(null)
 const POLLING_INTERVAL = 5000 // 5秒轮询一次
 
 // 计算属性 - 使用taskStore的状态或本地状态
@@ -150,29 +150,29 @@ const executionStatus = computed(() => {
   return 'idle'
 })
 
-// 计算属性 - 优先使用auto-step返回的数据，然后是taskStore的真实数据，最后是本地mock数据
+// 计算属性 - 优先使用auto-step返回的数据，然后是taskStore的真实数据，否则返回null
 const currentFeatureInfo = computed(() => {
   if (apiE2EData.value?.featureInfo) return apiE2EData.value.featureInfo
   if (realFeatureInfo.value) return realFeatureInfo.value
-  return mockFeatureInfo
+  return null
 })
 
 const currentPerformanceData = computed(() => {
   if (apiE2EData.value?.performanceData) return apiE2EData.value.performanceData
   if (realPerformanceData.value) return realPerformanceData.value
-  return mockPerformanceData
+  return null
 })
 
 const currentTimeData = computed(() => {
   if (apiE2EData.value?.timeData) return apiE2EData.value.timeData
   if (realTimeData.value) return realTimeData.value
-  return mockTimeData
+  return null
 })
 
 const currentImportanceData = computed(() => {
   if (apiE2EData.value?.importanceData) return apiE2EData.value.importanceData
   if (realImportanceData.value) return realImportanceData.value
-  return mockImportanceData
+  return null
 })
 
 const getStatusText = () => {
@@ -263,7 +263,7 @@ const pollTaskStatus = async () => {
       if (taskStore.autoStepData) {
         // 提取e2e数据（如果存在）
         if (taskStore.autoStepData.e2e_data) {
-          apiE2EData.value = taskStore.autoStepData.e2e_data
+          apiE2EData.value = taskStore.autoStepData.e2e_data as typeof apiE2EData.value
           console.log('Updated E2E data from auto-step:', apiE2EData.value)
         }
 

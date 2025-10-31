@@ -131,10 +131,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as d3 from 'd3'
-import type { ImportanceData, FeatureImportance } from './mockData'
+import type { ImportanceData, FeatureImportance } from '@/types'
 
 const props = defineProps<{
-  importanceData: ImportanceData
+  importanceData: ImportanceData | null
 }>()
 
 const barChartRef = ref<HTMLElement>()
@@ -154,15 +154,21 @@ let barSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let radarSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 
 const currentFeatures = computed(() => {
+  if (!props.importanceData || selectedMethod.value === 'radar') {
+    return []
+  }
   return props.importanceData[selectedMethod.value as keyof ImportanceData] || []
 })
 
 const maxImportance = computed(() => {
+  if (currentFeatures.value.length === 0) return 1
   const values = currentFeatures.value.map(f => f.importance)
   return Math.max(...values, 1)
 })
 
 const topFeatures = computed(() => {
+  if (!props.importanceData) return []
+
   // 获取所有方法的前5个特征的并集
   const allFeatures = new Set<string>()
 
@@ -180,11 +186,13 @@ const topFeatures = computed(() => {
 })
 
 const topFeatureName = computed(() => {
+  if (currentFeatures.value.length === 0) return 'N/A'
   const top = currentFeatures.value[0]
   return top ? top.feature : 'N/A'
 })
 
 const topFeatureScore = computed(() => {
+  if (currentFeatures.value.length === 0) return 0
   const top = currentFeatures.value[0]
   return top ? top.importance : 0
 })
@@ -194,6 +202,7 @@ const totalFeatures = computed(() => {
 })
 
 const getFeatureImportance = (method: keyof ImportanceData, featureName: string): number => {
+  if (!props.importanceData) return 0
   const feature = props.importanceData[method].find(f => f.feature === featureName)
   return feature ? feature.importance : 0
 }
@@ -242,6 +251,12 @@ const createBarChart = () => {
 
   const g = barSvg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
+
+  // 如果没有数据，显示空图表
+  if (currentFeatures.value.length === 0) {
+    showEmptyBarChart(g, innerWidth, innerHeight)
+    return
+  }
 
   // 比例尺
   const xScale = d3.scaleBand()
@@ -342,6 +357,12 @@ const createRadarChart = () => {
 
   const g = radarSvg.append('g')
     .attr('transform', `translate(${width / 2},${height / 2})`)
+
+  // 如果没有数据，显示空图表
+  if (topFeatures.value.length === 0) {
+    showEmptyRadarChart(g, Math.min(width, height) / 2 - 40)
+    return
+  }
 
   const radius = Math.min(width, height) / 2 - 40
   const angleSlice = (Math.PI * 2) / topFeatures.value.length
@@ -523,6 +544,98 @@ watch(() => props.importanceData, () => {
     }
   })
 }, { deep: true })
+
+// 空图表显示函数
+const showEmptyBarChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, width: number, height: number) => {
+  // 绘制空的坐标轴
+  const xScale = d3.scaleBand()
+    .domain([])
+    .range([0, width])
+    .padding(0.3)
+
+  const yScale = d3.scaleLinear()
+    .domain([0, 1])
+    .nice()
+    .range([height, 0])
+
+  // X轴
+  g.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(xScale))
+
+  // Y轴
+  g.append('g')
+    .call(d3.axisLeft(yScale))
+
+  // Y轴标签
+  g.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('y', 0 - 50)
+    .attr('x', 0 - (height / 2))
+    .attr('dy', '1em')
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Importance')
+
+  // X轴标签
+  g.append('text')
+    .attr('transform', `translate(${width / 2}, ${height + 70})`)
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Features')
+
+  // 空状态提示
+  g.append('text')
+    .attr('x', width / 2)
+    .attr('y', height / 2)
+    .attr('text-anchor', 'middle')
+    .style('font-size', '14px')
+    .style('fill', '#6c757d')
+    .style('opacity', 0.6)
+    .text('No data available')
+}
+
+const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, radius: number) => {
+  // 绘制空的雷达图背景
+  const levels = 5
+  const angleSlice = (Math.PI * 2) / 6 // 默认6个维度
+
+  // 绘制同心圆
+  for (let level = 1; level <= levels; level++) {
+    g.append('circle')
+      .attr('r', (radius / levels) * level)
+      .style('fill', 'none')
+      .style('stroke', '#dee2e6')
+      .style('stroke-opacity', 0.5)
+  }
+
+  // 绘制轴线
+  for (let i = 0; i < 6; i++) {
+    const angle = angleSlice * i - Math.PI / 2
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius
+
+    g.append('line')
+      .attr('x1', 0)
+      .attr('y1', 0)
+      .attr('x2', x)
+      .attr('y2', y)
+      .style('stroke', '#dee2e6')
+      .style('stroke-opacity', 0.5)
+  }
+
+  // 空状态提示
+  g.append('text')
+    .attr('x', 0)
+    .attr('y', 0)
+    .attr('text-anchor', 'middle')
+    .style('font-size', '14px')
+    .style('fill', '#6c757d')
+    .style('opacity', 0.6)
+    .text('No data available')
+}
 </script>
 
 <style scoped>

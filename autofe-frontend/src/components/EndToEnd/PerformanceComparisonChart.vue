@@ -55,7 +55,7 @@
         </div>
         <div class="stat-item">
           <span class="stat-label">Improvement:</span>
-          <span class="stat-value improvement">+{{ improvement.toFixed(2) }}%</span>
+          <span class="stat-value improvement">+{{ (improvement || 0).toFixed(2) }}%</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Average:</span>
@@ -74,7 +74,7 @@
       <div class="tooltip-content">
         <div class="tooltip-row">
           <span>{{ selectedMetric.toUpperCase() }}:</span>
-          <strong>{{ tooltip.data.value.toFixed(3) }}</strong>
+          <strong>{{ (tooltip.data.value || 0).toFixed(3) }}</strong>
         </div>
         <div class="tooltip-row">
           <span>Rank:</span>
@@ -88,10 +88,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as d3 from 'd3'
-import type { PerformanceData } from './mockData'
+import type { PerformanceData } from '@/types'
 
 const props = defineProps<{
-  performanceData: PerformanceData
+  performanceData: PerformanceData | null
 }>()
 
 const chartRef = ref<HTMLElement>()
@@ -113,39 +113,54 @@ let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let currentChart: any = null
 
 const chartData = computed(() => {
+  if (!props.performanceData) return []
+
   const data = props.performanceData.methods.map((method, index) => ({
     method,
     value: selectedMetric.value === 'auc'
-      ? props.performanceData.auc[index]
-      : props.performanceData.f1[index],
+      ? (props.performanceData?.auc?.[index] || 0)
+      : (props.performanceData?.f1?.[index] || 0),
     isAdda: method === 'Adda'
   }))
 
   // 按值排序
-  return data.sort((a, b) => b.value - a.value)
+  return data.sort((a, b) => (b.value || 0) - (a.value || 0))
+})
+
+// 有效数据计算属性
+const validData = computed(() => {
+  return chartData.value.filter(d =>
+    d.method &&
+    typeof d.value === 'number' &&
+    d.value >= 0 &&
+    d.value <= 1 // AUC和F1值应该在0-1之间
+  )
 })
 
 const bestMethod = computed(() => {
+  if (chartData.value.length === 0) return 'N/A'
   const best = chartData.value[0]
   return best ? best.method : 'N/A'
 })
 
 const improvement = computed(() => {
+  if (chartData.value.length === 0) return 0
+
   const addaData = chartData.value.find(d => d.isAdda)
-  const baselineData = chartData.value.find(d => !d.isAdda)
+  const baselineMethods = chartData.value.filter(d => !d.isAdda)
 
-  if (!addaData || !baselineData) return 0
+  if (!addaData || baselineMethods.length === 0) return 0
 
-  const baselineAvg = chartData.value
-    .filter(d => !d.isAdda)
-    .reduce((sum, d) => sum + d.value, 0) /
-    chartData.value.filter(d => !d.isAdda).length
+  const baselineAvg = baselineMethods
+    .reduce((sum, d) => sum + (d.value || 0), 0) /
+    baselineMethods.length
 
-  return ((addaData.value - baselineAvg) / baselineAvg) * 100
+  return ((addaData.value || 0) - baselineAvg) / baselineAvg * 100
 })
 
 const averageScore = computed(() => {
-  const values = chartData.value.map(d => d.value)
+  if (chartData.value.length === 0) return 0
+  const values = chartData.value.map(d => d.value || 0)
   return values.reduce((sum, val) => sum + val, 0) / values.length
 })
 
@@ -160,20 +175,6 @@ const createChart = () => {
   const container = chartRef.value
   const width = container.clientWidth
   const height = 300
-
-  // 确保有有效的数据
-  const validData = chartData.value.filter(d =>
-    d.method &&
-    typeof d.value === 'number' &&
-    d.value >= 0 &&
-    d.value <= 1 // AUC和F1值应该在0-1之间
-  )
-
-  if (validData.length === 0) {
-    // 显示无数据提示而不是报错
-    showNoDataMessage(container)
-    return
-  }
 
   // 清除现有图表
   d3.select(container).selectAll('*').remove()
@@ -190,22 +191,24 @@ const createChart = () => {
   const g = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
 
+  if (validData.value.length === 0) {
+    // 显示空图表
+    showEmptyChart(g, innerWidth, innerHeight)
+    return
+  }
+
   // 比例尺
   const xScale = d3.scaleBand()
-    .domain(validData.map(d => d.method))
+    .domain(validData.value.map((d: any) => d.method))
     .range([0, innerWidth])
     .padding(0.2)
 
   const yScale = d3.scaleLinear()
-    .domain([0, d3.max(validData, d => d.value) || 1])
+    .domain([0, d3.max(validData.value, (d: any) => d.value) || 1])
     .nice()
     .range([innerHeight, 0])
 
-  // 颜色比例尺
-  const colorScale = d3.scaleOrdinal()
-    .domain(['Adda', 'Baseline'])
-    .range(['#007bff', '#6c757d'])
-
+  
   // X轴
   g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
@@ -235,23 +238,23 @@ const createChart = () => {
 
   // 柱状图
   const bars = g.selectAll('.bar')
-    .data(validData)
+    .data(validData.value)
     .enter().append('rect')
     .attr('class', 'bar')
-    .attr('x', d => xScale(d.method) || 0)
+    .attr('x', (d: any) => xScale(d.method) || 0)
     .attr('width', xScale.bandwidth())
     .attr('y', innerHeight)
     .attr('height', 0)
-    .attr('fill', d => d.isAdda ? '#007bff' : '#6c757d')
+    .attr('fill', (d: any) => d.isAdda ? '#007bff' : '#6c757d')
     .attr('rx', 4)
     .style('cursor', 'pointer')
 
   // 动画
   bars.transition()
     .duration(800)
-    .delay((d, i) => i * 100)
-    .attr('y', d => yScale(d.value))
-    .attr('height', d => innerHeight - yScale(d.value))
+    .delay((_: any, i: number) => i * 100)
+    .attr('y', (d: any) => yScale(d.value))
+    .attr('height', (d: any) => innerHeight - yScale(d.value))
 
   // 鼠标事件
   bars
@@ -282,20 +285,20 @@ const createChart = () => {
 
   // 数值标签
   g.selectAll('.label')
-    .data(validData)
+    .data(validData.value)
     .enter().append('text')
     .attr('class', 'label')
-    .attr('x', d => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
-    .attr('y', d => yScale(d.value) - 5)
+    .attr('x', (d: any) => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
+    .attr('y', (d: any) => yScale(d.value) - 5)
     .attr('text-anchor', 'middle')
     .style('font-size', '16px')
     .style('font-weight', 'bold')
-    .style('fill', d => d.isAdda ? '#007bff' : '#6c757d')
+    .style('fill', (d: any) => d.isAdda ? '#007bff' : '#6c757d')
     .style('opacity', 0)
-    .text(d => d.value.toFixed(3))
+    .text((d: any) => d.value.toFixed(3))
     .transition()
     .duration(800)
-    .delay((d, i) => i * 100 + 400)
+    .delay((_: any, i: number) => i * 100 + 400)
     .style('opacity', 1)
 
   currentChart = { svg, g, xScale, yScale, bars }
@@ -308,7 +311,7 @@ const updateChart = () => {
 }
 
 const showTooltip = (event: MouseEvent, data: any) => {
-  const rank = validData.findIndex(item => item.method === data.method) + 1
+  const rank = validData.value.findIndex((item: any) => item.method === data.method) + 1
   tooltip.value.show = true
   tooltip.value.data = {
     ...data,
@@ -329,30 +332,57 @@ const hideTooltip = () => {
   tooltip.value.show = false
 }
 
-const showNoDataMessage = (container: HTMLElement) => {
-  // 清除现有内容
-  d3.select(container).selectAll('*').remove()
+const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, width: number, height: number) => {
+  // 绘制空的坐标轴
+  const xScale = d3.scaleBand()
+    .domain([])
+    .range([0, width])
+    .padding(0.2)
 
-  const noDataDiv = d3.select(container)
-    .append('div')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('height', '300px')
-    .style('color', '#6c757d')
+  const yScale = d3.scaleLinear()
+    .domain([0, 1])
+    .nice()
+    .range([height, 0])
+
+  // X轴
+  g.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(xScale))
+
+  // Y轴
+  g.append('g')
+    .call(d3.axisLeft(yScale))
+
+  // Y轴标签
+  g.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('y', 0 - 50)
+    .attr('x', 0 - (height / 2))
+    .attr('dy', '1em')
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Score')
+
+  // X轴标签
+  g.append('text')
+    .attr('transform', `translate(${width / 2}, ${height + 50})`)
+    .style('text-anchor', 'middle')
+    .style('font-size', '12px')
+    .style('fill', '#6c757d')
+    .text('Methods')
+
+  // 空状态提示
+  g.append('text')
+    .attr('x', width / 2)
+    .attr('y', height / 2)
+    .attr('text-anchor', 'middle')
     .style('font-size', '14px')
-
-  noDataDiv.append('i')
-    .attr('class', 'bi bi-bar-chart-line')
-    .style('font-size', '48px')
-    .style('margin-bottom', '16px')
-    .style('opacity', '0.5')
-
-  noDataDiv.append('div')
-    .style('text-align', 'center')
-    .html('No performance data available<br><small>Run the analysis to see performance metrics</small>')
+    .style('fill', '#6c757d')
+    .style('opacity', 0.6)
+    .text('No data available')
 }
+
 
 const exportChart = () => {
   if (!svg) return

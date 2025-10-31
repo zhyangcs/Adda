@@ -90,7 +90,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { FeatureInfo } from './mockData'
+import type { FeatureInfo } from '@/types'
 
 interface Tab {
   key: 'description' | 'python' | 'sql'
@@ -99,7 +99,7 @@ interface Tab {
 }
 
 const props = defineProps<{
-  featureData: FeatureInfo
+  featureData: FeatureInfo | null
 }>()
 
 const tabs: Tab[] = [
@@ -113,19 +113,23 @@ const isFullscreen = ref(false)
 const showCopyNotification = ref(false)
 
 const activeContent = computed(() => {
+  if (!props.featureData) return 'No data available'
+
   switch (activeTab.value) {
     case 'description':
-      return props.featureData.description
+      return props.featureData.description || 'No description available'
     case 'python':
-      return props.featureData.pythonCode
+      return props.featureData.pythonCode || '# No Python code available'
     case 'sql':
-      return props.featureData.sqlCode
+      return props.featureData.sqlCode || '-- No SQL code available'
     default:
       return ''
   }
 })
 
 const formattedDescription = computed(() => {
+  if (!props.featureData?.description) return 'No description available'
+
   // 简单的Markdown格式化
   return props.featureData.description
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')

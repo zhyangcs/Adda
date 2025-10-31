@@ -105,11 +105,34 @@ class PythonPolisher:
         polish the code
         extra step: 0 do nothing, 1 train the model, 2 predict from the model
         """
+        # 安全检查：确保所有pipes都有有效的code_path
+        for idx, pipe in enumerate(self.pipes):
+            if pipe is None:
+                print(f"Warning: Pipe {idx} is None, skipping")
+                continue
+
+            if not hasattr(pipe, 'code_path') or not pipe.code_path:
+                print(f"Warning: Pipe {idx} has no valid code_path, skipping")
+                self.pipes[idx] = None  # 标记为无效
+                continue
+
+            if not os.path.exists(pipe.code_path):
+                print(f"Warning: Code path {pipe.code_path} does not exist for pipe {idx}, skipping")
+                self.pipes[idx] = None  # 标记为无效
+                continue
+
+        # 过滤掉None pipes
+        self.pipes = [pipe for pipe in self.pipes if pipe is not None]
+        self.DagCons = [dc for dc in self.DagCons if dc is not None]
+
+        if not self.pipes:
+            raise Exception("没有有效的特征管道可用于代码优化。所有管道都无效或不存在。")
+
         for idx, pipe in enumerate(self.pipes):
             try:
                 origin_exec_namespace = {}
                 new_exec_namespace = {}
-                    
+
                 # 0. do some reformat to the origin code
                 shorten_var(pipe.code_path, self.df_name)
                 add_type_change_drop(pipe.code_path, self.df_name, self.extra_step)
