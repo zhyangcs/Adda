@@ -2,12 +2,17 @@
 import { onMounted } from 'vue'
 import MainLayout from '@/components/Layout/MainLayout.vue'
 import { useTaskStore } from '@/stores/task'
+import { useAgentStore } from '@/stores/agent'
 
 const taskStore = useTaskStore()
+const agentStore = useAgentStore()
 
 onMounted(() => {
   // 初始化时检查任务状态
   taskStore.checkTaskStatus()
+
+  // 初始化WebSocket连接
+  agentStore.initializeWebSocket()
 })
 </script>
 

@@ -12,6 +12,13 @@
                 <h6 class="info-title">
                   <Users :size="18" class="me-2" />
                   Agent Thinking Process
+                  <button
+                    class="btn btn-sm btn-info ms-2"
+                    @click="testAgentStatus"
+                    style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                  >
+                    Test
+                  </button>
                 </h6>
               </div>
               <div class="info-content">
@@ -31,6 +38,11 @@
                     </div>
                     <div class="agent-label">System</div>
                     <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
+
+                    <!-- System Agent思考气泡 -->
+                    <div v-if="getAgentThinking('system')" class="thinking-bubble left-bubble">
+                      {{ getAgentThinking('system') }}
+                    </div>
                   </div>
 
                   <!-- Main Agent (右上角) -->
@@ -44,6 +56,11 @@
                     </div>
                     <div class="agent-label">Main Agent</div>
                     <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
+
+                    <!-- Main Agent思考气泡 -->
+                    <div v-if="getAgentThinking('main')" class="thinking-bubble right-bubble">
+                      {{ getAgentThinking('main') }}
+                    </div>
                   </div>
 
                   <!-- Optimization Agent (右下角) -->
@@ -57,6 +74,11 @@
                     </div>
                     <div class="agent-label">Opt Agent</div>
                     <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
+
+                    <!-- Optimization Agent思考气泡 -->
+                    <div v-if="getAgentThinking('optimization')" class="thinking-bubble right-bubble">
+                      {{ getAgentThinking('optimization') }}
+                    </div>
                   </div>
 
                   <!-- Node Validation Process (左下角) -->
@@ -70,6 +92,11 @@
                     </div>
                     <div class="agent-label">Node Validation</div>
                     <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+
+                    <!-- Node Validation Agent思考气泡 -->
+                    <div v-if="getAgentThinking('validation')" class="thinking-bubble left-bubble">
+                      {{ getAgentThinking('validation') }}
+                    </div>
                   </div>
 
                   <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
@@ -170,16 +197,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { Users, Cog, Monitor } from 'lucide-vue-next'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { Users, Cog, Monitor, Bot } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
+import { useAgentStore } from '@/stores/agent'
+import type { AgentType } from '@/types/websocket'
 import SQLCode from '@/components/Features/SQLCode.vue'
 import FeaturePerformance from '@/components/Features/FeaturePerformance.vue'
 import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
+const agentStore = useAgentStore()
 
 const activeAgent = ref<'system' | 'main' | 'optimization' | 'validation'>('main')
 const workingAgents = ref<string[]>([])
@@ -259,7 +289,82 @@ function setActiveAgent(agent: 'system' | 'main' | 'optimization' | 'validation'
   taskStore.addNotification(`Selected ${agent} agent`, 'info')
 }
 
-// 模拟agent工作状态
+// WebSocket相关
+const currentThinkingText = computed(() => {
+  // 映射activeAgent到agent store中的agent类型
+  const agentTypeMap: Record<string, AgentType> = {
+    'system': 'system',
+    'main': 'mainagent',
+    'optimization': 'optimizationagent',
+    'validation': 'nodevalidator'
+  }
+
+  const agentType = agentTypeMap[activeAgent.value]
+  if (agentType) {
+    const thinking = agentStore.getLatestThinking(agentType)
+    return thinking
+  }
+  return ''
+})
+
+// 获取特定Agent的思考内容
+function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validation'): string {
+  const agentTypeMap: Record<string, AgentType> = {
+    'system': 'system',
+    'main': 'mainagent',
+    'optimization': 'optimizationagent',
+    'validation': 'nodevalidator'
+  }
+
+  const agentType = agentTypeMap[agent]
+  if (agentType) {
+    const thinking = agentStore.getLatestThinking(agentType)
+    return thinking
+  }
+  return ''
+}
+
+// 测试Agent状态
+function testAgentStatus() {
+  console.log('Test Agent Status clicked!')
+
+  // 映射到正确的agent类型
+  const agentTypeMap: Record<string, AgentType> = {
+    'system': 'system',
+    'main': 'mainagent',
+    'optimization': 'optimizationagent',
+    'validation': 'nodevalidator'
+  }
+
+  const agentType = agentTypeMap[activeAgent.value]
+  if (agentType) {
+    console.log('Testing agent:', agentType)
+
+    // 测试 thinking 消息
+    agentStore.updateAgentThinking({
+      type: 'agent_thinking',
+      agent: agentType,
+      thinking: `这是一个测试思考消息：${activeAgent.value} Agent正在分析数据集特征，准备生成新的特征组合...`,
+      category: 'analysis',
+      timestamp: Date.now()
+    })
+
+    // 也更新状态
+    agentStore.updateAgentState({
+      type: 'agent_status',
+      agent: agentType,
+      status: 'working',
+      work_type: '特征工程测试',
+      details: { phase: 'testing', progress: 75 },
+      timestamp: Date.now()
+    })
+
+    taskStore.addNotification(`Test ${activeAgent.value} Agent状态已发送`, 'info')
+    console.log('Test status sent successfully')
+  }
+}
+
+// 模拟agent工作状态（保持原有逻辑）
 function simulateAgentWork() {
   if (taskStore.status === 'running') {
     workingAgents.value = ['system']
@@ -311,6 +416,38 @@ watch(() => taskStore.isInitialized, (isInitialized) => {
   }
 })
 
+// 监听Agent状态变化，更新工作状态
+watch(() => agentStore.allAgentStates, (states) => {
+  const agentTypeMap: Record<string, string> = {
+    'system': 'system',
+    'mainagent': 'main',
+    'optimizationagent': 'optimization',
+    'nodevalidator': 'validation'
+  }
+
+  const newWorkingAgents: string[] = []
+
+  states.forEach(state => {
+    const shortName = agentTypeMap[state.agent]
+    if (shortName && state.status === 'working') {
+      newWorkingAgents.push(shortName)
+    }
+  })
+
+  workingAgents.value = newWorkingAgents
+
+  // 更新连接状态
+  const hasMainAgent = states.some(s => s.agent === 'mainagent' && s.status === 'working')
+  const hasOptAgent = states.some(s => s.agent === 'optimizationagent' && s.status === 'working')
+  const hasValidationAgent = states.some(s => s.agent === 'nodevalidator' && s.status === 'working')
+  const hasSystemAgent = states.some(s => s.agent === 'system' && s.status === 'working')
+
+  connectionActive.value = hasMainAgent || hasSystemAgent
+  connectionActiveReverse.value = hasOptAgent
+  connectionActiveValidation.value = hasValidationAgent
+  connectionActiveSystem.value = hasSystemAgent
+}, { deep: true })
+
 // 键盘快捷键处理
 const handleKeyDown = (event: KeyboardEvent) => {
   // Ctrl + → 或 Ctrl + ← 切换右侧面板
@@ -341,6 +478,9 @@ onMounted(() => {
       rightPaneSize.value = 0
     }
   }
+
+  // 初始化WebSocket连接
+  agentStore.initializeWebSocket()
 
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeyDown)
@@ -1098,5 +1238,124 @@ function handleRefreshData() {
   .feature-tree-section {
     min-width: auto;
   }
+}
+
+/* Agent思考气泡样式 */
+.thinking-bubble {
+  position: absolute;
+  background: white;
+  border: 2px solid #e3f2fd;
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: #37474f;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 500;
+  max-width: 200px;
+  min-width: 100px;
+  z-index: 100;
+  animation: thinking-bubble-appear 0.3s ease-out;
+}
+
+/* 左侧气泡 */
+.left-bubble {
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.left-bubble::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid white;
+  z-index: 101;
+}
+
+.left-bubble::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -10px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 9px solid #e3f2fd;
+  z-index: 100;
+}
+
+/* 右侧气泡 */
+.right-bubble {
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.right-bubble::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid white;
+  z-index: 101;
+}
+
+.right-bubble::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -10px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-right: 9px solid #e3f2fd;
+  z-index: 100;
+}
+
+@keyframes thinking-bubble-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+/* Test按钮样式 */
+.btn-info {
+  background-color: #17a2b8 !important;
+  color: white !important;
+  font-weight: 500;
+  border: none;
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.btn-info:hover:not(:disabled) {
+  background-color: #138496 !important;
+  transform: translateY(-1px);
+}
+
+.btn-info:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(23, 162, 184, 0.2);
 }
 </style>
