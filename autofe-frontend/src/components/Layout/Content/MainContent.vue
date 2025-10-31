@@ -17,7 +17,14 @@
                     @click="testAgentStatus"
                     style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
                   >
-                    Test
+                    Test Queue
+                  </button>
+                  <button
+                    class="btn btn-sm btn-warning ms-1"
+                    @click="testWebSocketMessage"
+                    style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                  >
+                    Test WS
                   </button>
                 </h6>
               </div>
@@ -40,8 +47,12 @@
                     <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
 
                     <!-- System Agent思考气泡 -->
-                    <div v-if="getAgentThinking('system')" class="thinking-bubble left-bubble">
-                      <pre>{{ getAgentThinking('system') }}</pre>
+                    <div
+                      v-if="getVisibleThinking('system')"
+                      class="thinking-bubble left-bubble"
+                      :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
+                    >
+                      <pre>{{ getCurrentThinkingMessage('system') }}</pre>
                     </div>
                   </div>
 
@@ -58,8 +69,12 @@
                     <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
 
                     <!-- Main Agent思考气泡 -->
-                    <div v-if="getAgentThinking('main')" class="thinking-bubble right-bubble">
-                      <pre>{{ getAgentThinking('main') }}</pre>
+                    <div
+                      v-if="getVisibleThinking('main')"
+                      class="thinking-bubble right-bubble"
+                      :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
+                    >
+                      <pre>{{ getCurrentThinkingMessage('main') }}</pre>
                     </div>
                   </div>
 
@@ -76,8 +91,12 @@
                     <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
 
                     <!-- Optimization Agent思考气泡 -->
-                    <div v-if="getAgentThinking('optimization')" class="thinking-bubble right-bubble">
-                      <pre>{{ getAgentThinking('optimization') }}</pre>
+                    <div
+                      v-if="getVisibleThinking('optimization')"
+                      class="thinking-bubble right-bubble"
+                      :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
+                    >
+                      <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
                     </div>
                   </div>
 
@@ -94,8 +113,12 @@
                     <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
 
                     <!-- Node Validation Agent思考气泡 -->
-                    <div v-if="getAgentThinking('validation')" class="thinking-bubble left-bubble">
-                      <pre>{{ getAgentThinking('validation') }}</pre>
+                    <div
+                      v-if="getVisibleThinking('validation')"
+                      class="thinking-bubble left-bubble"
+                      :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
+                    >
+                      <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
                     </div>
                   </div>
 
@@ -307,6 +330,117 @@ const currentThinkingText = computed(() => {
   return ''
 })
 
+// 消息队列管理
+interface QueuedMessage {
+  id: string
+  content: string
+  agent: 'system' | 'main' | 'optimization' | 'validation'
+  timestamp: number
+  displayStart?: number
+  displayDuration?: number
+  status?: 'pending' | 'displaying' | 'disappearing' | 'completed'
+}
+
+// 每个Agent的消息队列
+const agentMessageQueues = ref<Map<string, QueuedMessage[]>>(new Map())
+const currentDisplayedMessage = ref<Map<string, QueuedMessage | null>>(new Map())
+const disappearingTimers = ref<Map<string, number>>(new Map())
+
+// 初始化消息队列
+const agentTypes = ['system', 'main', 'optimization', 'validation'] as const
+agentTypes.forEach(agent => {
+  agentMessageQueues.value.set(agent, [])
+  currentDisplayedMessage.value.set(agent, null)
+})
+
+// 全局消息队列 - 用于处理所有Agent的消息排队
+const globalMessageQueue = ref<QueuedMessage[]>([])
+const isProcessingGlobalQueue = ref(false)
+
+// 处理全局消息队列
+function processGlobalMessageQueue() {
+  if (isProcessingGlobalQueue.value || globalMessageQueue.value.length === 0) {
+    return
+  }
+
+  isProcessingGlobalQueue.value = true
+  const message = globalMessageQueue.value.shift()!
+
+  console.log('Processing message for', message.agent, ':', message.content.substring(0, 30) + '...')
+
+  // 显示消息
+  displayMessage(message)
+
+  // 智能显示时间 - 短消息快速显示，长消息适中显示
+  const contentLength = message.content.length
+  let displayDuration: number
+
+  if (contentLength < 100) {
+    // 短消息：1.5-2.5秒
+    displayDuration = Math.max(1500, contentLength * 25)
+  } else if (contentLength < 300) {
+    // 中等消息：2-3.5秒
+    displayDuration = Math.max(2000, Math.min(3500, contentLength * 20))
+  } else {
+    // 长消息：3-4.5秒
+    displayDuration = Math.max(3000, Math.min(4500, contentLength * 15))
+  }
+
+  // 设置消失定时器
+  setTimeout(() => {
+    hideMessage(message)
+
+    // 减少消息间隔时间
+    setTimeout(() => {
+      isProcessingGlobalQueue.value = false
+      processGlobalMessageQueue()
+    }, 200) // 减少到200ms
+  }, displayDuration)
+}
+
+// 显示消息
+function displayMessage(message: QueuedMessage) {
+  console.log('Displaying message:', message.id, 'for agent:', message.agent)
+  message.status = 'displaying'
+  message.displayStart = Date.now()
+  currentDisplayedMessage.value.set(message.agent, message)
+}
+
+// 隐藏消息
+function hideMessage(message: QueuedMessage) {
+  console.log('Hiding message:', message.id)
+  message.status = 'disappearing'
+
+  // 设置消失动画完成后的清理
+  const timer = setTimeout(() => {
+    console.log('Message cleanup completed:', message.id)
+    message.status = 'completed'
+    currentDisplayedMessage.value.set(message.agent, null)
+    disappearingTimers.value.delete(message.id)
+  }, 200) // 减少动画时间到200ms
+
+  disappearingTimers.value.set(message.id, timer)
+}
+
+// 获取当前可见的思考消息
+function getVisibleThinking(agent: 'system' | 'main' | 'optimization' | 'validation'): boolean {
+  const current = currentDisplayedMessage.value.get(agent)
+  return current !== null && current !== undefined &&
+         (current.status === 'displaying' || current.status === 'disappearing')
+}
+
+// 获取当前思考消息内容
+function getCurrentThinkingMessage(agent: 'system' | 'main' | 'optimization' | 'validation'): string {
+  const current = currentDisplayedMessage.value.get(agent)
+  return current?.content || ''
+}
+
+// 判断气泡是否正在消失
+function isBubbleDisappearing(agent: 'system' | 'main' | 'optimization' | 'validation'): boolean {
+  const current = currentDisplayedMessage.value.get(agent)
+  return current?.status === 'disappearing' || false
+}
+
 // 获取特定Agent的思考内容
 function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validation'): string {
   const agentTypeMap: Record<string, AgentType> = {
@@ -326,44 +460,105 @@ function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validatio
   return ''
 }
 
+// 添加消息到队列 - 优化为允许同agent消息快速替换
+function addThinkingMessageToQueue(agent: 'system' | 'main' | 'optimization' | 'validation', content: string) {
+  console.log(`Adding ${agent} message to queue:`, content.substring(0, 50) + '...')
+
+  const messageId = `${agent}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  const message: QueuedMessage = {
+    id: messageId,
+    content,
+    agent,
+    timestamp: Date.now(),
+    status: 'pending'
+  }
+
+  // 检查是否替换当前同agent的消息
+  const currentMessage = currentDisplayedMessage.value.get(agent)
+  if (currentMessage && currentMessage.status === 'displaying') {
+    // 立即替换当前显示的消息（适用于连续更新）
+    console.log(`Replacing current message for ${agent}`)
+    hideMessage(currentMessage)
+  }
+
+  globalMessageQueue.value.push(message)
+
+  // 如果队列没有在处理，开始处理
+  if (!isProcessingGlobalQueue.value) {
+    processGlobalMessageQueue()
+  }
+}
+
+// 监听agent store中的thinking消息变化
+watch(() => agentStore.currentAgentThinking, (thinkingMap) => {
+  console.log('Agent thinking map changed, size:', thinkingMap.size)
+
+  // thinkingMap 是一个 Map<AgentType, AgentThinking>
+  thinkingMap.forEach((thinking, agentType) => {
+    const agentTypeMap: Record<string, string> = {
+      'system': 'system',
+      'mainagent': 'main',
+      'optimizationagent': 'optimization',
+      'nodevalidator': 'validation'
+    }
+
+    const agent = agentTypeMap[agentType] as 'system' | 'main' | 'optimization' | 'validation'
+
+    if (agent && thinking.thinking) {
+      console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
+
+      // 检查是否是新的thinking消息（避免重复添加）
+      const currentMessage = currentDisplayedMessage.value.get(agent)
+
+      if (!currentMessage || currentMessage.content !== thinking.thinking) {
+        console.log(`Adding new thinking message for ${agent}`)
+        addThinkingMessageToQueue(agent, thinking.thinking)
+      } else {
+        console.log(`Skipping duplicate thinking message for ${agent}`)
+      }
+    }
+  })
+}, { deep: true })
+
 // 测试Agent状态
 function testAgentStatus() {
   console.log('Test Agent Status clicked!')
 
-  // 映射到正确的agent类型
-  const agentTypeMap: Record<string, AgentType> = {
-    'system': 'system',
-    'main': 'mainagent',
-    'optimization': 'optimizationagent',
-    'validation': 'nodevalidator'
+  // 直接添加测试消息到队列
+  addThinkingMessageToQueue(activeAgent.value, `这是一个测试思考消息：${activeAgent.value} Agent正在分析数据集特征，准备生成新的特征组合...`)
+
+  // 添加多个测试消息
+  setTimeout(() => {
+    addThinkingMessageToQueue('system', 'System Agent 正在生成节点样例，包括数据预处理和特征转换逻辑...')
+  }, 1000)
+
+  setTimeout(() => {
+    addThinkingMessageToQueue('main', 'Main Agent 正在生成特征：max(age, salary) - min(age, salary) 作为新的数值特征...')
+  }, 2000)
+
+  setTimeout(() => {
+    addThinkingMessageToQueue('optimization', 'Optimization Agent 正在评估特征性能，准确率提升预期：15%...')
+  }, 3000)
+
+  taskStore.addNotification(`Test ${activeAgent.value} Agent消息已添加到队列`, 'info')
+  console.log('Test message added to queue successfully')
+}
+
+// 测试WebSocket消息接收
+function testWebSocketMessage() {
+  console.log('Test WebSocket Message clicked!')
+
+  // 直接调用agent store的updateAgentThinking来模拟WebSocket消息
+  const testThinkingMessage = {
+    type: 'agent_thinking' as const,
+    agent: 'mainagent' as const,
+    thinking: '这是一个通过WebSocket模拟的思考消息：Main Agent正在分析数据特征并准备生成新的组合特征...',
+    category: undefined,
+    timestamp: Date.now() / 1000
   }
 
-  const agentType = agentTypeMap[activeAgent.value]
-  if (agentType) {
-    console.log('Testing agent:', agentType)
-
-    // 测试 thinking 消息
-    agentStore.updateAgentThinking({
-      type: 'agent_thinking',
-      agent: agentType,
-      thinking: `这是一个测试思考消息：${activeAgent.value} Agent正在分析数据集特征，准备生成新的特征组合...`,
-      category: 'analysis',
-      timestamp: Date.now()
-    })
-
-    // 也更新状态
-    agentStore.updateAgentState({
-      type: 'agent_status',
-      agent: agentType,
-      status: 'working',
-      work_type: '特征工程测试',
-      details: { phase: 'testing', progress: 75 },
-      timestamp: Date.now()
-    })
-
-    taskStore.addNotification(`Test ${activeAgent.value} Agent状态已发送`, 'info')
-    console.log('Test status sent successfully')
-  }
+  console.log('Simulating WebSocket thinking message:', testThinkingMessage)
+  agentStore.updateAgentThinking(testThinkingMessage)
 }
 
 // 模拟agent工作状态（保持原有逻辑）
@@ -521,6 +716,12 @@ onUnmounted(() => {
   // 移除事件监听器
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('test-performance', handleTestPerformanceEvent as EventListener)
+
+  // 清理所有定时器
+  disappearingTimers.value.forEach(timer => {
+    clearTimeout(timer)
+  })
+  disappearingTimers.value.clear()
 })
 
 // 处理性能测试事件
@@ -1348,6 +1549,21 @@ function handleRefreshData() {
     opacity: 1;
     transform: translateY(-50%) scale(1);
   }
+}
+
+@keyframes thinking-bubble-disappear {
+  0% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+}
+
+.bubble-disappearing {
+  animation: thinking-bubble-disappear 0.2s ease-in forwards;
 }
 
 /* Test按钮样式 */

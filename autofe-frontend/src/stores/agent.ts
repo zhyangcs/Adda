@@ -276,7 +276,7 @@ export const useAgentStore = defineStore('agent', () => {
   const messageQueue = ref<QueuedMessage[]>([])
   const currentMessageId = ref<string | null>(null)
   const messageDisplayTimeout = ref<number | null>(null)
-  const MESSAGE_DISPLAY_DURATION = 3000 // 3秒显示时间
+  const MESSAGE_DISPLAY_DURATION = 2500 // 2.5秒显示时间
 
   // 添加消息到队列
   const addMessageToQueue = (message: QueuedMessage) => {
@@ -333,10 +333,10 @@ export const useAgentStore = defineStore('agent', () => {
         }
         currentMessageId.value = null
 
-        // 延迟500ms后处理下一条消息，避免闪烁
+        // 延迟200ms后处理下一条消息，避免闪烁
         setTimeout(() => {
           processNextMessage()
-        }, 500)
+        }, 200)
       }
     }, MESSAGE_DISPLAY_DURATION)
   }

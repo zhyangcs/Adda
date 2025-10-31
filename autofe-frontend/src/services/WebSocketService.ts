@@ -92,6 +92,11 @@ class WebSocketService {
       this.callbacks.onAgentThinking?.(thinking)
     })
 
+    // 通用事件监听，用于调试 - 添加在所有事件监听之后
+    this.socket.onAny((eventName, ...args) => {
+      console.log('[WS DEBUG] Received event:', eventName, args)
+    })
+
     // 系统通知
     this.socket.on('system_notification', (notification: SystemNotificationMessage) => {
       console.log('System notification:', notification)
