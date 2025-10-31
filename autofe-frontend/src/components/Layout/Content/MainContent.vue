@@ -41,7 +41,7 @@
 
                     <!-- System Agent思考气泡 -->
                     <div v-if="getAgentThinking('system')" class="thinking-bubble left-bubble">
-                      {{ getAgentThinking('system') }}
+                      <pre>{{ getAgentThinking('system') }}</pre>
                     </div>
                   </div>
 
@@ -59,7 +59,7 @@
 
                     <!-- Main Agent思考气泡 -->
                     <div v-if="getAgentThinking('main')" class="thinking-bubble right-bubble">
-                      {{ getAgentThinking('main') }}
+                      <pre>{{ getAgentThinking('main') }}</pre>
                     </div>
                   </div>
 
@@ -77,7 +77,7 @@
 
                     <!-- Optimization Agent思考气泡 -->
                     <div v-if="getAgentThinking('optimization')" class="thinking-bubble right-bubble">
-                      {{ getAgentThinking('optimization') }}
+                      <pre>{{ getAgentThinking('optimization') }}</pre>
                     </div>
                   </div>
 
@@ -95,7 +95,7 @@
 
                     <!-- Node Validation Agent思考气泡 -->
                     <div v-if="getAgentThinking('validation')" class="thinking-bubble left-bubble">
-                      {{ getAgentThinking('validation') }}
+                      <pre>{{ getAgentThinking('validation') }}</pre>
                     </div>
                   </div>
 
@@ -202,7 +202,7 @@ import { Users, Cog, Monitor, Bot } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import { useAgentStore } from '@/stores/agent'
-import type { AgentType } from '@/types/websocket'
+import type { AgentType, AgentState } from '@/types/websocket'
 import SQLCode from '@/components/Features/SQLCode.vue'
 import FeaturePerformance from '@/components/Features/FeaturePerformance.vue'
 import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
@@ -319,8 +319,10 @@ function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validatio
   const agentType = agentTypeMap[agent]
   if (agentType) {
     const thinking = agentStore.getLatestThinking(agentType)
+    console.log(`getAgentThinking called for ${agent} (${agentType}):`, thinking)
     return thinking
   }
+  console.log(`No agent type found for ${agent}`)
   return ''
 }
 
@@ -427,7 +429,7 @@ watch(() => agentStore.allAgentStates, (states) => {
 
   const newWorkingAgents: string[] = []
 
-  states.forEach(state => {
+  states.forEach((state: AgentState) => {
     const shortName = agentTypeMap[state.agent]
     if (shortName && state.status === 'working') {
       newWorkingAgents.push(shortName)
@@ -437,10 +439,10 @@ watch(() => agentStore.allAgentStates, (states) => {
   workingAgents.value = newWorkingAgents
 
   // 更新连接状态
-  const hasMainAgent = states.some(s => s.agent === 'mainagent' && s.status === 'working')
-  const hasOptAgent = states.some(s => s.agent === 'optimizationagent' && s.status === 'working')
-  const hasValidationAgent = states.some(s => s.agent === 'nodevalidator' && s.status === 'working')
-  const hasSystemAgent = states.some(s => s.agent === 'system' && s.status === 'working')
+  const hasMainAgent = states.some((s: AgentState) => s.agent === 'mainagent' && s.status === 'working')
+  const hasOptAgent = states.some((s: AgentState) => s.agent === 'optimizationagent' && s.status === 'working')
+  const hasValidationAgent = states.some((s: AgentState) => s.agent === 'nodevalidator' && s.status === 'working')
+  const hasSystemAgent = states.some((s: AgentState) => s.agent === 'system' && s.status === 'working')
 
   connectionActive.value = hasMainAgent || hasSystemAgent
   connectionActiveReverse.value = hasOptAgent
@@ -1246,16 +1248,25 @@ function handleRefreshData() {
   background: white;
   border: 2px solid #e3f2fd;
   border-radius: 12px;
-  padding: 8px 12px;
+  padding: 12px 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   color: #37474f;
-  font-size: 0.75rem;
-  line-height: 1.4;
+  font-size: 0.8rem;
+  line-height: 1.5;
   font-weight: 500;
-  max-width: 200px;
-  min-width: 100px;
+  max-width: 400px;
+  min-width: 200px;
   z-index: 100;
   animation: thinking-bubble-appear 0.3s ease-out;
+}
+
+.thinking-bubble pre {
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: inherit;
 }
 
 /* 左侧气泡 */

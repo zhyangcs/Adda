@@ -3,7 +3,7 @@
  * 使用Pinia管理Agent的实时状态和思考过程
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, readonly } from 'vue'
 import type {
   AgentStatusMessage,
   AgentThinkingMessage,
@@ -57,9 +57,29 @@ export const useAgentStore = defineStore('agent', () => {
   const allAgentStates = computed(() => Array.from(agentStates.value.values()))
 
   // 获取正在工作的Agent列表
-  const workingAgents = computed(() =>
-    allAgentStates.value.filter(state => state.status === 'working')
-  )
+  const workingAgents = computed(() => {
+    // 首先获取所有状态
+    const allStates = Array.from(agentStates.value.values())
+    console.log('All agent states:', allStates.map(s => `${s.agent}: ${s.status}`))
+
+    // 获取所有正在工作的agent，并映射到简化的名称
+    const working = allStates
+      .filter(state => state.status === 'working')
+      .map(state => {
+        // 将后端的agent名称映射到前端的简化名称
+        let mappedName = state.agent
+        if (state.agent === 'mainagent') mappedName = 'main'
+        if (state.agent === 'optimizationagent') mappedName = 'optimization'
+        if (state.agent === 'nodevalidator') mappedName = 'validation'
+        if (state.agent === 'system') mappedName = 'system'
+
+        console.log(`Mapping working agent: ${state.agent} -> ${mappedName}`)
+        return mappedName
+      })
+
+    console.log('Final working agents mapped:', working)
+    return working
+  })
 
   // 检查特定Agent是否正在工作
   const isAgentWorking = (agent: AgentType): boolean => {
@@ -180,63 +200,173 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===== 状态更新方法 =====
 
+  // 防抖状态更新
+  const stateUpdateTimeouts = new Map<string, number>()
+  const STATE_UPDATE_DELAY = 500 // 500ms 防抖延迟
+
   // 更新Agent状态
   const updateAgentState = (statusMessage: AgentStatusMessage) => {
     const { agent, status, work_type, details, data, result, error, timestamp } = statusMessage
 
-    const agentState: AgentState = {
-      agent,
-      status,
-      work_type,
-      details,
-      data,
-      result,
-      error,
-      last_updated: timestamp
+    console.log(`[STATE UPDATE] Received status for ${agent}: ${status} - ${work_type || 'N/A'}`)
+
+    // 清除之前的延迟更新
+    if (stateUpdateTimeouts.has(agent)) {
+      clearTimeout(stateUpdateTimeouts.get(agent)!)
+      stateUpdateTimeouts.delete(agent)
     }
 
-    // 更新状态映射
-    agentStates.value.set(agent, agentState)
+    // 对于 working 状态，立即更新；对于其他状态，延迟更新
+    const isWorkingState = status === 'working'
+    const delay = isWorkingState ? 0 : STATE_UPDATE_DELAY
 
-    // 如果Agent完成工作，延迟清除当前思考（保持10秒用于显示）
-    if (status === 'completed' || status === 'error') {
-      setTimeout(() => {
-        const currentState = agentStates.value.get(agent)
-        if (currentState && (currentState.status === 'completed' || currentState.status === 'error')) {
-          currentAgentThinking.value.delete(agent)
-          console.log(`Cleared thinking for completed agent: ${agent}`)
+    console.log(`[STATE UPDATE] ${agent} is working: ${isWorkingState}, delay: ${delay}ms`)
+
+    if (isWorkingState) {
+      // working 状态立即更新
+      const agentState: AgentState = {
+        agent,
+        status,
+        work_type,
+        details,
+        data,
+        result,
+        error,
+        last_updated: timestamp
+      }
+
+      // 更新状态映射
+      agentStates.value.set(agent, agentState)
+      console.log(`[STATE UPDATE] IMMEDIATE update for ${agent}: ${status}`)
+    } else {
+      // 其他状态延迟更新
+      const timeoutId = setTimeout(() => {
+        const agentState: AgentState = {
+          agent,
+          status,
+          work_type,
+          details,
+          data,
+          result,
+          error,
+          last_updated: timestamp
         }
-      }, 10000) // 10秒后清除思考内容
+
+        // 更新状态映射
+        agentStates.value.set(agent, agentState)
+        console.log(`[STATE UPDATE] DELAYED update for ${agent}: ${status} (delayed: ${delay}ms)`)
+
+        stateUpdateTimeouts.delete(agent)
+      }, delay)
+
+      stateUpdateTimeouts.set(agent, timeoutId)
     }
   }
 
-  // 更新Agent思考
+  // ===== 消息队列系统 =====
+
+  interface QueuedMessage {
+    id: string
+    agent: string
+    content: string
+    timestamp: number
+    type: 'thinking' | 'status'
+  }
+
+  const messageQueue = ref<QueuedMessage[]>([])
+  const currentMessageId = ref<string | null>(null)
+  const messageDisplayTimeout = ref<number | null>(null)
+  const MESSAGE_DISPLAY_DURATION = 3000 // 3秒显示时间
+
+  // 添加消息到队列
+  const addMessageToQueue = (message: QueuedMessage) => {
+    // 避免重复的相同消息
+    const existingIndex = messageQueue.value.findIndex(
+      m => m.agent === message.agent && m.content === message.content
+    )
+
+    if (existingIndex >= 0) {
+      // 更新现有消息的时间戳
+      messageQueue.value[existingIndex] = message
+    } else {
+      // 添加新消息到队列末尾
+      messageQueue.value.push(message)
+    }
+
+    console.log(`Message added to queue: ${message.agent} - ${message.content.substring(0, 30)}...`)
+
+    // 如果当前没有显示消息，开始显示
+    if (!currentMessageId.value) {
+      processNextMessage()
+    }
+  }
+
+  // 处理下一条消息
+  const processNextMessage = () => {
+    if (messageQueue.value.length === 0) {
+      currentMessageId.value = null
+      return
+    }
+
+    const message = messageQueue.value.shift()!
+    currentMessageId.value = message.id
+
+    console.log(`Displaying message: ${message.agent} - ${message.content.substring(0, 30)}...`)
+
+    if (message.type === 'thinking') {
+      // 更新思考内容
+      const currentThinking: AgentThinking = {
+        agent: message.agent as AgentType,
+        thinking: message.content,
+        category: undefined,
+        timestamp: message.timestamp
+      }
+      currentAgentThinking.value.set(message.agent as AgentType, currentThinking)
+    }
+
+    // 设置3秒后显示下一条消息
+    messageDisplayTimeout.value = setTimeout(() => {
+      // 清除当前显示的消息
+      if (currentMessageId.value === message.id) {
+        if (message.type === 'thinking') {
+          currentAgentThinking.value.delete(message.agent as AgentType)
+        }
+        currentMessageId.value = null
+
+        // 延迟500ms后处理下一条消息，避免闪烁
+        setTimeout(() => {
+          processNextMessage()
+        }, 500)
+      }
+    }, MESSAGE_DISPLAY_DURATION)
+  }
+
+  // 清空队列
+  const clearMessageQueue = () => {
+    if (messageDisplayTimeout.value) {
+      clearTimeout(messageDisplayTimeout.value)
+      messageDisplayTimeout.value = null
+    }
+    messageQueue.value = []
+    currentMessageId.value = null
+    currentAgentThinking.value.clear()
+  }
+
+  // 更新Agent思考 - 重写为队列模式
   const updateAgentThinking = (thinkingMessage: AgentThinkingMessage) => {
     const { agent, thinking, category, timestamp } = thinkingMessage
 
     console.log('Agent thinking received:', { agent, thinking, category, timestamp })
 
-    // 更新当前思考
-    const currentThinking: AgentThinking = {
+    const message: QueuedMessage = {
+      id: `${agent}-${timestamp}-${Math.random()}`,
       agent,
-      thinking,
-      category,
-      timestamp
-    }
-    currentAgentThinking.value.set(agent, currentThinking)
-
-    // 添加到历史记录
-    if (!agentThinkingHistory.value.has(agent)) {
-      agentThinkingHistory.value.set(agent, [])
+      content: thinking,
+      timestamp: timestamp || Date.now(),
+      type: 'thinking'
     }
 
-    const history = agentThinkingHistory.value.get(agent)!
-    history.push(currentThinking)
-
-    // 限制历史记录数量
-    if (history.length > 50) {
-      history.splice(0, history.length - 50)
-    }
+    addMessageToQueue(message)
   }
 
   // 添加系统通知
@@ -319,6 +449,7 @@ export const useAgentStore = defineStore('agent', () => {
     systemNotifications,
     isConnected,
     connectionInfo,
+    messageQueue: readonly(messageQueue),
 
     // 计算属性
     allAgentStates,
@@ -338,6 +469,8 @@ export const useAgentStore = defineStore('agent', () => {
     pingServer,
     initializeWebSocket,
     updateAgentThinking, // 暴露用于测试
-    updateAgentState // 暴露用于测试
+    updateAgentState, // 暴露用于测试
+    clearMessageQueue, // 消息队列控制
+    addMessageToQueue // 消息队列控制
   }
 })
