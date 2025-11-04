@@ -72,7 +72,7 @@ def check_format():
         if not all([task_description, dataset_id, model_id]):
             return jsonify({
                 'status': 'fail',
-                'message': '缺少必要参数：taskDescription, dataset, model'
+                'message': 'Missing required parameters: taskDescription, dataset, model'
             }), 400
 
         # 模拟初始化延迟
@@ -84,13 +84,13 @@ def check_format():
 
         return jsonify({
             'status': 'success',
-            'message': f"任务初始化成功: {task_description[:50]}..."
+            'message': f"Task initialized successfully: {task_description[:50]}..."
         })
 
     except Exception as e:
         return jsonify({
             'status': 'fail',
-            'message': f'初始化失败: {str(e)}'
+            'message': f'Initialization failed: {str(e)}'
         }), 500
 
 
@@ -219,7 +219,7 @@ def auto_step():
         if not all([task_description, dataset]):
             return jsonify({
                 'status': 'fail',
-                'message': '缺少必要参数：taskDescription, dataset'
+                'message': 'Missing required parameters: taskDescription, dataset'
             }), 400
 
         # 模拟端到端执行延迟
@@ -230,9 +230,13 @@ def auto_step():
             task_description, dataset, model_type, max_search_depth
         )
 
+        # 添加端到端页面展示数据
+        e2e_data = mock_generator.get_all_e2e_data()
+        result['e2e_data'] = e2e_data['data']
+
         # 添加通知
         mock_generator.add_notification(
-            f"端到端自动化执行完成，模型AUC: {result['performance_metrics']['auc']:.4f}",
+            f"End-to-end automated execution completed, model AUC: {result['performance_metrics']['auc']:.4f}",
             'success'
         )
 
@@ -241,7 +245,7 @@ def auto_step():
     except Exception as e:
         return jsonify({
             'status': 'fail',
-            'message': f'端到端执行失败: {str(e)}'
+            'message': f'End-to-end execution failed: {str(e)}'
         }), 500
 
 
@@ -259,7 +263,7 @@ def test_performance():
         if not selected_node_ids:
             return jsonify({
                 'status': 'fail',
-                'message': '请选择要测试的节点'
+                'message': 'Please select nodes to test'
             }), 400
 
         # 模拟性能测试延迟
@@ -272,7 +276,7 @@ def test_performance():
 
         # 添加通知
         mock_generator.add_notification(
-            f"性能测试完成，AUC: {result['performance_info']['score']:.4f}",
+            f"Performance test completed, AUC: {result['performance_info']['score']:.4f}",
             'success'
         )
 
@@ -336,7 +340,7 @@ print(f"Model info: {{json.dumps(model_info, indent=2)}}")
             f.write(model_content)
 
         # 添加通知
-        mock_generator.add_notification("模型文件生成成功", 'success')
+        mock_generator.add_notification("Model file generated successfully", 'success')
 
         return send_file(
             temp_file,
