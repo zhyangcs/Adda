@@ -45,3 +45,7 @@ build/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Apache MADlib installation files
+apache-madlib-*.tar.gz
+apache-madlib-*/

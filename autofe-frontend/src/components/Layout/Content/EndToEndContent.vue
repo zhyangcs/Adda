@@ -68,72 +68,51 @@ import type { FeatureInfo, PerformanceData, TimeData, ImportanceData } from '@/t
 // 获取任务store
 const taskStore = useTaskStore()
 
-// 使用真实数据或回退到模拟数据
+// 从auto-step获取的真实数据（直接使用简化后的数据结构）
 const realFeatureInfo = computed(() => {
-  const data = taskStore.autoStepData
+  const data = taskStore.autoStepData?.featureInfo
   if (!data) return null
 
   return {
-    description: data.featureDescription || 'No description available',
+    description: data.description || 'No description available',
     pythonCode: data.pythonCode || '# No Python code available',
     sqlCode: data.sqlCode || '-- No SQL code available'
   } as FeatureInfo
 })
 
 const realPerformanceData = computed(() => {
-  const data = taskStore.autoStepData?.performance
+  const data = taskStore.autoStepData?.performanceData
   if (!data) return null
 
   return {
-    methods: data.methods || ['Adda', 'AutoFeat', 'FeatureTools', 'DeepFeatureSynthesis'],
-    auc: data.auc || [0.89, 0.82, 0.79, 0.85],
-    f1: data.f1 || [0.87, 0.80, 0.77, 0.83]
+    methods: data.methods || [],
+    auc: data.auc || [],
+    f1: data.f1 || []
   } as PerformanceData
 })
 
 const realTimeData = computed(() => {
-  const data = taskStore.autoStepData?.timeAnalysis
+  const data = taskStore.autoStepData?.timeData
   if (!data) return null
 
   return {
-    methods: data.methods || ['Adda', 'AutoFeat', 'FeatureTools', 'DeepFeatureSynthesis'],
-    totalTime: data.totalTime || [120, 180, 95, 240],
-    trainingTime: data.trainingTime || [45, 120, 60, 180]
+    methods: data.methods || [],
+    totalTime: data.totalTime || [],
+    trainingTime: data.trainingTime || []
   } as TimeData
 })
 
 const realImportanceData = computed(() => {
-  const data = taskStore.autoStepData?.featureImportance
+  const data = taskStore.autoStepData?.importanceData
   if (!data) return null
 
   return {
-    shap: data.shap || [
-      { feature: 'age_group', importance: 0.24 },
-      { feature: 'chol_risk_ratio', importance: 0.18 },
-      { feature: 'heart_rate_reserve', importance: 0.15 }
-    ],
-    ig: data.ig || [
-      { feature: 'age_group', importance: 0.31 },
-      { feature: 'chol_risk_ratio', importance: 0.22 }
-    ],
-    rfe: data.rfe || [
-      { feature: 'age_group', importance: 0.28 },
-      { feature: 'risk_score', importance: 0.20 }
-    ],
-    fi: data.fi || [
-      { feature: 'age_group', importance: 0.26 },
-      { feature: 'chol_risk_ratio', importance: 0.19 }
-    ]
+    shap: data.shap || [],
+    ig: data.ig || [],
+    rfe: data.rfe || [],
+    fi: data.fi || []
   } as ImportanceData
 })
-
-// 从auto-step获取的数据，作为默认数据
-const apiE2EData = ref<{
-  featureInfo?: FeatureInfo
-  performanceData?: PerformanceData
-  timeData?: TimeData
-  importanceData?: ImportanceData
-} | null>(null)
 
 // 端到端执行相关的状态管理
 const progressPercentage = ref(0)
@@ -150,30 +129,11 @@ const executionStatus = computed(() => {
   return 'idle'
 })
 
-// 计算属性 - 优先使用auto-step返回的数据，然后是taskStore的真实数据，否则返回null
-const currentFeatureInfo = computed(() => {
-  if (apiE2EData.value?.featureInfo) return apiE2EData.value.featureInfo
-  if (realFeatureInfo.value) return realFeatureInfo.value
-  return null
-})
-
-const currentPerformanceData = computed(() => {
-  if (apiE2EData.value?.performanceData) return apiE2EData.value.performanceData
-  if (realPerformanceData.value) return realPerformanceData.value
-  return null
-})
-
-const currentTimeData = computed(() => {
-  if (apiE2EData.value?.timeData) return apiE2EData.value.timeData
-  if (realTimeData.value) return realTimeData.value
-  return null
-})
-
-const currentImportanceData = computed(() => {
-  if (apiE2EData.value?.importanceData) return apiE2EData.value.importanceData
-  if (realImportanceData.value) return realImportanceData.value
-  return null
-})
+// 计算属性 - 直接使用简化后的数据结构
+const currentFeatureInfo = computed(() => realFeatureInfo.value)
+const currentPerformanceData = computed(() => realPerformanceData.value)
+const currentTimeData = computed(() => realTimeData.value)
+const currentImportanceData = computed(() => realImportanceData.value)
 
 const getStatusText = () => {
   switch (executionStatus.value) {
@@ -261,11 +221,7 @@ const pollTaskStatus = async () => {
 
       // 检查是否有结果数据
       if (taskStore.autoStepData) {
-        // 提取e2e数据（如果存在）
-        if (taskStore.autoStepData.e2e_data) {
-          apiE2EData.value = taskStore.autoStepData.e2e_data as typeof apiE2EData.value
-          console.log('Updated E2E data from auto-step:', apiE2EData.value)
-        }
+        console.log('E2E execution completed:', taskStore.autoStepData)
 
         // 完成执行
         progressPercentage.value = 100
@@ -315,9 +271,6 @@ const stopExecution = () => {
 onMounted(() => {
   // 初始化端到端执行页面
   console.log('End-to-end execution page loaded')
-
-  // 重置E2E数据
-  apiE2EData.value = null
 
   // 调试：打印初始配置
   console.log('Initial Task Config:', {
