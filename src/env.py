@@ -26,10 +26,15 @@ rag_model_id_or_path = "/home/lizhenyu/.cache/huggingface/hub/models--Qwen--Qwen
 # openai_api_key = "sk-XFOqa14voF6GcmRF234d4768587f4213Ab50Fc94862393D3"
 # openai_base_url = "https://api.mixrai.com/v1/"
 
-openai_api_key = "sk-XLdxKzgVlU0LQWwdHvLASphBnDkdcojnaJxky8D3n7Itqhf8"
-openai_base_url = "https://api.nuwaapi.com/v1"
+# openai_api_key = "sk-XLdxKzgVlU0LQWwdHvLASphBnDkdcojnaJxky8D3n7Itqhf8"
+# openai_base_url = "https://api.nuwaapi.com/v1"
 
-default_model = "gpt-4o"
+openai_api_key = "sk-3b31c21da1894f5e9d768c61d5ac61f3"
+openai_base_url = "https://api.deepseek.com/v1"
+
+# default_model = "gpt-4o"
+default_model = "deepseek-chat"
+
 pg_user = "myuser"
 pg_db = "mydb"
 pg_port = 5431

@@ -155,7 +155,7 @@ async def debug_planner():
     """调试方法"""
     # 初始化模型客户端
     model_client = OpenAIChatCompletionClient(
-        model="gpt-4o-2024-08-06",
+        model=env.default_model,
         base_url=env.openai_base_url,
         api_key=env.openai_api_key
     )

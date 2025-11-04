@@ -49,7 +49,7 @@ class Planner:
         self.max_retries = max_retries  # 最大重试次数
 
         self.model_client = OpenAIChatCompletionClient(
-            model="gpt-4o-2024-08-06",
+            model=env.default_model,
             base_url=env.openai_base_url,
             api_key=env.openai_api_key
         )

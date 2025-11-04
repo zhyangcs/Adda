@@ -165,7 +165,7 @@ async def debug_magentic_planner():
     """单独调试方法（使用Console显示流式对话过程）"""
     # 初始化模型客户端（从环境变量获取配置）
     model_client = OpenAIChatCompletionClient(
-        model="gpt-4o-2024-08-06",
+        model=env.default_model,
         base_url=env.openai_base_url,
         api_key=env.openai_api_key
     )

@@ -15,7 +15,7 @@ from typing import Type # Use Type for hinting if direct import is problematic
 
 # --- Configuration (Consider moving to a config file or environment variables) ---
 # Recommend loading these from environment variables or a config file.
-MODEL = 'gpt-4o' # Or your preferred model, could also be in src.env
+MODEL = src.env.default_model # Use default model from environment configuration
 
 # Placeholder for LLMDAGNODE if not directly imported
 # Used for type hinting only

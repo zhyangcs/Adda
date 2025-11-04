@@ -149,7 +149,7 @@ class DivideAgent():
         
         retry_time = DIVIDE_RETRY_TIMES
         # print(termcolor.colored(prompt_str, "grey"))
-        responses = send_prompt_n("", prompt_str, 1, temperature=0.7, model="gpt-4o-2024-08-06")
+        responses = send_prompt_n("", prompt_str, 1, temperature=0.7)
         # get the response which has the max len
         response = min(responses, key=len)
         index = responses.index(response)

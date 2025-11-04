@@ -243,29 +243,38 @@ class LLMDagConstructor():
                 # 2. 检查是否需要分治处理
                 # 条件1: 当前步骤小于高阶特征数且代码生成失败
                 # 条件2: 代码复杂度超过阈值
-                if cur_step_idx < self.high_order_num and not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info):
+                if cur_step_idx < self.high_order_num and (not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info)):
                     # 使用分治策略重新生成代码
+                    print(termcolor.colored(f"Entering divide_code for node {next_node.node_id}...", "yellow"))
                     next_node, could_exec_code = divide_agent.divide_code(next_node)
+                    print(termcolor.colored(f"divide_code completed for node {next_node.node_id}, success: {could_exec_code}", "yellow"))
 
                 # 3. 如果代码生成成功，尝试生成修复特征
                 if could_exec_code:
+                    print(termcolor.colored(f"Entering generate_fixing_features for node {next_node.node_id}...", "cyan"))
                     could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
+                    print(termcolor.colored(f"generate_fixing_features completed for node {next_node.node_id}, success: {could_exec_fix}", "cyan"))
                 else:
                     could_exec_fix = False
+                    print(termcolor.colored(f"Skipping generate_fixing_features for node {next_node.node_id} due to execution failure", "cyan"))
 
                 # 4. 生成节点的嵌入向量（用于相似度计算）
+                print(termcolor.colored(f"Generating embedding for node {next_node.node_id}...", "magenta"))
                 next_node = self.generate_emb(next_node)
+                print(termcolor.colored(f"Embedding generated for node {next_node.node_id}", "magenta"))
 
                 # 5. 返回结果
                 # 只有当代码生成和修复特征都成功时，才返回成功
                 if could_exec_code and could_exec_fix:
+                    print(termcolor.colored(f"gen_code_node SUCCESS for node {next_node.node_id}", "green"))
                     return next_node, True
                 else:
+                    print(termcolor.colored(f"gen_code_node FAILED for node {next_node.node_id}, exec: {could_exec_code}, fix: {could_exec_fix}", "red"))
                     return None, False
 
             except Exception as e:
                 # 6. 异常处理
-                print(termcolor.colored(f"Error: {e}", "red"))
+                print(termcolor.colored(f"Error in gen_code_node: {e}", "red"))
                 return None, False
         
         # 1. NLAgent generate the description
@@ -368,19 +377,12 @@ class LLMDagConstructor():
                     "operation": f"处理 {cur_node.operation_desc}"
                 }
             })
-            # 详细的Main Agent开始思考
-            operation_details = f"正在处理: {cur_node.operation_desc[:60]}..." if hasattr(cur_node, 'operation_desc') else "特征生成操作"
-            self.status_wrapper.send_detailed_thinking(
-                "mainagent",
-                f"开始批量生成 {len(next_state)} 个特征节点，当前处理节点：{cur_node.node_id}",
-                {
-                    "操作类型": operation_details,
-                    "目标特征": self.target_col,
-                    "当前步骤": cur_step_idx,
-                    "预期生成数量": len(next_state)
-                },
-                [f"节点{cur_node.node_id}: {operation_details}"]
-            )
+            # 简化的Main Agent开始消息 - 移除技术细节
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": f"Starting to generate {len(next_state)} feature nodes"
+            })
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = executor.map(gen_code_node, next_state[:])
@@ -795,8 +797,10 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             code_list.append("\n# task desc: drop the columns not used in the best model")
             code_list.append("\ndf = df.drop(columns = [%s])" %(drop_cols))
             node.whole_code = "".join(code_list)
-            
-            
+
+        # 调用get_best_code()来设置code_path和写入文件
+        self.get_best_code()
+
     def get_best_code(self):
         """
         store the best code to the given location `file_path`

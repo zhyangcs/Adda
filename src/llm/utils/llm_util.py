@@ -252,10 +252,15 @@ def one_minus_rae(y_true, y_pred):
     """
     return 1-np.sum(np.abs(y_true - y_pred)) / np.sum(np.abs(y_true - np.mean(y_true)))
 
-def token_num(text:str, model:str = "gpt-3.5-turbo"):
+def token_num(text:str, model:str = default_model):
     """
     count the token number of a text for sending to openai
     """
-    # encoding = tiktoken.get_encoding("cl100k_base")
-    encoding = tiktoken.encoding_for_model(model)
+    try:
+        # 尝试使用模型特定的tokenizer
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        # 如果无法识别模型（如deepseek-chat），使用通用的cl100k_base编码
+        # 这是GPT-4使用的编码，与DeepSeek兼容
+        encoding = tiktoken.get_encoding("cl100k_base")
     return len(encoding.encode(text))

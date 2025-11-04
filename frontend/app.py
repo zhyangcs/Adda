@@ -242,13 +242,13 @@ def auto_step():
         # 可选参数 - 修复参数解析逻辑
         if request.form:
             # 表单数据格式
-            max_search_depth = request.form.get('max_search_depth', '2')
+            max_search_depth = request.form.get('max_search_depth', '1')
             use_performance_test = request.form.get('use_performance_test', 'true')
             comparison_methods = request.form.get('comparison_methods', '["Adda"]')
         else:
             # JSON格式
             data = json.loads(request.data) if request.data else {}
-            max_search_depth = data.get('max_search_depth', 2)
+            max_search_depth = data.get('max_search_depth', 1)
             use_performance_test = data.get('use_performance_test', True)
             comparison_methods = data.get('comparison_methods', ["Adda"])
 
@@ -256,7 +256,7 @@ def auto_step():
         try:
             max_search_depth = int(max_search_depth)
         except (ValueError, TypeError):
-            max_search_depth = 2
+            max_search_depth = 1
 
         use_performance_test = str(use_performance_test).lower() in ['true', '1', 'yes']
 
@@ -483,20 +483,36 @@ def auto_step():
                     python_code = best_features_info.get("python_code", "")
                     sql_code_dict = best_features_info.get("sql_code", {})
 
+                    # 调试输出
+                    print(f"Debug: Python code type: {type(python_code)}, length: {len(python_code) if python_code else 0}")
+                    print(f"Debug: SQL code type: {type(sql_code_dict)}, length: {len(str(sql_code_dict)) if sql_code_dict else 0}")
+                    print(f"Debug: Feature descriptions type: {type(feature_descriptions)}, count: {len(feature_descriptions)}")
+
                     # 构建特征描述文本
                     description = ""
                     if feature_descriptions:
                         description = "## 生成的特征\n\n"
                         for i, feat_desc in enumerate(feature_descriptions[:5], 1):  # 只显示前5个特征
-                            description += f"{i}. {feat_desc}\n"
+                            if isinstance(feat_desc, dict):
+                                # 如果是字典，提取description字段
+                                desc_text = feat_desc.get("description", str(feat_desc))
+                                description += f"{i}. {desc_text}\n"
+                            else:
+                                # 如果是字符串，直接使用
+                                description += f"{i}. {feat_desc}\n"
 
                     # 合并所有SQL代码
                     sql_code = ""
                     if sql_code_dict:
-                        sql_code = "-- 特征生成SQL\n"
-                        for step, sql in sql_code_dict.items():
-                            if sql:
-                                sql_code += f"-- {step}\n{sql}\n\n"
+                        if isinstance(sql_code_dict, dict):
+                            # 如果是字典，按步骤格式化
+                            sql_code = "-- 特征生成SQL\n"
+                            for step, sql in sql_code_dict.items():
+                                if sql:
+                                    sql_code += f"-- {step}\n{sql}\n\n"
+                        else:
+                            # 如果是字符串，直接使用
+                            sql_code = sql_code_dict
 
                     response_data["data"]["featureInfo"] = {
                         "description": description,
@@ -615,7 +631,30 @@ def auto_step():
                             }
 
                             # 更新sql_code
-                            response_data["data"]["sql_code"] = performance_result.get("sql_code", {})
+                            sql_code_dict = performance_result.get("sql_code", {})
+                            if isinstance(sql_code_dict, dict):
+                                # 如果是字典，使用all_sql字段
+                                final_sql_code = sql_code_dict.get("all_sql", "")
+                            else:
+                                # 如果是字符串，直接使用
+                                final_sql_code = sql_code_dict
+
+                            response_data["data"]["sql_code"] = final_sql_code
+
+                            # 同时更新featureInfo中的sqlCode（符合API文档要求）
+                            if "featureInfo" in response_data["data"]:
+                                response_data["data"]["featureInfo"]["sqlCode"] = final_sql_code
+                                print(f"Debug: Updated featureInfo.sqlCode with {len(final_sql_code)} characters")
+                            else:
+                                # 如果featureInfo不存在，创建一个（这种情况不应该发生，但作为保险）
+                                response_data["data"]["featureInfo"] = {
+                                    "description": "SQL code generated from performance testing",
+                                    "pythonCode": "# Python code available from best_features",
+                                    "sqlCode": final_sql_code
+                                }
+                                print(f"Debug: Created new featureInfo with sqlCode ({len(final_sql_code)} characters)")
+
+                            print(f"Debug: Final SQL code in response: {len(response_data['data']['sql_code'])} characters")
 
                             # 更新best_features（如果之前没有获取到）
                             if not response_data["data"]["best_features"]:

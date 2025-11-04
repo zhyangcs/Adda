@@ -14,7 +14,7 @@ from autogen_core import CancellationToken
 # It's recommended to load these from environment variables for security.
 API_KEY = 'sk-F6l6kc8Xlqb6FlP8ll0cST1GmXB5uSIDZIYyGvL0W2mdkg0F' # Placeholder - Use environment variables
 BASE_URL = 'https://api.nuwaapi.com/v1' # Placeholder
-MODEL = 'gpt-4o' # Or your preferred model
+MODEL = src.env.default_model # Use default model from environment configuration
 
 # It's good practice to reuse clients if possible, but creating new ones per call is simpler for now.
 # For better performance/resource management, consider initializing clients once outside this function.

@@ -713,8 +713,12 @@ class AddaConnector:
             if os.path.exists(exec_name):
                 os.rename(exec_name, origin_name)
 
-            # 16. 读取生成的SQL文件
-            sql_code = self._read_generated_sql_files(dir_path, 0)  # 第一个pipeline
+            # 16. 读取生成的SQL文件 - 修复路径问题
+            # SQL文件实际在 origin_name 目录中
+            sql_dir_path = origin_name if os.path.exists(origin_name) else dir_path
+            print(f"Debug: Reading SQL files from {sql_dir_path}")
+            sql_code = self._read_generated_sql_files(sql_dir_path, 0)  # 第一个pipeline
+            print(f"Debug: Read SQL code with {len(sql_code.get('all_sql', ''))} characters")
 
             # 17. 准备返回结果
             execution_time = speed_record.get("sql", [0])[0] if speed_record and "sql" in speed_record else 0.0
@@ -768,40 +772,87 @@ class AddaConnector:
 
     def _read_generated_sql_files(self, dir_path: str, pipe_idx: int) -> dict:
         """
-        读取生成的SQL文件内容（从train_node_model.py复制过来）
+        读取生成的SQL文件内容，只提取特征相关的代码，过滤训练/预测特定部分
         """
         sql_code = {
-            "training_sql": "",
-            "prediction_sql": "",
-            "udf_sql": "",
+            "feature_sql": "",
             "all_sql": ""
         }
 
         try:
-            # 训练SQL文件
+            # 只读取训练SQL文件中的特征生成部分
             train_sql_path = os.path.join(dir_path, f"pipe_train_{pipe_idx}", "spsql.sql")
             if os.path.exists(train_sql_path):
                 with open(train_sql_path, 'r', encoding='utf-8') as f:
-                    sql_code["training_sql"] = f.read()
+                    content = f.read()
 
-            # 预测SQL文件
-            predict_sql_path = os.path.join(dir_path, f"pipe_predict_{pipe_idx}", "spsql.sql")
-            if os.path.exists(predict_sql_path):
-                with open(predict_sql_path, 'r', encoding='utf-8') as f:
-                    sql_code["prediction_sql"] = f.read()
+                    # 提取特征相关的SQL（排除RF_train调用）
+                    lines = content.split('\n')
+                    feature_lines = []
 
-            # UDF SQL文件
+                    for i, line in enumerate(lines):
+                        # 检查是否到达模型训练部分
+                        if 'RF_train' in line or 'model_table' in line:
+                            break
+                        feature_lines.append(line)
+
+                    # 去除末尾的空行和逗号
+                    while feature_lines and (feature_lines[-1].strip() == '' or feature_lines[-1].strip() == ','):
+                        feature_lines.pop()
+
+                    # 添加合适的结尾
+                    if feature_lines:
+                        feature_lines.append(') -- 特征数据生成完成')
+
+                    sql_code["feature_sql"] = '\n'.join(feature_lines)
+
+            # 读取UDF SQL文件
             udf_sql_path = os.path.join(dir_path, f"pipe_train_{pipe_idx}", "spudf.sql")
             if os.path.exists(udf_sql_path):
                 with open(udf_sql_path, 'r', encoding='utf-8') as f:
-                    sql_code["udf_sql"] = f.read()
+                    udf_content = f.read()
 
-            # 组合所有SQL
-            sql_code["all_sql"] = (
-                "-- UDF Functions --\n" + sql_code["udf_sql"] + "\n\n" +
-                "-- Training SQL --\n" + sql_code["training_sql"] + "\n\n" +
-                "-- Prediction SQL --\n" + sql_code["prediction_sql"]
-            )
+                    # 提取特征相关的UDF（排除训练/预测函数）
+                    # 只保留udf_1, udf_2, udf_3等特征生成函数
+                    lines = udf_content.split('\n')
+                    feature_udf_lines = []
+                    current_function = None
+                    in_feature_function = False
+
+                    for line in lines:
+                        # 检测UDF函数定义
+                        if line.strip().startswith('CREATE OR REPLACE FUNCTION udf_'):
+                            func_name = line.split('udf_')[1].split(' ')[0]
+                            # 只保留特征生成相关的UDF（1,2,3等）
+                            if func_name.isdigit() and int(func_name) <= 10:  # 假设特征UDF编号不超过10
+                                current_function = f'udf_{func_name}'
+                                in_feature_function = True
+                                feature_udf_lines.append(line)
+                            else:
+                                in_feature_function = False
+                        elif in_feature_function and line.strip().startswith('$$'):
+                            # UDF函数结束
+                            current_function = None
+                            in_feature_function = False
+                            feature_udf_lines.append(line)
+                        elif in_feature_function:
+                            # 在特征UDF函数内部
+                            feature_udf_lines.append(line)
+
+                    sql_code["udf_sql"] = '\n'.join(feature_udf_lines)
+
+            # 组合特征相关的SQL
+            if sql_code["udf_sql"] and sql_code["feature_sql"]:
+                sql_code["all_sql"] = (
+                    "-- 特征生成相关的UDF函数\n" +
+                    sql_code["udf_sql"] + "\n\n" +
+                    "-- 特征生成SQL查询\n" +
+                    sql_code["feature_sql"]
+                )
+            elif sql_code["udf_sql"]:
+                sql_code["all_sql"] = "-- 特征生成相关的UDF函数\n" + sql_code["udf_sql"]
+            elif sql_code["feature_sql"]:
+                sql_code["all_sql"] = "-- 特征生成SQL查询\n" + sql_code["feature_sql"]
 
         except Exception as e:
             print(f"Warning: Failed to read SQL files: {e}")
@@ -862,24 +913,33 @@ class AddaConnector:
 
             # 4. 提取最佳特征信息
             best_node = best_nodes[0]  # 取第一个最佳节点
+            print(f"Selected best node: {best_node.node_id}, operation: {getattr(best_node, 'operation_desc', 'None')}")
 
             # 获取Python代码
             python_code = getattr(best_node, 'whole_code', '')
             if not python_code:
                 python_code = getattr(best_node, 'task_code', '')
 
-            # 获取特征描述 - 沿着DAG路径收集所有节点的描述
-            feature_descriptions = self._extract_feature_descriptions(best_node)
+            # 获取特征描述 - 简化版本，直接使用最佳节点的描述
+            feature_descriptions = []
+            if hasattr(best_node, 'operation_desc') and best_node.operation_desc:
+                feature_descriptions.append({
+                    "node_id": best_node.node_id,
+                    "description": best_node.operation_desc,
+                    "feature_name": getattr(best_node, 'feature_name', ''),
+                    "op_type": str(getattr(best_node, 'op_type', 'Unknown')),
+                    "score": getattr(best_node, 'final_score', 0.0),
+                    "exec_time": getattr(best_node, 'exec_time', 0.0)
+                })
 
-            # 获取SQL代码 - 如果存在的话
-            sql_code = self._get_best_node_sql_code(best_node, task_name)
+            print(f"Retrieved {len(feature_descriptions)} feature descriptions, Python code length: {len(python_code)}")
 
             return {
                 "success": True,
                 "node_id": best_node.node_id,
-                "final_score": best_node.final_score,
+                "final_score": getattr(best_node, 'final_score', 0.0),
                 "python_code": python_code,
-                "sql_code": sql_code,
+                "sql_code": "",  # SQL代码将在性能测试阶段生成
                 "feature_descriptions": feature_descriptions,
                 "feature_count": len(feature_descriptions),
                 "operation_desc": getattr(best_node, 'operation_desc', ''),
@@ -937,21 +997,7 @@ class AddaConnector:
             print(f"提取特征描述失败: {str(e)}")
             return []
 
-    def _get_best_node_sql_code(self, node, task_name):
-        """
-        获取最佳节点对应的SQL代码
-        """
-        try:
-            # 尝试从生成的SQL文件中读取
-            dir_path = os.path.join(test_save_path, task_name)
-            if os.path.exists(dir_path):
-                # 读取第一个pipeline的SQL代码
-                sql_code = self._read_generated_sql_files(dir_path, 0)
-                return sql_code.get("all_sql", "")
-            return ""
-        except Exception as e:
-            print(f"获取SQL代码失败: {str(e)}")
-            return ""
+    # _get_best_node_sql_code 方法已移除，因为SQL代码获取逻辑已整合到 _run_multimodal_performance 方法中
 
     def train_on_single_node(self, node_id, task_name=None, model_type="RF", dataset_path=None):
         """

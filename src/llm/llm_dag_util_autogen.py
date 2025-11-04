@@ -196,7 +196,7 @@ class LLMDagConstructor():
             # Ensure API_KEY, BASE_URL, and MODEL constants/variables are defined appropriately.
             # Example uses constants defined earlier in the file or imported.
             # We should use src.env imported earlier
-            self.client_coder = OpenAIChatCompletionClient(model='gpt-4o', base_url=src.env.openai_base_url, api_key=src.env.openai_api_key)
+            self.client_coder = OpenAIChatCompletionClient(model=src.env.default_model, base_url=src.env.openai_base_url, api_key=src.env.openai_api_key)
             # self.client_validator = OpenAIChatCompletionClient(model='gpt-4o', base_url=src.env.BASE_URL, api_key=src.env.API_KEY)
             print(termcolor.colored("LLMDagConstructor: LLM clients initialized successfully.", "green"))
         except Exception as e:
