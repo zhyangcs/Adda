@@ -94,6 +94,27 @@ class PaperMetricsCalculatorSimplified:
                 'success': True
             }
 
+            # Convert all numpy types to JSON-serializable types before returning
+            def convert_numpy_types_recursively(obj):
+                import numpy as np
+                if isinstance(obj, dict):
+                    return {key: convert_numpy_types_recursively(value) for key, value in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_types_recursively(item) for item in obj]
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    if obj.size == 1:
+                        return obj.item()
+                    else:
+                        return obj.tolist()
+                else:
+                    return obj
+
+            final_results = convert_numpy_types_recursively(final_results)
+
             print(f"✅ [SIMPLIFIED PAPER METRICS] Calculation completed successfully!")
             print(f"   📊 Original features: {final_results['original_feature_count']}")
             print(f"   🆕 Generated features: {final_results['generated_feature_count']}")
@@ -448,7 +469,7 @@ class PaperMetricsCalculatorSimplified:
             model = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=2)
             model.fit(X, y)
 
-            feature_importance = {feature: importance for feature, importance in zip(X.columns, model.feature_importances_)}
+            feature_importance = {feature: float(importance) for feature, importance in zip(X.columns, model.feature_importances_)}
 
             return {
                 'feature_importance': feature_importance,
@@ -480,7 +501,18 @@ class PaperMetricsCalculatorSimplified:
                     importance = result['feature_importance']
 
                     # 按重要性排序并取Top-K
-                    sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)
+                    # 确保重要性值是标量，处理numpy数组情况
+                    def get_importance_value(val):
+                        import numpy as np
+                        if isinstance(val, np.ndarray):
+                            if val.size == 1:
+                                return float(val.item())
+                            else:
+                                return float(np.mean(val))
+                        else:
+                            return float(val)
+
+                    sorted_features = sorted(importance.items(), key=lambda x: get_importance_value(x[1]), reverse=True)
                     top_k_features = sorted_features[:top_k]
 
                     # 计算生成特征数量
@@ -504,7 +536,7 @@ class PaperMetricsCalculatorSimplified:
                         'total_count': top_k,
                         'top_features_analysis': detailed_analysis,
                         'top_features': [f for f, _ in top_k_features],
-                        'importances': [i for _, i in top_k_features]
+                        'importances': [get_importance_value(i) for _, i in top_k_features]
                     }
                 else:
                     top_k_analysis[method] = {
@@ -521,6 +553,8 @@ class PaperMetricsCalculatorSimplified:
 
         except Exception as e:
             print(f"Failed to analyze Top-K features: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {}
 
 

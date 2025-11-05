@@ -142,6 +142,25 @@ def test_performance():
                 response_data["sql_code"] = performance_info["sql_code"]
                 response_data["sql_file_paths"] = performance_info.get("sql_file_paths", {})
 
+            # Convert numpy types to JSON-serializable types
+            def convert_numpy_types(obj):
+                import numpy as np
+                if isinstance(obj, dict):
+                    return {key: convert_numpy_types(value) for key, value in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_types(item) for item in obj]
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                else:
+                    return obj
+
+            # Convert response_data to JSON-serializable format
+            response_data = convert_numpy_types(response_data)
+
             return jsonify(response_data)
         else:
             return jsonify({
@@ -760,12 +779,12 @@ def auto_step():
 
                                     print("\n📈 [PAPER METRICS] Percentage of Generated Features in Top-K:")
                                     print("-" * 80)
-                                    for method, metrics in paper_metrics['metrics'].items():
-                                        if 'percentage' in metrics:
-                                            print(f"  🔹 {method.upper()}: {metrics['percentage']:.2f}% "
-                                                  f"({metrics['generated_count']}/{paper_metrics['top_k']})")
+                                    for method, analysis in paper_metrics['top_k_analysis'].items():
+                                        if 'percentage' in analysis:
+                                            print(f"  🔹 {method.upper()}: {analysis['percentage']:.2f}% "
+                                                  f"({analysis['generated_count']}/{paper_metrics['top_k']})")
                                         else:
-                                            print(f"  ❌ {method.upper()}: Failed - {metrics.get('error', 'Unknown error')}")
+                                            print(f"  ❌ {method.upper()}: Failed - {analysis.get('error', 'Unknown error')}")
 
                                     # 详细显示特征信息
                                     if 'all_features' in paper_metrics:
@@ -986,6 +1005,25 @@ def auto_step():
                     "notice_description": f"特征搜索执行了 {max_search_depth} 步，但尚未完成最佳特征选择",
                     "notice_type": "info"
                 })
+
+        # Convert numpy types to JSON-serializable types
+        def convert_numpy_types(obj):
+            import numpy as np
+            if isinstance(obj, dict):
+                return {key: convert_numpy_types(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            else:
+                return obj
+
+        # Convert response_data to JSON-serializable format
+        response_data = convert_numpy_types(response_data)
 
         return jsonify(response_data)
 
