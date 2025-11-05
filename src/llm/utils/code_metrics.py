@@ -100,61 +100,72 @@ class CodeMetrics():
     def get_cyclomatic_complexity(self):
         """
         Compute the Cyclomatic complexity of the code:
-        Except for the forloop and branch statement, we also consider the hidden complexity in the function or subscription of pandas 
-        """    
-        class CyclomaticVisitor(ast.NodeVisitor):
-            def __init__(self):
-                self.complexity = 1
-                self.subscript_num = 0
-            
-            def visit(self, node):
-                name = node.__class__.__name__
-                if name in ('Try', 'TryExcept'):
-                    self.complexity += len(node.handlers) + bool(node.orelse)
-                elif name == 'BoolOp':
-                    self.complexity += len(node.values) - 1
-                elif name in ('If', 'IfExp'):
-                    self.complexity += 1
-                elif name in ('For', 'While', 'AsyncFor'):
-                    self.complexity += 1
-                elif name == 'comprehension':
-                    self.complexity += len(node.ifs) + 1
-                super().visit(node)
-                
-            def visit_Call(self, node):
-                func_name = self.get_func_name(node.func)
-                print(f"Current Func:{func_name}")
-                # add the complexity for hidden for loop logical
-                if func_name in ('mean', 'sum', 'std', 'count', 'avg', 'groupby', 'between', 'max', 'min', 'value_count', 'transform', 'cut'):
-                    self.complexity += 1
-                self.generic_visit(node)
-            
-            def visit_Subscript(self, node: ast.Subscript):
-                self.subscript_num += 1
-                self.generic_visit(node)
-                self.subscript_num -= 1
-                
-            def visit_Compare(self, node):
-                if self.subscript_num > 0:
-                    self.complexity += len(node.ops)
-                self.generic_visit(node)
+        Except for the forloop and branch statement, we also consider the hidden complexity in the function or subscription of pandas
+        """
+        if not self.code or not self.code.strip():
+            return 1  # Empty or whitespace-only code has minimal complexity
 
-            def visit_UnaryOp(self, node: ast.UnaryOp):
-                if self.subscript_num > 0:
-                    self.complexity += 1
-                self.generic_visit(node)
-                
-            def get_func_name(self, node):
-                if isinstance(node, ast.Name):
-                    return node.id
-                if isinstance(node, ast.Attribute):
-                    return node.attr
-                return ""
-                    
-        cyclomatic_visitor = CyclomaticVisitor()
-        cyclomatic_visitor.visit(ast.parse(self.code))
-        # print(ast.dump(ast.parse(self.code), indent=4))
-        return cyclomatic_visitor.complexity
+        try:
+            class CyclomaticVisitor(ast.NodeVisitor):
+                def __init__(self):
+                    self.complexity = 1
+                    self.subscript_num = 0
+
+                def visit(self, node):
+                    name = node.__class__.__name__
+                    if name in ('Try', 'TryExcept'):
+                        self.complexity += len(node.handlers) + bool(node.orelse)
+                    elif name == 'BoolOp':
+                        self.complexity += len(node.values) - 1
+                    elif name in ('If', 'IfExp'):
+                        self.complexity += 1
+                    elif name in ('For', 'While', 'AsyncFor'):
+                        self.complexity += 1
+                    elif name == 'comprehension':
+                        self.complexity += len(node.ifs) + 1
+                    super().visit(node)
+
+                def visit_Call(self, node):
+                    func_name = self.get_func_name(node.func)
+                    # add the complexity for hidden for loop logical
+                    if func_name in ('mean', 'sum', 'std', 'count', 'avg', 'groupby', 'between', 'max', 'min', 'value_count', 'transform', 'cut'):
+                        self.complexity += 1
+                    self.generic_visit(node)
+
+                def visit_Subscript(self, node: ast.Subscript):
+                    self.subscript_num += 1
+                    self.generic_visit(node)
+                    self.subscript_num -= 1
+
+                def visit_Compare(self, node):
+                    if self.subscript_num > 0:
+                        self.complexity += len(node.ops)
+                    self.generic_visit(node)
+
+                def visit_UnaryOp(self, node: ast.UnaryOp):
+                    if self.subscript_num > 0:
+                        self.complexity += 1
+                    self.generic_visit(node)
+
+                def get_func_name(self, node):
+                    if isinstance(node, ast.Name):
+                        return node.id
+                    if isinstance(node, ast.Attribute):
+                        return node.attr
+                    return ""
+
+            cyclomatic_visitor = CyclomaticVisitor()
+            cyclomatic_visitor.visit(ast.parse(self.code))
+            return cyclomatic_visitor.complexity
+
+        except (SyntaxError, ValueError, TypeError) as e:
+            # If code cannot be parsed or has syntax errors, return a reasonable default
+            print(f"Warning: Could not compute complexity for code due to {type(e).__name__}: {e}")
+            return 5  # Return a moderate complexity for problematic code
+        except Exception as e:
+            # Handle any other unexpected errors
+            print(f"Warning: Unexpected error computing complexity: {e}")
+            return 1
     
     
 def whether_code_complex(code, column_names):
@@ -172,8 +183,24 @@ def get_code_complexity(code):
     """
     Get the code complexity
     """
-    metrics = CodeMetrics(code, [])
-    return metrics.get_metrics()['CLYCOMATIC_COMPLEXITY']
+    try:
+        if not code or not code.strip():
+            return 1
+
+        metrics = CodeMetrics(code, [])
+        metrics_dict = metrics.get_metrics()
+
+        # Ensure we always get a numeric value
+        complexity = metrics_dict.get('CLYCOMATIC_COMPLEXITY')
+        if complexity is None or not isinstance(complexity, (int, float)):
+            print(f"Warning: Invalid complexity value {complexity}, using default")
+            return 1
+
+        return int(complexity) if isinstance(complexity, bool) else complexity
+
+    except Exception as e:
+        print(f"Warning: Error computing code complexity: {e}")
+        return 1  # Return minimal complexity as fallback
 
     
 if __name__ == "__main__":
