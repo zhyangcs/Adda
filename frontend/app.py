@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, jsonify, send_file
 import json
 import os
 import io
-import numpy as np
 
 from adda_connector import AddaConnector
 
@@ -13,10 +12,10 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.llm.llm_dag_util import LLMDagConstructor
-from src.env import test_save_path, dataset_path, proj_path
+from src.env import test_save_path
 
-# 导入特征重要性计算器
-from feature_importance_calculator import FeatureImportanceCalculator, calculate_importance_from_data, create_mock_importance_data
+# 导入完整论文指标计算器
+from frontend.paper_metrics_complete import calculate_complete_paper_metrics
 
 # 导入WebSocket服务器
 from websocket_server import get_websocket_server
@@ -245,18 +244,25 @@ def auto_step():
             max_search_depth = request.form.get('max_search_depth', '1')
             use_performance_test = request.form.get('use_performance_test', 'true')
             comparison_methods = request.form.get('comparison_methods', '["Adda"]')
+            paper_top_k = request.form.get('paper_top_k', '7')
         else:
             # JSON格式
             data = json.loads(request.data) if request.data else {}
             max_search_depth = data.get('max_search_depth', 1)
             use_performance_test = data.get('use_performance_test', True)
             comparison_methods = data.get('comparison_methods', ["Adda"])
+            paper_top_k = data.get('paper_top_k', 7)
 
         # 转换参数类型
         try:
             max_search_depth = int(max_search_depth)
         except (ValueError, TypeError):
             max_search_depth = 1
+
+        try:
+            paper_top_k = int(paper_top_k)
+        except (ValueError, TypeError):
+            paper_top_k = 7
 
         use_performance_test = str(use_performance_test).lower() in ['true', '1', 'yes']
 
@@ -268,6 +274,9 @@ def auto_step():
                 comparison_methods = ["Adda"]
         except (json.JSONDecodeError, TypeError):
             comparison_methods = ["Adda"]
+
+        # paper_metrics 总是启用，固定使用 top-7
+        paper_top_k = 7
 
         print(f"Starting end-to-end execution: dataset={dataset}, model={model}, depth={max_search_depth}")
 
@@ -721,96 +730,94 @@ def auto_step():
                                 response_data["data"]["timeData"]["featureGenerationTime"][adda_index] = feature_generation_time  # astar_k_step时间
                                 response_data["data"]["timeData"]["evaluationTime"][adda_index] = evaluation_time
 
-                            # ===== 计算特征重要性 =====
+  
+                            # ===== 计算论文指标（总是执行） =====
                             try:
-                                print("Calculating feature importance...")
+                                print("=" * 80)
+                                print("🔍 [PAPER METRICS] Starting Feature Importance & Interpretability Analysis")
+                                print("=" * 80)
+                                print(f"Task: {task_name}")
+                                print(f"Top-K: {paper_top_k}")
+                                print(f"Methods: ['shap', 'ig', 'rfe', 'fi']")
+                                print("-" * 80)
 
-                                # 获取当前最佳特征信息
-                                if best_features_info and best_features_info.get("success", False):
-                                    feature_names = []
+                                # 计算完整论文指标
+                                paper_metrics = calculate_complete_paper_metrics(
+                                    task_name=task_name,
+                                    top_k=paper_top_k,
+                                    methods=["shap", "ig", "rfe", "fi"]
+                                )
 
-                                    # 从best_features_info中提取特征名称
-                                    feature_descriptions = best_features_info.get("feature_descriptions", [])
-                                    if feature_descriptions:
-                                        # 解析特征描述，提取特征名称
-                                        for desc in feature_descriptions:
-                                            # 简单的特征名称提取逻辑
-                                            if ":" in desc:
-                                                feature_name = desc.split(":")[0].strip()
-                                            else:
-                                                # 使用描述的前20个字符作为特征名
-                                                feature_name = desc[:20].replace(" ", "_").replace(",", "")
-                                            feature_names.append(feature_name)
+                                if paper_metrics:
+                                    print("📊 [PAPER METRICS] Analysis Results:")
+                                    print("-" * 80)
+                                    print(f"✅ Successfully calculated paper metrics!")
+                                    print(f"📋 Original features: {paper_metrics['original_feature_count']}")
+                                    print(f"🆕 Generated features: {paper_metrics['generated_feature_count']}")
+                                    print(f"📊 Total features: {paper_metrics['total_feature_count']}")
+                                    print(f"🎯 Top-K analysis: {paper_metrics['top_k']}")
 
-                                    # 如果没有提取到特征名称，使用默认名称
-                                    if not feature_names:
-                                        feature_names = [f"feature_{i}" for i in range(5)]
-                                else:
-                                    # 使用默认特征名称
-                                    feature_names = [f"feature_{i}" for i in range(5)]
-
-                                # 尝试从现有数据计算特征重要性
-                                try:
-                                    # 尝试获取实际数据进行重要性计算
-                                    from src.pg.sql_utils import get_conn
-                                    import pandas as pd
-
-                                    # 读取数据用于重要性计算
-                                    data_path = os.path.join(dataset_path, task_name, "train_new.csv")
-                                    if os.path.exists(data_path):
-                                        df = pd.read_csv(data_path)
-
-                                        # 获取目标列
-                                        _, target_col, _ = task_config(dataset.lower())
-
-                                        # 选择数值列作为特征
-                                        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-                                        if target_col in numeric_columns:
-                                            numeric_columns.remove(target_col)
-
-                                        # 限制特征数量，避免计算过慢
-                                        feature_columns = numeric_columns[:10]  # 最多10个特征
-                                        feature_names = feature_columns[:len(feature_names)]
-
-                                        if len(feature_columns) >= 2:
-                                            X = df[feature_columns].fillna(0)
-                                            y = df[target_col]
-
-                                            # 计算特征重要性
-                                            importance_results = calculate_importance_from_data(
-                                                X, y,
-                                                task_type=task_type,
-                                                feature_names=feature_names,
-                                                methods=["fi", "rfe"]  # 先计算基础方法
-                                            )
-
-                                            # 更新importanceData
-                                            response_data["data"]["importanceData"].update(importance_results)
-
-                                            print(f"Successfully calculated importance for {len(feature_columns)} features")
+                                    print("\n📈 [PAPER METRICS] Percentage of Generated Features in Top-K:")
+                                    print("-" * 80)
+                                    for method, metrics in paper_metrics['metrics'].items():
+                                        if 'percentage' in metrics:
+                                            print(f"  🔹 {method.upper()}: {metrics['percentage']:.2f}% "
+                                                  f"({metrics['generated_count']}/{paper_metrics['top_k']})")
                                         else:
-                                            raise ValueError("Not enough numeric features for importance calculation")
-                                    else:
-                                        raise FileNotFoundError(f"Data file not found: {data_path}")
+                                            print(f"  ❌ {method.upper()}: Failed - {metrics.get('error', 'Unknown error')}")
 
-                                except Exception as data_error:
-                                    print(f"Failed to calculate importance from real data: {str(data_error)}")
-                                    # 使用模拟数据作为后备
-                                    mock_importance = {}
-                                    for method in ["shap", "ig", "rfe", "fi"]:
-                                        mock_importance[method] = create_mock_importance_data(feature_names[:5], method)
+                                    # 详细显示特征信息
+                                    if 'all_features' in paper_metrics:
+                                        print(f"\n🔍 [PAPER METRICS] Feature Details:")
+                                        print("-" * 80)
+                                        print(f"Original Features ({len(paper_metrics['all_features']['original'])}):")
+                                        for i, feature in enumerate(paper_metrics['all_features']['original'][:10], 1):
+                                            print(f"  {i:2d}. 📊 {feature}")
+                                        if len(paper_metrics['all_features']['original']) > 10:
+                                            print(f"  ... and {len(paper_metrics['all_features']['original']) - 10} more")
 
-                                    response_data["data"]["importanceData"].update(mock_importance)
-                                    print("Using mock importance data as fallback")
+                                        print(f"\nGenerated Features ({len(paper_metrics['all_features']['generated'])}):")
+                                        for i, feature in enumerate(paper_metrics['all_features']['generated'], 1):
+                                            print(f"  {i:2d}. 🆕 {feature}")
 
-                            except Exception as importance_error:
-                                print(f"Feature importance calculation failed: {str(importance_error)}")
-                                # 确保至少有空的importanceData
-                                response_data["data"]["importanceData"] = {
-                                    "shap": [],
-                                    "ig": [],
-                                    "rfe": [],
-                                    "fi": []
+                                    # 显示每个方法的Top特征详情
+                                    print(f"\n🏆 [PAPER METRICS] Top Features Analysis:")
+                                    print("-" * 80)
+                                    for method, metrics in paper_metrics['metrics'].items():
+                                        if 'top_features_analysis' in metrics and metrics['top_features_analysis']:
+                                            print(f"\n{method.upper()} Top-{paper_top_k} Features:")
+                                            for feature_info in metrics['top_features_analysis']:
+                                                status = "🆕NEW" if feature_info["is_generated"] else "📊ORIG"
+                                                print(f"  {feature_info['rank']:2d}. {status:<6} {feature_info['feature']:<30} "
+                                                      f"(importance: {feature_info['importance']:.4f})")
+
+                                    # 添加到响应数据
+                                    response_data["data"]["importanceData"]["paperMetrics"] = paper_metrics
+
+                                    print("\n" + "=" * 80)
+                                    print("✅ [PAPER METRICS] Analysis completed successfully!")
+                                    print("=" * 80)
+
+                                else:
+                                    print("❌ [PAPER METRICS] Calculation returned empty result!")
+                                    print("-" * 80)
+                                    response_data["data"]["importanceData"]["paperMetrics"] = {
+                                        "error": "Empty result from paper metrics calculation",
+                                        "success": False
+                                    }
+
+                            except Exception as paper_error:
+                                print("❌ [PAPER METRICS] Calculation failed!")
+                                print("-" * 80)
+                                print(f"Error: {str(paper_error)}")
+                                import traceback
+                                traceback.print_exc()
+                                print("-" * 80)
+
+                                # 添加错误信息
+                                response_data["data"]["importanceData"]["paperMetrics"] = {
+                                    "error": str(paper_error),
+                                    "success": False
                                 }
 
                             # 添加成功通知
