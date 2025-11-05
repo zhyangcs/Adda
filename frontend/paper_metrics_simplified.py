@@ -153,7 +153,11 @@ class PaperMetricsCalculatorSimplified:
             best_data = None
             max_features = 0
 
-            # 遍历所有节点，找到包含最多特征的节点
+            # 聚合所有节点的生成特征
+            all_generated_features = set()
+            all_feature_data = {}
+
+            # 遍历所有节点，收集所有特征
             for node in dag.nodes():
                 out_cur_df = getattr(node, 'out_cur_df', None)
 
@@ -162,38 +166,98 @@ class PaperMetricsCalculatorSimplified:
                     if num_features > max_features:
                         max_features = num_features
                         best_data = out_cur_df.copy()
-                        print(f"Found better data: {num_features} features from node {getattr(node, 'node_id', 'unknown')}")
+                        print(f"Found base data: {num_features} features from node {getattr(node, 'node_id', 'unknown')}")
+
+                    # 收集所有生成特征的数据
+                    original_features = {'gender', 'age', 'education', 'currentsmoker', 'cigsperday', 'bpmeds', 'prevalentstroke', 'prevalenthyp', 'diabetes', 'totchol', 'sysbp', 'diabp', 'bmi', 'heartrate', 'glucose', 'id'}
+                    generated_features = [col for col in out_cur_df.columns if col not in original_features and col != 'tenyearchd']
+
+                    for feature in generated_features:
+                        if feature not in all_feature_data:
+                            all_feature_data[feature] = out_cur_df[feature].values
+                            all_generated_features.add(feature)
+                            print(f"Collected feature '{feature}' from node {getattr(node, 'node_id', 'unknown')}")
 
             if best_data is None:
                 print("No valid data found in any DAG node")
                 return None
 
-            print(f"Selected best data with {max_features} features and {len(best_data)} rows")
-            print(f"Features: {list(best_data.columns)}")
+            # 将所有收集到的生成特征添加到基础数据中
+            if all_feature_data:
+                print(f"Adding {len(all_feature_data)} additional generated features to base data")
+                for feature, values in all_feature_data.items():
+                    if feature not in best_data.columns:
+                        best_data[feature] = values
+                        print(f"Added feature '{feature}' with shape {values.shape}")
 
-            # 添加目标变量
+            print(f"Final aggregated data with {len(best_data.columns)} features and {len(best_data)} rows")
+            print(f"Generated features found: {list(all_generated_features)}")
+            print(f"All features: {list(best_data.columns)}")
+
+            # 尝试从DAG构造器中获取对应的目标变量，确保完全一致
             _, target_col, _ = task_config(task_name.lower())
             print(f"Adding target variable: {target_col}")
 
-            # 从原始CSV数据中获取目标变量（匹配行数）
-            data_agenda, desc, csv_path = read_data_info(task_name)
-            original_data = pd.read_csv(csv_path)
+            # 方法1：尝试从DAG构造器获取label（最准确的方法）
+            target_values = None
+            try:
+                # 重新加载pickle文件以获取完整的DAG构造器
+                with open(pickle_file, "rb") as f:
+                    dag_constructor = pickle.load(f)
 
-            if target_col not in original_data.columns:
-                print(f"Target column '{target_col}' not found in original data")
-                return None
+                if hasattr(dag_constructor, 'label') and dag_constructor.label is not None:
+                    # 检查label是否是DataFrame且长度匹配
+                    if hasattr(dag_constructor.label, '__len__') and len(dag_constructor.label) == len(best_data):
+                        if target_col in dag_constructor.label.columns:
+                            target_values = dag_constructor.label[target_col].values
+                            print(f"✅ Successfully extracted target variables from DAG constructor")
+                            print(f"   Target variable distribution: {pd.Series(target_values).value_counts().to_dict()}")
+                        else:
+                            print(f"❌ Target column '{target_col}' not found in DAG constructor label")
+                            print(f"   Available columns: {list(dag_constructor.label.columns)}")
+                    else:
+                        print(f"❌ DAG constructor label length mismatch: {len(dag_constructor.label)} vs {len(best_data)}")
+                else:
+                    print(f"⚠️  DAG constructor label not available or empty")
 
-            # 获取对应数量的目标变量（取前N行）
-            if len(original_data) >= len(best_data):
-                target_values = original_data[target_col].iloc[:len(best_data)].values
-            else:
-                print(f"Warning: Original data ({len(original_data)}) is shorter than DAG data ({len(best_data)})")
-                target_values = original_data[target_col].values
-                if len(target_values) < len(best_data):
-                    # 填充缺失值
-                    padding_size = len(best_data) - len(target_values)
-                    padding_values = [target_values[-1]] * padding_size
-                    target_values = np.concatenate([target_values, padding_values])
+            except Exception as e:
+                print(f"⚠️  Failed to extract from DAG constructor: {str(e)}")
+
+            # 方法2：如果方法1失败，使用模拟DAG采样逻辑（回退方案）
+            if target_values is None:
+                print(f"Using fallback sampling method...")
+                data_agenda, desc, csv_path = read_data_info(task_name)
+                original_data = pd.read_csv(csv_path)
+
+                if target_col not in original_data.columns:
+                    print(f"Target column '{target_col}' not found in original data")
+                    return None
+
+                # 使用sklearn的train_test_split进行25%的分层采样
+                from sklearn.model_selection import train_test_split
+
+                # 获取25%的数据，模拟DAG的采样逻辑
+                _, sampled_data = train_test_split(
+                    original_data,
+                    test_size=0.25,  # 25%采样
+                    random_state=0,  # 固定随机种子
+                    stratify=original_data[target_col]
+                )
+
+                # 确保采样后的数据长度与DAG数据匹配
+                if len(sampled_data) != len(best_data):
+                    print(f"Warning: Sampled data ({len(sampled_data)}) length mismatch with DAG data ({len(best_data)})")
+
+                    # 如果长度不匹配，使用前N行
+                    if len(original_data) >= len(best_data):
+                        target_values = original_data[target_col].iloc[:len(best_data)].values
+                    else:
+                        print(f"Error: Original data too short for DAG data length")
+                        return None
+                else:
+                    target_values = sampled_data[target_col].values
+
+                print(f"⚠️  Used fallback stratified sampling method")
 
             # 添加目标变量到数据中
             best_data[target_col] = target_values

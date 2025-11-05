@@ -15,7 +15,8 @@ from src.llm.llm_dag_util import LLMDagConstructor
 from src.env import test_save_path
 
 # 导入完整论文指标计算器
-from frontend.paper_metrics_complete import calculate_complete_paper_metrics
+# from frontend.paper_metrics_complete import calculate_complete_paper_metrics
+from frontend.paper_metrics_simplified import calculate_simplified_paper_metrics
 
 # 导入WebSocket服务器
 from websocket_server import get_websocket_server
@@ -241,14 +242,14 @@ def auto_step():
         # 可选参数 - 修复参数解析逻辑
         if request.form:
             # 表单数据格式
-            max_search_depth = request.form.get('max_search_depth', '1')
+            max_search_depth = request.form.get('max_search_depth', '2')
             use_performance_test = request.form.get('use_performance_test', 'true')
             comparison_methods = request.form.get('comparison_methods', '["Adda"]')
             paper_top_k = request.form.get('paper_top_k', '7')
         else:
             # JSON格式
             data = json.loads(request.data) if request.data else {}
-            max_search_depth = data.get('max_search_depth', 1)
+            max_search_depth = data.get('max_search_depth', 2)
             use_performance_test = data.get('use_performance_test', True)
             comparison_methods = data.get('comparison_methods', ["Adda"])
             paper_top_k = data.get('paper_top_k', 7)
@@ -257,7 +258,7 @@ def auto_step():
         try:
             max_search_depth = int(max_search_depth)
         except (ValueError, TypeError):
-            max_search_depth = 1
+            max_search_depth = 2
 
         try:
             paper_top_k = int(paper_top_k)
@@ -741,8 +742,8 @@ def auto_step():
                                 print(f"Methods: ['shap', 'ig', 'rfe', 'fi']")
                                 print("-" * 80)
 
-                                # 计算完整论文指标
-                                paper_metrics = calculate_complete_paper_metrics(
+                                # 计算论文指标（使用简化版本以避免数据长度不匹配问题）
+                                paper_metrics = calculate_simplified_paper_metrics(
                                     task_name=task_name,
                                     top_k=paper_top_k,
                                     methods=["shap", "ig", "rfe", "fi"]
