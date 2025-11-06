@@ -237,6 +237,8 @@ def auto_step():
     不依赖check format按钮，完全独立执行
     相当于完整执行 test_util.py + run_multimodel_type.py
     """
+    MAX_SEARCH_DEPTH = 1
+
     try:
         # 获取请求参数（与start_task完全相同的参数）
         task_description = request.form.get('taskDescription') if request.form.get('taskDescription') else None
@@ -261,14 +263,14 @@ def auto_step():
         # 可选参数 - 修复参数解析逻辑
         if request.form:
             # 表单数据格式
-            max_search_depth = request.form.get('max_search_depth', '2')
+            max_search_depth = request.form.get('max_search_depth', MAX_SEARCH_DEPTH)
             use_performance_test = request.form.get('use_performance_test', 'true')
             comparison_methods = request.form.get('comparison_methods', '["Adda"]')
             paper_top_k = request.form.get('paper_top_k', '7')
         else:
             # JSON格式
             data = json.loads(request.data) if request.data else {}
-            max_search_depth = data.get('max_search_depth', 2)
+            max_search_depth = data.get('max_search_depth', MAX_SEARCH_DEPTH)
             use_performance_test = data.get('use_performance_test', True)
             comparison_methods = data.get('comparison_methods', ["Adda"])
             paper_top_k = data.get('paper_top_k', 7)
@@ -277,7 +279,7 @@ def auto_step():
         try:
             max_search_depth = int(max_search_depth)
         except (ValueError, TypeError):
-            max_search_depth = 2
+            max_search_depth = MAX_SEARCH_DEPTH
 
         try:
             paper_top_k = int(paper_top_k)

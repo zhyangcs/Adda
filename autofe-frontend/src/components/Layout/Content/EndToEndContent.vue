@@ -106,12 +106,191 @@ const realImportanceData = computed(() => {
   const data = taskStore.autoStepData?.importanceData
   if (!data) return null
 
-  return {
-    shap: data.shap || [],
-    ig: data.ig || [],
-    rfe: data.rfe || [],
-    fi: data.fi || []
-  } as ImportanceData
+  // 基础重要性数据（兼容旧格式），添加数据验证
+  const validateAndCleanData = (data: any[] | undefined): FeatureImportance[] => {
+    if (!data || !Array.isArray(data)) return []
+
+    return data
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        feature: item.feature || 'unknown',
+        importance: typeof item.importance === 'number' && !isNaN(item.importance) && isFinite(item.importance)
+          ? item.importance
+          : 0
+      }))
+      .filter(item => item.importance > 0) // 只保留有效的正数
+      .sort((a, b) => b.importance - a.importance)
+  }
+
+  // 添加调试信息
+  console.log('Raw importance data from backend:', {
+    shap: data.shap,
+    ig: data.ig,
+    rfe: data.rfe,
+    fi: data.fi
+  })
+
+  const importanceData: ImportanceData = {
+    shap: validateAndCleanData(data.shap),
+    ig: validateAndCleanData(data.ig),
+    rfe: validateAndCleanData(data.rfe),
+    fi: validateAndCleanData(data.fi)
+  }
+
+  console.log('Validated importance data:', {
+    shap: importanceData.shap.length,
+    ig: importanceData.ig.length,
+    rfe: importanceData.rfe.length,
+    fi: importanceData.fi.length
+  })
+
+  // 添加 paper metrics 数据（如果存在）
+  if (data.paperMetrics) {
+    importanceData.paperMetrics = data.paperMetrics
+
+    // 只要有成功的 paper metrics 就进行转换，因为数据更完整
+    const needsConversion = data.paperMetrics && data.paperMetrics.success
+
+    console.log('Paper metrics conversion check:', {
+      hasPaperMetrics: !!data.paperMetrics,
+      isSuccess: data.paperMetrics?.success,
+      shapLength: data.shap?.length || 0,
+      needsConversion: needsConversion
+    })
+
+    if (needsConversion) {
+      console.log('Converting paper metrics to importance data format...')
+      console.log('Original data.shap:', data.shap)
+      console.log('Original data.ig:', data.ig)
+      console.log('Paper metrics:', data.paperMetrics)
+
+      const metrics = data.paperMetrics.metrics
+
+      // 转换每个方法的特征重要性数据
+      const convertMethodData = (method: keyof typeof metrics): FeatureImportance[] => {
+        const methodData = metrics[method]
+        if (!methodData || !methodData.feature_importance || methodData.error) {
+          return []
+        }
+
+        const rawFeatures = Object.entries(methodData.feature_importance)
+          .map(([feature, importance]) => {
+            // 数据验证和清理
+            let numImportance: number
+
+            // 处理各种类型的importance值
+            if (Array.isArray(importance)) {
+              // JavaScript数组
+              numImportance = importance.reduce((sum, val) => sum + Math.abs(val), 0) / importance.length
+            } else if (typeof importance === 'object' && importance !== null) {
+              // 处理类似Python numpy数组的对象格式
+              // 假设格式如 { "type": "numpy.ndarray", "data": [0.002, 0.003] }
+              if (importance.type === 'numpy.ndarray' && Array.isArray(importance.data)) {
+                numImportance = importance.data.reduce((sum, val) => sum + Math.abs(val), 0) / importance.data.length
+              } else {
+                console.warn(`Unsupported object type for feature ${feature}:`, importance)
+                numImportance = Number(importance) || 0
+              }
+            } else {
+              // 标量值（number, string等）
+              numImportance = Number(importance)
+            }
+
+            // 检查是否为有效数字
+            if (isNaN(numImportance) || !isFinite(numImportance)) {
+              console.warn(`Invalid importance value for feature ${feature}:`, importance)
+              return null
+            }
+
+            return {
+              feature,
+              importance: numImportance
+            }
+          })
+          .filter(feature => feature !== null) // 过滤掉无效数据
+
+        // 标准化特征重要性值以改进可视化
+        // SHAP值通常在0-1范围，IG和FI值可能很小
+        if (rawFeatures.length === 0) return []
+
+        // 计算最大值进行归一化
+        const maxImportance = rawFeatures.length > 0
+          ? Math.max(...rawFeatures.map(f => f.importance))
+          : 0
+
+        // 不同方法使用不同的缩放策略
+        let scaledFeatures = rawFeatures
+        if (method === 'ig' && maxImportance < 0.1) {
+          // 对于信息增益，如果值很小，进行缩放
+          scaledFeatures = rawFeatures.map(f => ({
+            ...f,
+            importance: f.importance * 10, // 放大10倍
+            rawImportance: f.importance,
+            scalingFactor: 10
+          }))
+        } else if (method === 'fi' && maxImportance < 0.2) {
+          // 对于特征重要性，如果值很小，进行缩放
+          scaledFeatures = rawFeatures.map(f => ({
+            ...f,
+            importance: f.importance * 5, // 放大5倍
+            rawImportance: f.importance,
+            scalingFactor: 5
+          }))
+        } else if (method === 'shap') {
+          // 对于SHAP值，总是进行适当缩放，因为SHAP值通常较小
+          const scaleFactor = maxImportance < 0.01 ? 100 : maxImportance < 0.1 ? 10 : 1
+          scaledFeatures = rawFeatures.map(f => ({
+            ...f,
+            importance: f.importance * scaleFactor,
+            rawImportance: f.importance,
+            scalingFactor: scaleFactor
+          }))
+        } else {
+          // 即使不需要缩放，也保存原始值
+          scaledFeatures = rawFeatures.map(f => ({
+            ...f,
+            rawImportance: f.importance,
+            scalingFactor: 1
+          }))
+        }
+
+        return scaledFeatures.sort((a, b) => b.importance - a.importance)
+      }
+
+      importanceData.shap = convertMethodData('shap')
+      importanceData.ig = convertMethodData('ig')
+      importanceData.rfe = convertMethodData('rfe')
+      importanceData.fi = convertMethodData('fi')
+
+      console.log('Converted importance data:', {
+        shap: importanceData.shap.length,
+        shapData: importanceData.shap.slice(0, 3), // 显示前3个数据
+        ig: importanceData.ig.length,
+        igData: importanceData.ig.slice(0, 3),
+        rfe: importanceData.rfe.length,
+        rfeData: importanceData.rfe.slice(0, 3),
+        fi: importanceData.fi.length,
+        fiData: importanceData.fi.slice(0, 3)
+      })
+
+      // 检查是否有NaN值
+      const checkForNaN = (methodName: string, data: any[]) => {
+        const nanCount = data.filter(item => isNaN(item.importance) || !isFinite(item.importance)).length
+        if (nanCount > 0) {
+          console.error(`${methodName} contains ${nanCount} NaN values:`, data.filter(item => isNaN(item.importance) || !isFinite(item.importance)))
+        } else {
+          console.log(`${methodName} data is valid, no NaN values found`)
+        }
+      }
+
+      checkForNaN('SHAP', importanceData.shap)
+      checkForNaN('IG', importanceData.ig)
+      checkForNaN('RFE', importanceData.rfe)
+      checkForNaN('FI', importanceData.fi)
+    }
+  }
+
+  return importanceData
 })
 
 // 端到端执行相关的状态管理

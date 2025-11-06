@@ -414,8 +414,22 @@ class PaperMetricsCalculatorSimplified:
             if isinstance(shap_values, list):
                 shap_values = shap_values[1]  # 取正类
 
-            # 计算特征重要性（绝对值的平均）
-            shap_importance = np.abs(shap_values).mean(axis=0)
+            # 处理不同维度的SHAP值
+            print(f"SHAP values shape before processing: {np.array(shap_values).shape}")
+
+            if len(np.array(shap_values).shape) == 3:
+                # 三维数组 (n_samples, n_features, n_classes) - 取所有类的平均值
+                shap_importance = np.abs(shap_values).mean(axis=(0, 2))  # 对样本和类别维度求平均
+            elif len(np.array(shap_values).shape) == 2:
+                # 二维数组 (n_samples, n_features) - 正常情况
+                shap_importance = np.abs(shap_values).mean(axis=0)  # 对样本维度求平均
+            else:
+                # 其他情况，尝试直接使用
+                shap_importance = np.abs(shap_values).flatten()
+
+            print(f"SHAP importance shape: {shap_importance.shape}")
+            print(f"SHAP importance type: {type(shap_importance)}")
+            print(f"Sample SHAP importance values: {shap_importance[:3]}")
 
             # 创建特征重要性字典
             feature_importance = {feature: importance for feature, importance in zip(X.columns, shap_importance)}
@@ -523,10 +537,26 @@ class PaperMetricsCalculatorSimplified:
                     detailed_analysis = []
                     for rank, (feature, importance) in enumerate(top_k_features, 1):
                         is_generated = feature in generated_features_set
+
+                        # 处理importance值，确保它是标量
+                        def get_scalar_importance(val):
+                            import numpy as np
+                            if isinstance(val, np.ndarray):
+                                if val.size == 1:
+                                    return float(val.item())
+                                else:
+                                    return float(np.mean(val))
+                            elif isinstance(val, (list, tuple)):
+                                return float(np.mean(val))
+                            else:
+                                return float(val)
+
+                        scalar_importance = get_scalar_importance(importance)
+
                         detailed_analysis.append({
                             'rank': rank,
                             'feature': feature,
-                            'importance': importance,
+                            'importance': scalar_importance,
                             'is_generated': is_generated
                         })
 
@@ -582,11 +612,11 @@ if __name__ == "__main__":
     print("Simplified Paper Metrics Calculator - Test")
     print("=" * 60)
 
-    # 测试简化版本
+    # 测试简化版本包含SHAP
     results = calculate_simplified_paper_metrics(
         task_name="heart",
         top_k=7,
-        methods=['fi', 'rfe']
+        methods=['shap', 'fi', 'rfe']
     )
 
     if results:
@@ -606,6 +636,7 @@ if __name__ == "__main__":
                     print(f"    Top features:")
                     for feat_info in top_k_data['top_features_analysis'][:3]:  # 显示前3个
                         status = "🆕NEW" if feat_info["is_generated"] else "📊ORIG"
-                        print(f"      {feat_info['rank']:2d}. {status:<6} {feat_info['feature']:<25} ({feat_info['importance']:.4f})")
+                        importance_val = feat_info['importance']
+                        print(f"      {feat_info['rank']:2d}. {status:<6} {feat_info['feature']:<25} ({importance_val:.4f})")
     else:
         print("❌ Failed to calculate simplified paper metrics")

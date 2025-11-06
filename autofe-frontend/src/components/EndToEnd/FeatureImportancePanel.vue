@@ -40,8 +40,94 @@
 
       <!-- 可视化内容 -->
       <div class="visualization-container">
+        <!-- Paper Metrics 视图 -->
+        <div v-if="selectedMethod === 'paper'" class="paper-metrics-container">
+          <!-- Paper Metrics 概览 -->
+          <div v-if="!hasPaperMetrics" class="no-data-message">
+            <i class="bi bi-journal-x"></i>
+            <h4>No Paper Metrics Available</h4>
+            <p>Feature importance analysis results are not available. Please run the end-to-end analysis with paper metrics enabled.</p>
+          </div>
+
+          <div v-else class="paper-content">
+            <!-- 方法表现对比 -->
+            <div class="method-performance">
+              <div class="performance-header">
+                <h6>Generated Features in Top-{{ paperMetrics?.top_k || 7 }} Analysis</h6>
+              </div>
+
+              <div class="performance-grid">
+                <div
+                  v-for="method in ['shap', 'ig', 'rfe', 'fi']"
+                  :key="method"
+                  class="performance-card"
+                  :class="{ 'best-performer': bestPerformingMethod?.method.toLowerCase() === method }"
+                >
+                  <div class="method-header">
+                    <span class="method-name">{{ method.toUpperCase() }}</span>
+                    <span class="method-percentage">
+                      {{ getMethodTopKPerformance(method)?.percentage.toFixed(1) || 0 }}%
+                    </span>
+                  </div>
+
+                  <div class="progress-container">
+                    <div class="progress-bar">
+                      <div
+                        class="progress-fill generated"
+                        :style="{ width: `${getMethodTopKPerformance(method)?.percentage || 0}%` }"
+                      ></div>
+                    </div>
+                    <div class="progress-labels">
+                      <span class="generated-count">
+                        {{ getMethodTopKPerformance(method)?.generated_count || 0 }}
+                      </span>
+                      <span class="total-count">
+                        / {{ paperMetrics?.top_k || 7 }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Top特征列表 -->
+                  <div class="top-features-list">
+                    <div class="list-header">Top Features:</div>
+                    <div
+                      v-for="(feature, index) in getMethodTopKPerformance(method)?.top_features_analysis.slice(0, 3)"
+                      :key="feature.feature"
+                      class="feature-item"
+                      :class="{ 'generated-feature': feature.is_generated }"
+                    >
+                      <span class="feature-rank">{{ feature.rank }}.</span>
+                      <span class="feature-name">{{ feature.feature }}</span>
+                      <span class="feature-badge">
+                        {{ feature.is_generated ? 'New' : 'Original' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 简单的特征数量概览 -->
+              <div class="simple-overview-internal">
+                <div class="overview-item">
+                  <span class="overview-label">Original Features:</span>
+                  <span class="overview-value original">{{ paperMetrics?.original_feature_count || 0 }}</span>
+                </div>
+                <div class="overview-item">
+                  <span class="overview-label">New Features:</span>
+                  <span class="overview-value generated">{{ paperMetrics?.generated_feature_count || 0 }}</span>
+                </div>
+                <div class="overview-item">
+                  <span class="overview-label">Total Features:</span>
+                  <span class="overview-value total">{{ paperMetrics?.total_feature_count || 0 }}</span>
+                </div>
+              </div>
+            </div>
+
+            </div>
+        </div>
+
         <!-- 条形图视图 -->
-        <div v-if="selectedMethod !== 'radar'" class="bar-chart-container">
+        <div v-else-if="selectedMethod !== 'radar'" class="bar-chart-container">
           <div ref="barChartRef" class="bar-chart"></div>
 
           <!-- 特征排名表格 -->
@@ -70,7 +156,14 @@
                   </div>
                 </div>
                 <div class="importance-value">
-                  {{ feature.importance.toFixed(3) }}
+                  <span :title="`Original value: ${feature.rawImportance?.toFixed(6) || feature.importance.toFixed(6)}`">
+                    {{ feature.rawImportance?.toFixed(3) || feature.importance.toFixed(3) }}
+                  </span>
+                  <span v-if="feature.scalingFactor && feature.scalingFactor !== 1"
+                        class="scaling-indicator"
+                        title="Value scaled for visualization">
+                    ×{{ feature.scalingFactor }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -99,39 +192,24 @@
                 class="table-row"
               >
                 <div class="cell feature-cell">{{ feature.name }}</div>
-                <div class="cell">{{ getFeatureImportance('shap', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getFeatureImportance('ig', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getFeatureImportance('rfe', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getFeatureImportance('fi', feature.name).toFixed(3) }}</div>
+                <div class="cell">{{ getRawFeatureImportance('shap', feature.name).toFixed(3) }}</div>
+                <div class="cell">{{ getRawFeatureImportance('ig', feature.name).toFixed(3) }}</div>
+                <div class="cell">{{ getRawFeatureImportance('rfe', feature.name).toFixed(3) }}</div>
+                <div class="cell">{{ getRawFeatureImportance('fi', feature.name).toFixed(3) }}</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 统计信息 -->
-      <div class="stats-panel">
-        <div class="stat-item">
-          <span class="stat-label">Top Feature:</span>
-          <span class="stat-value">{{ topFeatureName }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Importance Score:</span>
-          <span class="stat-value">{{ topFeatureScore.toFixed(3) }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Features Analyzed:</span>
-          <span class="stat-value">{{ totalFeatures }}</span>
-        </div>
       </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as d3 from 'd3'
-import type { ImportanceData, FeatureImportance } from '@/types'
+import type { ImportanceData, FeatureImportance, PaperMetrics } from '@/types'
 
 const props = defineProps<{
   importanceData: ImportanceData | null
@@ -139,10 +217,11 @@ const props = defineProps<{
 
 const barChartRef = ref<HTMLElement>()
 const radarChartRef = ref<HTMLElement>()
-const selectedMethod = ref<'shap' | 'ig' | 'rfe' | 'fi' | 'radar'>('shap')
+const selectedMethod = ref<'shap' | 'ig' | 'rfe' | 'fi' | 'radar' | 'paper'>('paper')
 const isFullscreen = ref(false)
 
 const importanceTabs = [
+  { key: 'paper', label: 'Paper Analysis', icon: 'bi bi-journal-text' },
   { key: 'shap', label: 'SHAP', icon: 'bi bi-lightning' },
   { key: 'ig', label: 'Integrated Gradients', icon: 'bi bi-graph-up' },
   { key: 'rfe', label: 'RFE', icon: 'bi bi-arrow-repeat' },
@@ -154,7 +233,7 @@ let barSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let radarSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 
 const currentFeatures = computed(() => {
-  if (!props.importanceData || selectedMethod.value === 'radar') {
+  if (!props.importanceData || selectedMethod.value === 'radar' || selectedMethod.value === 'paper') {
     return []
   }
   return props.importanceData[selectedMethod.value as keyof ImportanceData] || []
@@ -178,33 +257,42 @@ const topFeatures = computed(() => {
 
   return Array.from(allFeatures).slice(0, 8).map(name => ({
     name,
-    shap: getFeatureImportance('shap', name),
-    ig: getFeatureImportance('ig', name),
-    rfe: getFeatureImportance('rfe', name),
-    fi: getFeatureImportance('fi', name)
+    shap: getRawFeatureImportance('shap', name),
+    ig: getRawFeatureImportance('ig', name),
+    rfe: getRawFeatureImportance('rfe', name),
+    fi: getRawFeatureImportance('fi', name)
   }))
 })
 
-const topFeatureName = computed(() => {
-  if (currentFeatures.value.length === 0) return 'N/A'
-  const top = currentFeatures.value[0]
-  return top ? top.feature : 'N/A'
+
+// Paper Metrics 相关计算属性
+const paperMetrics = computed(() => {
+  return props.importanceData?.paperMetrics
 })
 
-const topFeatureScore = computed(() => {
-  if (currentFeatures.value.length === 0) return 0
-  const top = currentFeatures.value[0]
-  return top ? top.importance : 0
+const hasPaperMetrics = computed(() => {
+  return paperMetrics.value && paperMetrics.value.success
 })
 
-const totalFeatures = computed(() => {
-  return currentFeatures.value.length
-})
+
+// 获取方法在Top-K中的表现
+const getMethodTopKPerformance = (method: keyof typeof paperMetrics.value.top_k_analysis) => {
+  if (!hasPaperMetrics.value) return null
+  const analysis = paperMetrics.value!.top_k_analysis[method]
+  return analysis || null
+}
+
 
 const getFeatureImportance = (method: keyof ImportanceData, featureName: string): number => {
   if (!props.importanceData) return 0
   const feature = props.importanceData[method].find(f => f.feature === featureName)
   return feature ? feature.importance : 0
+}
+
+const getRawFeatureImportance = (method: keyof ImportanceData, featureName: string): number => {
+  if (!props.importanceData) return 0
+  const feature = props.importanceData[method].find(f => f.feature === featureName)
+  return feature ? (feature.rawImportance || feature.importance) : 0
 }
 
 const getMethodLabel = (method: string): string => {
@@ -219,19 +307,25 @@ const getRankClass = (index: number): string => {
   return 'rank-normal'
 }
 
-const setSelectedMethod = (method: 'shap' | 'ig' | 'rfe' | 'fi' | 'radar') => {
+
+const setSelectedMethod = (method: 'shap' | 'ig' | 'rfe' | 'fi' | 'radar' | 'paper') => {
   selectedMethod.value = method
   nextTick(() => {
     if (method === 'radar') {
       createRadarChart()
-    } else {
+    } else if (method === 'paper') {
+      // Paper metrics不需要创建图表，只需要刷新
+      console.log('Switched to paper metrics view')
+      console.log('Paper metrics data:', paperMetrics.value)
+      console.log('Has paper metrics:', hasPaperMetrics.value)
+    } else if (method !== 'paper' && method !== 'radar') {
       createBarChart()
     }
   })
 }
 
 const createBarChart = () => {
-  if (!barChartRef.value || selectedMethod.value === 'radar') return
+  if (!barChartRef.value || selectedMethod.value === 'radar' || selectedMethod.value === 'paper') return
 
   const container = barChartRef.value
   const width = container.clientWidth
@@ -332,7 +426,7 @@ const createBarChart = () => {
     .style('font-weight', 'bold')
     .style('fill', d => colorScale(d.importance))
     .style('opacity', 0)
-    .text(d => d.importance.toFixed(3))
+    .text(d => (d.rawImportance || d.importance).toFixed(3))
     .transition()
     .duration(800)
     .delay((d, i) => i * 100 + 400)
@@ -877,6 +971,17 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   color: var(--text-primary);
   font-family: 'Monaco', 'Menlo', monospace;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.scaling-indicator {
+  font-size: 10px;
+  color: #6c757d;
+  font-weight: 400;
+  opacity: 0.7;
 }
 
 .method-comparison {
@@ -937,34 +1042,6 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   color: var(--text-primary);
 }
 
-.stats-panel {
-  display: flex;
-  justify-content: space-around;
-  padding: 12px 16px;
-  background: var(--bg-light);
-  border-top: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
 
 /* 响应式设计 */
 @media (max-width: 768px) {
@@ -1018,6 +1095,261 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   .table-header,
   .table-row {
     gap: 4px;
+  }
+}
+
+/* Paper Metrics 样式 */
+.paper-metrics-container {
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.no-data-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.no-data-message i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.no-data-message h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.no-data-message p {
+  margin: 0;
+  font-size: 14px;
+  max-width: 400px;
+}
+
+.paper-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+
+/* 方法表现对比 */
+.method-performance {
+  background: var(--bg-light);
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.performance-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.performance-header h6 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.performance-card {
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.performance-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.performance-card.best-performer {
+  border-color: #ffc107;
+  box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+}
+
+.method-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.method-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.method-percentage {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.progress-container {
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.progress-fill.generated {
+  height: 100%;
+  background: linear-gradient(90deg, #28a745, #20c997);
+  border-radius: 4px;
+  transition: width 0.8s ease;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.generated-count {
+  font-weight: 600;
+  color: #28a745;
+}
+
+.top-features-list {
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+
+.list-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.feature-item.generated-feature .feature-name {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.feature-rank {
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 16px;
+}
+
+.feature-name {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feature-badge {
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--bg-light);
+  color: var(--text-secondary);
+}
+
+.feature-item.generated-feature .feature-badge {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+}
+
+/* Paper Analysis 内部的特征数量概览 */
+.simple-overview-internal {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.simple-overview-internal .overview-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.simple-overview-internal .overview-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.simple-overview-internal .overview-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.simple-overview-internal .overview-value.original {
+  color: #007bff;
+}
+
+.simple-overview-internal .overview-value.generated {
+  color: #28a745;
+}
+
+.simple-overview-internal .overview-value.total {
+  color: #6f42c1;
+}
+
+/* 响应式设计调整 */
+@media (max-width: 1200px) {
+  .performance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .performance-header {
+    text-align: center;
+  }
+
+  .simple-overview-internal {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .simple-overview-internal .overview-item {
+    justify-content: center;
   }
 }
 
