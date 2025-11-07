@@ -356,7 +356,19 @@ export const useAgentStore = defineStore('agent', () => {
   const updateAgentThinking = (thinkingMessage: AgentThinkingMessage) => {
     const { agent, thinking, category, timestamp } = thinkingMessage
 
-    console.log('Agent thinking received:', { agent, thinking, category, timestamp })
+    console.log('🎯 Agent thinking received:', {
+      agent,
+      thinking: thinking?.substring(0, 100) + '...',
+      category,
+      timestamp,
+      fullMessage: thinkingMessage
+    })
+
+    // 验证必要字段
+    if (!agent || !thinking) {
+      console.error('❌ Invalid thinking message - missing agent or thinking:', thinkingMessage)
+      return
+    }
 
     const message: QueuedMessage = {
       id: `${agent}-${timestamp}-${Math.random()}`,
@@ -366,6 +378,7 @@ export const useAgentStore = defineStore('agent', () => {
       type: 'thinking'
     }
 
+    console.log('📤 Adding thinking message to queue:', message)
     addMessageToQueue(message)
   }
 

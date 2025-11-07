@@ -58,6 +58,12 @@ export default defineConfig({
       '/get-notifications/': {
         target: 'http://localhost:5000',
         changeOrigin: true
+      },
+      // WebSocket 代理配置
+      '/socket.io/': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true  // 启用 WebSocket 代理
       }
     }
   }

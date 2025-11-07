@@ -24,22 +24,22 @@ class WebSocketService {
   /**
    * 建立WebSocket连接
    */
-  connect(url: string = 'http://localhost:5000'): void {
+  connect(url: string = ''): void {
     if (this.socket?.connected) {
       console.log('WebSocket already connected')
       return
     }
 
-    console.log(`Connecting to WebSocket server at: ${url}`)
+    // 直接连接到服务器，绕过代理问题
+    const connectUrl = url || 'http://10.82.1.203:5000'
+    console.log(`Connecting directly to WebSocket server at: ${connectUrl}`)
 
-    this.socket = io(url, {
+    this.socket = io(connectUrl, {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 3000,
       reconnectionAttempts: 10,
       timeout: 60000, // 增加到60秒
-      pingTimeout: 60000, // 增加ping超时时间
-      pingInterval: 25000, // 增加ping间隔到25秒
       transports: ['websocket', 'polling'] // 优先使用websocket
     })
 
@@ -97,6 +97,12 @@ class WebSocketService {
     // 通用事件监听，用于调试 - 添加在所有事件监听之后
     this.socket.onAny((eventName, ...args) => {
       console.log('[WS DEBUG] Received event:', eventName, args)
+
+      // 特别关注agent_thinking事件
+      if (eventName === 'agent_thinking') {
+        console.log('[WS DEBUG] 🎯 Agent thinking event received!', args[0])
+        this.callbacks.onAgentThinking?.(args[0])
+      }
     })
 
     // 系统通知
@@ -188,7 +194,7 @@ class WebSocketService {
     return {
       connected: this.isConnected,
       id: this.socket?.id || '',
-      url: this.socket?.io?.uri || (typeof window !== 'undefined' ? window.location.origin : ''),
+      url: (typeof window !== 'undefined' ? window.location.origin : ''),
       reconnectAttempts: this.reconnectAttempts
     }
   }
