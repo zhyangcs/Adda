@@ -28,111 +28,146 @@
                   </button>
                 </h6>
               </div>
-              <div class="info-content">
+              <div class="info-content agent-process-content">
                 <div class="agent-flow-diagram">
-              <!-- 环形布局的Agent协作图 -->
-              <div class="flow-container">
-                <!-- Agent图标正方形布局 -->
-                <div class="agents-container">
-                  <!-- System Agent (左上角) -->
-                  <div
-                    class="agent-node system-agent"
-                    :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
-                    @click="setActiveAgent('system')"
-                  >
-                    <div class="agent-icon">
-                      <Monitor :size="32" />
-                    </div>
-                    <div class="agent-label">System</div>
-                    <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
+                  <!-- 环形布局的Agent协作图 -->
+                  <div class="flow-container">
+                    <!-- Agent图标正方形布局 -->
+                    <div class="agents-container">
+                      <!-- System Agent (左上角) -->
+                      <div
+                        class="agent-node system-agent"
+                        :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
+                        @click="setActiveAgent('system')"
+                      >
+                        <div class="agent-icon">
+                          <Monitor :size="32" />
+                        </div>
+                        <div class="agent-label">System</div>
+                        <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
 
-                    <!-- System Agent思考气泡 -->
-                    <div
-                      v-if="getVisibleThinking('system')"
-                      class="thinking-bubble left-bubble"
-                      :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
-                    >
-                      <pre>{{ getCurrentThinkingMessage('system') }}</pre>
+                        <!-- System Agent思考气泡 -->
+                        <div
+                          v-if="getVisibleThinking('system')"
+                          class="thinking-bubble left-bubble"
+                          :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
+                        >
+                          <pre>{{ getCurrentThinkingMessage('system') }}</pre>
+                        </div>
+                      </div>
+
+                      <!-- Main Agent (右上角) -->
+                      <div
+                        class="agent-node main-agent"
+                        :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
+                        @click="setActiveAgent('main')"
+                      >
+                        <div class="agent-icon">
+                          <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+                        </div>
+                        <div class="agent-label">Main Agent</div>
+                        <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
+
+                        <!-- Main Agent思考气泡 -->
+                        <div
+                          v-if="getVisibleThinking('main')"
+                          class="thinking-bubble right-bubble"
+                          :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
+                        >
+                          <pre>{{ getCurrentThinkingMessage('main') }}</pre>
+                        </div>
+                      </div>
+
+                      <!-- Optimization Agent (右下角) -->
+                      <div
+                        class="agent-node opt-agent"
+                        :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
+                        @click="setActiveAgent('optimization')"
+                      >
+                        <div class="agent-icon">
+                          <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                        </div>
+                        <div class="agent-label">Opt Agent</div>
+                        <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
+
+                        <!-- Optimization Agent思考气泡 -->
+                        <div
+                          v-if="getVisibleThinking('optimization')"
+                          class="thinking-bubble right-bubble"
+                          :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
+                        >
+                          <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
+                        </div>
+                      </div>
+
+                      <!-- Node Validation Process (左下角) -->
+                      <div
+                        class="agent-node validation-agent"
+                        :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
+                        @click="setActiveAgent('validation')"
+                      >
+                        <div class="agent-icon">
+                          <Cog :size="32" />
+                        </div>
+                        <div class="agent-label">Node Validation</div>
+                        <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+
+                        <!-- Node Validation Agent思考气泡 -->
+                        <div
+                          v-if="getVisibleThinking('validation')"
+                          class="thinking-bubble left-bubble"
+                          :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
+                        >
+                          <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
+                        </div>
+                      </div>
+
+                      <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
+                      <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
+                      <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
+                      <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
+                      <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
                     </div>
                   </div>
-
-                  <!-- Main Agent (右上角) -->
-                  <div
-                    class="agent-node main-agent"
-                    :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
-                    @click="setActiveAgent('main')"
-                  >
-                    <div class="agent-icon">
-                      <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+                </div>
+                <div class="agent-chat-panel">
+                  <div class="chat-panel-header">
+                    <div class="chat-panel-icon">
+                      <Bot :size="18" />
                     </div>
-                    <div class="agent-label">Main Agent</div>
-                    <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
-
-                    <!-- Main Agent思考气泡 -->
-                    <div
-                      v-if="getVisibleThinking('main')"
-                      class="thinking-bubble right-bubble"
-                      :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
-                    >
-                      <pre>{{ getCurrentThinkingMessage('main') }}</pre>
+                    <div class="chat-panel-title">
+                      <span>Live Agent Feed</span>
+                      <small>Streaming thinking updates</small>
                     </div>
                   </div>
-
-                  <!-- Optimization Agent (右下角) -->
-                  <div
-                    class="agent-node opt-agent"
-                    :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
-                    @click="setActiveAgent('optimization')"
-                  >
-                    <div class="agent-icon">
-                      <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                  <div class="chat-panel-body" ref="chatListRef">
+                    <div v-if="!chatMessages.length" class="chat-empty-state">
+                      Agent thinking updates will appear here in real time.
                     </div>
-                    <div class="agent-label">Opt Agent</div>
-                    <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
-
-                    <!-- Optimization Agent思考气泡 -->
-                    <div
-                      v-if="getVisibleThinking('optimization')"
-                      class="thinking-bubble right-bubble"
-                      :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
-                    >
-                      <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
-                    </div>
-                  </div>
-
-                  <!-- Node Validation Process (左下角) -->
-                  <div
-                    class="agent-node validation-agent"
-                    :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
-                    @click="setActiveAgent('validation')"
-                  >
-                    <div class="agent-icon">
-                      <Cog :size="32" />
-                    </div>
-                    <div class="agent-label">Node Validation</div>
-                    <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
-
-                    <!-- Node Validation Agent思考气泡 -->
-                    <div
-                      v-if="getVisibleThinking('validation')"
-                      class="thinking-bubble left-bubble"
-                      :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
-                    >
-                      <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
+                    <div v-else>
+                      <div
+                        v-for="message in chatMessages"
+                        :key="message.id"
+                        class="chat-message"
+                        :class="`agent-${message.agent}`"
+                      >
+                        <div class="chat-avatar" :class="`agent-${message.agent}`">
+                          {{ agentDisplayConfig[message.agent].initial }}
+                        </div>
+                        <div class="chat-bubble">
+                          <div class="chat-meta">
+                            <span class="chat-author">{{ agentDisplayConfig[message.agent].label }}</span>
+                            <span class="chat-time">{{ formatChatTime(message.timestamp) }}</span>
+                          </div>
+                          <p class="chat-text">{{ message.content }}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
-                  <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
-                  <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
-                  <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
-                  <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
           <!-- 下方：左右分列的Node Information和Feature Generation -->
           <div class="lower-section">
@@ -221,6 +256,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Users, Cog, Monitor, Bot } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
@@ -233,9 +269,19 @@ import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 const agentStore = useAgentStore()
+const { currentAgentThinking, allAgentStates } = storeToRefs(agentStore)
 
-const activeAgent = ref<'system' | 'main' | 'optimization' | 'validation'>('main')
-const workingAgents = ref<string[]>([])
+type AgentKey = 'system' | 'main' | 'optimization' | 'validation'
+
+const agentDisplayConfig: Record<AgentKey, { label: string; initial: string }> = {
+  system: { label: 'System', initial: 'S' },
+  main: { label: 'Main Agent', initial: 'M' },
+  optimization: { label: 'Opt Agent', initial: 'O' },
+  validation: { label: 'Node Validation', initial: 'NV' }
+}
+
+const activeAgent = ref<AgentKey>('main')
+const workingAgents = ref<AgentKey[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
@@ -307,7 +353,7 @@ function toggleRightPanel() {
 
 
 // Agent interaction
-function setActiveAgent(agent: 'system' | 'main' | 'optimization' | 'validation') {
+function setActiveAgent(agent: AgentKey) {
   activeAgent.value = agent
   taskStore.addNotification(`Selected ${agent} agent`, 'info')
 }
@@ -334,20 +380,30 @@ const currentThinkingText = computed(() => {
 interface QueuedMessage {
   id: string
   content: string
-  agent: 'system' | 'main' | 'optimization' | 'validation'
+  agent: AgentKey
   timestamp: number
   displayStart?: number
   displayDuration?: number
   status?: 'pending' | 'displaying' | 'disappearing' | 'completed'
 }
 
+interface ChatMessage {
+  id: string
+  agent: AgentKey
+  content: string
+  timestamp: number
+}
+
 // 每个Agent的消息队列
-const agentMessageQueues = ref<Map<string, QueuedMessage[]>>(new Map())
-const currentDisplayedMessage = ref<Map<string, QueuedMessage | null>>(new Map())
+const agentMessageQueues = ref<Map<AgentKey, QueuedMessage[]>>(new Map())
+const currentDisplayedMessage = ref<Map<AgentKey, QueuedMessage | null>>(new Map())
 const disappearingTimers = ref<Map<string, number>>(new Map())
+const chatMessages = ref<ChatMessage[]>([])
+const chatListRef = ref<HTMLElement | null>(null)
+const MAX_CHAT_HISTORY = 200
 
 // 初始化消息队列
-const agentTypes = ['system', 'main', 'optimization', 'validation'] as const
+const agentTypes: AgentKey[] = ['system', 'main', 'optimization', 'validation']
 agentTypes.forEach(agent => {
   agentMessageQueues.value.set(agent, [])
   currentDisplayedMessage.value.set(agent, null)
@@ -423,26 +479,26 @@ function hideMessage(message: QueuedMessage) {
 }
 
 // 获取当前可见的思考消息
-function getVisibleThinking(agent: 'system' | 'main' | 'optimization' | 'validation'): boolean {
+function getVisibleThinking(agent: AgentKey): boolean {
   const current = currentDisplayedMessage.value.get(agent)
   return current !== null && current !== undefined &&
          (current.status === 'displaying' || current.status === 'disappearing')
 }
 
 // 获取当前思考消息内容
-function getCurrentThinkingMessage(agent: 'system' | 'main' | 'optimization' | 'validation'): string {
+function getCurrentThinkingMessage(agent: AgentKey): string {
   const current = currentDisplayedMessage.value.get(agent)
   return current?.content || ''
 }
 
 // 判断气泡是否正在消失
-function isBubbleDisappearing(agent: 'system' | 'main' | 'optimization' | 'validation'): boolean {
+function isBubbleDisappearing(agent: AgentKey): boolean {
   const current = currentDisplayedMessage.value.get(agent)
   return current?.status === 'disappearing' || false
 }
 
 // 获取特定Agent的思考内容
-function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validation'): string {
+function getAgentThinking(agent: AgentKey): string {
   const agentTypeMap: Record<string, AgentType> = {
     'system': 'system',
     'main': 'mainagent',
@@ -461,7 +517,7 @@ function getAgentThinking(agent: 'system' | 'main' | 'optimization' | 'validatio
 }
 
 // 添加消息到队列 - 优化为允许同agent消息快速替换
-function addThinkingMessageToQueue(agent: 'system' | 'main' | 'optimization' | 'validation', content: string) {
+function addThinkingMessageToQueue(agent: AgentKey, content: string) {
   console.log(`Adding ${agent} message to queue:`, content.substring(0, 50) + '...')
 
   const messageId = `${agent}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -482,6 +538,7 @@ function addThinkingMessageToQueue(agent: 'system' | 'main' | 'optimization' | '
   }
 
   globalMessageQueue.value.push(message)
+  appendChatMessage(message)
 
   // 如果队列没有在处理，开始处理
   if (!isProcessingGlobalQueue.value) {
@@ -489,20 +546,41 @@ function addThinkingMessageToQueue(agent: 'system' | 'main' | 'optimization' | '
   }
 }
 
+function appendChatMessage(message: QueuedMessage) {
+  chatMessages.value.push({
+    id: message.id,
+    agent: message.agent,
+    content: message.content,
+    timestamp: message.timestamp
+  })
+
+  if (chatMessages.value.length > MAX_CHAT_HISTORY) {
+    chatMessages.value.splice(0, chatMessages.value.length - MAX_CHAT_HISTORY)
+  }
+}
+
+function formatChatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // 监听agent store中的thinking消息变化
-watch(() => agentStore.currentAgentThinking, (thinkingMap) => {
+watch(currentAgentThinking, (thinkingMap) => {
+  if (!(thinkingMap instanceof Map)) {
+    console.warn('Agent thinking payload is not a Map, skipping update')
+    return
+  }
+
   console.log('Agent thinking map changed, size:', thinkingMap.size)
 
-  // thinkingMap 是一个 Map<AgentType, AgentThinking>
   thinkingMap.forEach((thinking, agentType) => {
-    const agentTypeMap: Record<string, string> = {
+    const agentTypeMap: Record<string, AgentKey> = {
       'system': 'system',
       'mainagent': 'main',
       'optimizationagent': 'optimization',
       'nodevalidator': 'validation'
     }
 
-    const agent = agentTypeMap[agentType] as 'system' | 'main' | 'optimization' | 'validation'
+    const agent = agentTypeMap[agentType as string]
 
     if (agent && thinking.thinking) {
       console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
@@ -519,6 +597,15 @@ watch(() => agentStore.currentAgentThinking, (thinkingMap) => {
     }
   })
 }, { deep: true })
+
+watch(() => chatMessages.value.length, () => {
+  nextTick(() => {
+    const container = chatListRef.value
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
+  })
+})
 
 // 测试Agent状态
 function testAgentStatus() {
@@ -614,17 +701,18 @@ watch(() => taskStore.isInitialized, (isInitialized) => {
 })
 
 // 监听Agent状态变化，更新工作状态
-watch(() => agentStore.allAgentStates, (states) => {
-  const agentTypeMap: Record<string, string> = {
+watch(allAgentStates, (states) => {
+  const stateList = states || []
+  const agentTypeMap: Record<string, AgentKey> = {
     'system': 'system',
     'mainagent': 'main',
     'optimizationagent': 'optimization',
     'nodevalidator': 'validation'
   }
 
-  const newWorkingAgents: string[] = []
+  const newWorkingAgents: AgentKey[] = []
 
-  states.forEach((state: AgentState) => {
+  stateList.forEach((state: AgentState) => {
     const shortName = agentTypeMap[state.agent]
     if (shortName && state.status === 'working') {
       newWorkingAgents.push(shortName)
@@ -634,10 +722,10 @@ watch(() => agentStore.allAgentStates, (states) => {
   workingAgents.value = newWorkingAgents
 
   // 更新连接状态
-  const hasMainAgent = states.some((s: AgentState) => s.agent === 'mainagent' && s.status === 'working')
-  const hasOptAgent = states.some((s: AgentState) => s.agent === 'optimizationagent' && s.status === 'working')
-  const hasValidationAgent = states.some((s: AgentState) => s.agent === 'nodevalidator' && s.status === 'working')
-  const hasSystemAgent = states.some((s: AgentState) => s.agent === 'system' && s.status === 'working')
+  const hasMainAgent = stateList.some((s: AgentState) => s.agent === 'mainagent' && s.status === 'working')
+  const hasOptAgent = stateList.some((s: AgentState) => s.agent === 'optimizationagent' && s.status === 'working')
+  const hasValidationAgent = stateList.some((s: AgentState) => s.agent === 'nodevalidator' && s.status === 'working')
+  const hasSystemAgent = stateList.some((s: AgentState) => s.agent === 'system' && s.status === 'working')
 
   connectionActive.value = hasMainAgent || hasSystemAgent
   connectionActiveReverse.value = hasOptAgent
@@ -865,6 +953,179 @@ function handleRefreshData() {
 
 .agent-flow-section .info-card {
   flex: 1;
+}
+
+.agent-process-content {
+  display: flex;
+  gap: 1.25rem;
+  height: 100%;
+  padding: 1rem;
+}
+
+.agent-process-content > .agent-flow-diagram,
+.agent-process-content > .agent-chat-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.chat-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.chat-panel-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background-color: #dbeafe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+}
+
+.chat-panel-title {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.chat-panel-title small {
+  font-weight: 400;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.chat-panel-body {
+  flex: 1;
+  margin-top: 0.75rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.chat-empty-state {
+  text-align: center;
+  color: #6c757d;
+  padding: 2rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chat-message {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  align-items: flex-start;
+}
+
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #fff;
+  background-color: #adb5bd;
+  letter-spacing: 0.5px;
+}
+
+.chat-bubble {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  background-color: #fff;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.05);
+}
+
+.chat-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+.chat-author {
+  font-weight: 600;
+  color: #1f2933;
+}
+
+.chat-time {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.chat-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #1f2933;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.chat-message.agent-system .chat-bubble {
+  background-color: #edf2ff;
+  border-color: #dbe4ff;
+}
+
+.chat-message.agent-main .chat-bubble {
+  background-color: #e6fcf5;
+  border-color: #c3fae8;
+}
+
+.chat-message.agent-optimization .chat-bubble {
+  background-color: #fff4e6;
+  border-color: #ffe8cc;
+}
+
+.chat-message.agent-validation .chat-bubble {
+  background-color: #f3f0ff;
+  border-color: #e5dbff;
+}
+
+.chat-avatar.agent-system {
+  background-color: #4c6ef5;
+}
+
+.chat-avatar.agent-main {
+  background-color: #12b886;
+}
+
+.chat-avatar.agent-optimization {
+  background-color: #f76707;
+}
+
+.chat-avatar.agent-validation {
+  background-color: #845ef7;
+}
+
+@media (max-width: 1280px) {
+  .agent-process-content {
+    flex-direction: column;
+  }
+
+  .agent-process-content > .agent-flow-diagram,
+  .agent-process-content > .agent-chat-panel {
+    min-height: 300px;
+  }
 }
 
 /* 下方左右分列布局 */
