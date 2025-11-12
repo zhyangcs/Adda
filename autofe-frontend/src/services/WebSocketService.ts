@@ -16,6 +16,7 @@ class WebSocketService {
   private maxReconnectAttempts = 5
   private reconnectDelay = 1000
   private isConnected = false
+  private defaultUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_URL) || ''
 
   constructor() {
     this.connect()
@@ -24,24 +25,29 @@ class WebSocketService {
   /**
    * 建立WebSocket连接
    */
-  connect(url: string = ''): void {
+  connect(url?: string): void {
     if (this.socket?.connected) {
       console.log('WebSocket already connected')
       return
     }
 
-    // 直接连接到服务器，绕过代理问题
-    const connectUrl = url || 'http://10.82.1.203:5000'
-    console.log(`Connecting directly to WebSocket server at: ${connectUrl}`)
-
-    this.socket = io(connectUrl, {
+    const resolvedUrl = (url ?? this.defaultUrl)?.trim()
+    const options = {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 3000,
       reconnectionAttempts: 10,
       timeout: 60000, // 增加到60秒
       transports: ['websocket', 'polling'] // 优先使用websocket
-    })
+    } as const
+
+    if (resolvedUrl) {
+      console.log(`Connecting to WebSocket server at: ${resolvedUrl}`)
+      this.socket = io(resolvedUrl, options)
+    } else {
+      console.log('Connecting to WebSocket server via current origin/proxy')
+      this.socket = io(options)
+    }
 
     this.setupEventListeners()
   }

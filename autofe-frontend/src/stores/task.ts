@@ -20,11 +20,11 @@ export const useTaskStore = defineStore('task', () => {
 
   // 计算属性
   const canStartTask = computed(() =>
-    config.value.description.trim() !== '' && !isRunning.value
+    !isRunning.value
   )
 
   const canDoNextStep = computed(() =>
-    isInitialized.value && !isRunning.value
+    !isRunning.value
   )
 
   const statusText = computed(() => {
@@ -58,17 +58,6 @@ export const useTaskStore = defineStore('task', () => {
       addNotification(`Format check failed: ${error.value}`, 'fail')
       return false
     }
-  }
-
-  async function startTask(): Promise<boolean> {
-    if (!canStartTask.value) return false
-
-    const success = await checkFormat()
-    if (success) {
-      isRunning.value = true
-      status.value = 'running'
-    }
-    return success
   }
 
   async function stopTask() {
@@ -110,24 +99,35 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function ensureInitialized(): Promise<boolean> {
+    if (isInitialized.value) return true
+    return await checkFormat()
+  }
+
   async function nextStep(): Promise<boolean> {
     try {
-      if (!isInitialized.value) {
-        addNotification('请先初始化任务', 'fail')
-        return false
-      }
+      const ready = await ensureInitialized()
+      if (!ready) return false
+
+      isRunning.value = true
+      status.value = 'running'
 
       const response = await apiService.nextStep()
       if (response.status === 'success') {
+        status.value = 'idle'
         addNotification('Next step executed successfully', 'success')
         return true
       } else {
+        status.value = 'error'
         addNotification(`Next step failed: ${response.message}`, 'fail')
         return false
       }
     } catch (error) {
+      status.value = 'error'
       addNotification('Failed to execute next step', 'fail')
       return false
+    } finally {
+      isRunning.value = false
     }
   }
 
@@ -144,6 +144,12 @@ export const useTaskStore = defineStore('task', () => {
         })
       }
 
+      const ready = await ensureInitialized()
+      if (!ready) return false
+
+      isRunning.value = true
+      status.value = 'running'
+
       // 如果指定使用配置，传入配置进行初始化
       const response = await apiService.runAutoPipeline(useConfig ? config.value : undefined)
       if (response.status === 'success') {
@@ -151,15 +157,20 @@ export const useTaskStore = defineStore('task', () => {
           autoStepData.value = response.data
         }
         isInitialized.value = true
+        status.value = 'completed'
         addNotification('Auto pipeline executed successfully', 'success')
         return true
       } else {
+        status.value = 'error'
         addNotification(`Auto pipeline failed: ${response.message}`, 'fail')
         return false
       }
     } catch (error) {
+      status.value = 'error'
       addNotification('Failed to run auto pipeline', 'fail')
       return false
+    } finally {
+      isRunning.value = false
     }
   }
 
@@ -210,13 +221,13 @@ export const useTaskStore = defineStore('task', () => {
 
     // 方法
     checkFormat,
-    startTask,
     stopTask,
     clearTask,
     nextStep,
     autoStep,
     checkTaskStatus,
     addNotification,
-    clearNotifications
+    clearNotifications,
+    ensureInitialized
   }
 })

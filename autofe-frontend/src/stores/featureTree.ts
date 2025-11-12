@@ -127,24 +127,6 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     }
   }
 
-  async function nextStep(): Promise<boolean> {
-    try {
-      const response = await apiService.nextStep()
-      if (response.status === 'success') {
-        // 如果返回了新的树数据，更新树
-        if (response.tree) {
-          treeData.value = response.tree
-          updateSelectionFromTree()
-        }
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('下一步执行失败:', error)
-      return false
-    }
-  }
-
   function setRoot(rootValue: any) {
     root.value = rootValue
   }
@@ -176,7 +158,6 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     clearSelection,
     testPerformance,
     generateModel,
-    nextStep,
     setRoot,
     setSelectedNode,
     findNodeById

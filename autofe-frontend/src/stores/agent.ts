@@ -155,6 +155,7 @@ export const useAgentStore = defineStore('agent', () => {
       onConnect: () => {
         isConnected.value = true
         connectionInfo.value = webSocketService.getConnectionInfo()
+        subscribeToAllAgents()
         addSystemNotification({
           type: 'system_notification',
           message: '已连接到ADDA WebSocket服务器',
@@ -437,11 +438,14 @@ export const useAgentStore = defineStore('agent', () => {
 
   // 初始化WebSocket连接和事件监听
   const initializeWebSocket = () => {
+    // 确保连接已建立
+    webSocketService.connect()
+
     // 设置WebSocket回调
     const callbacks = setupWebSocketCallbacks()
     webSocketService.setCallbacks(callbacks)
 
-    // 订阅所有Agent状态
+    // 订阅所有Agent状态（若此时尚未连接，onConnect回调会再次订阅）
     subscribeToAllAgents()
 
     // 暂时禁用心跳检测，避免连接问题
