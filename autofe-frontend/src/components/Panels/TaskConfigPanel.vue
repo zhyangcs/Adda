@@ -8,98 +8,88 @@
         </h5>
       </div>
       <div class="card-body">
-        <form @submit.prevent="handleCheckFormat">
-          <div class="mb-4">
-            <label for="taskDescription" class="form-label fw-bold">
-              Task Description
-            </label>
-            <textarea
-              id="taskDescription"
-              v-model="taskStore.config.description"
-              class="form-control"
-              rows="4"
-              placeholder="Enter your machine learning task description..."
-              required
-            ></textarea>
-            <div class="form-text">
-              Describe the problem you want to solve using automated feature engineering.
+        <div class="mb-4">
+          <label for="taskDescription" class="form-label fw-bold">
+            Task Description
+          </label>
+          <textarea
+            id="taskDescription"
+            v-model="taskStore.config.description"
+            class="form-control"
+            rows="4"
+            placeholder="Enter your machine learning task description..."
+            required
+          ></textarea>
+          <div class="form-text">
+            Describe the problem you want to solve using automated feature engineering.
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label for="dataset" class="form-label fw-bold">Dataset</label>
+          <select
+            id="dataset"
+            v-model="taskStore.config.dataset"
+            class="form-select"
+            required
+          >
+            <option selected disabled value="">Choose Dataset of Task</option>
+            <option value="1">Titanic</option>
+            <option value="2">Heart</option>
+            <option value="3">Bank</option>
+            <option value="4">Diabetes</option>
+            <option value="5">Bike</option>
+            <option value="6">House</option>
+          </select>
+          <div class="form-text">
+            Choose the dataset for feature engineering.
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label for="llmModel" class="form-label fw-bold">Agent Model</label>
+          <select
+            id="llmModel"
+            v-model="taskStore.config.model"
+            class="form-select"
+            required
+          >
+            <option selected disabled value="">Foundation Model Agent</option>
+            <option value="1">Openai-gpt4-turbo</option>
+            <option value="2" selected>Openai-gpt4o</option>
+            <option value="3">Openai-gpt4o-mini</option>
+            <option value="4">Deepseek-v3</option>
+          </select>
+          <div class="form-text">
+            Select the language model to power the feature engineering agents.
+          </div>
+        </div>
+
+        <div class="alert alert-info d-flex align-items-start mt-4" role="alert">
+          <Play :size="18" class="me-2 flex-shrink-0" />
+          <div class="small text-start">
+            Click <strong>Start</strong> (end-to-end) or <strong>Next Step</strong> (step-by-step) in the control bar.
+            The system will automatically validate your configuration before running.
+          </div>
+        </div>
+
+        <!-- 配置状态 -->
+        <div v-if="taskStore.isInitialized" class="mt-4">
+          <div class="alert alert-success" role="alert">
+            <CheckCircle :size="16" class="me-2" />
+            Task configuration validated successfully!
+            <div class="small mt-2">
+              You can now proceed to the Feature Generation panel to start building features.
             </div>
           </div>
+        </div>
 
-          <div class="mb-4">
-            <label for="dataset" class="form-label fw-bold">Dataset</label>
-            <select
-              id="dataset"
-              v-model="taskStore.config.dataset"
-              class="form-select"
-              required
-            >
-              <option selected disabled value="">Choose Dataset of Task</option>
-              <option value="1">Titanic</option>
-              <option value="2">Heart</option>
-              <option value="3">Bank</option>
-              <option value="4">Diabetes</option>
-              <option value="5">Bike</option>
-              <option value="6">House</option>
-            </select>
-            <div class="form-text">
-              Choose the dataset for feature engineering.
-            </div>
+        <div v-if="taskStore.error" class="mt-4">
+          <div class="alert alert-danger" role="alert">
+            <XCircle :size="16" class="me-2" />
+            <strong>Error:</strong> {{ taskStore.error }}
           </div>
-
-          <div class="mb-4">
-            <label for="llmModel" class="form-label fw-bold">Agent Model</label>
-            <select
-              id="llmModel"
-              v-model="taskStore.config.model"
-              class="form-select"
-              required
-            >
-              <option selected disabled value="">Foundation Model Agent</option>
-              <option value="1">Openai-gpt4-turbo</option>
-              <option value="2" selected>Openai-gpt4o</option>
-              <option value="3">Openai-gpt4o-mini</option>
-              <option value="4">Deepseek-v3</option>
-            </select>
-            <div class="form-text">
-              Select the language model to power the feature engineering agents.
-            </div>
-          </div>
-
-          <div class="d-grid gap-2">
-            <button
-              type="submit"
-              class="btn btn-primary"
-              :disabled="isSubmitting || !taskStore.config.description.trim()"
-            >
-              <div
-                v-if="isSubmitting"
-                class="spinner-border spinner-border-sm me-2"
-                role="status"
-              ></div>
-              <CheckCircle :size="16" class="me-2" v-else />
-              {{ isSubmitting ? 'Checking Format...' : 'Check Format' }}
-            </button>
-          </div>
-
-          <!-- 配置状态 -->
-          <div v-if="taskStore.isInitialized" class="mt-4">
-            <div class="alert alert-success" role="alert">
-              <CheckCircle :size="16" class="me-2" />
-              Task configuration validated successfully!
-              <div class="small mt-2">
-                You can now proceed to the Feature Generation panel to start building features.
-              </div>
-            </div>
-          </div>
-
-          <div v-if="taskStore.error" class="mt-4">
-            <div class="alert alert-danger" role="alert">
-              <XCircle :size="16" class="me-2" />
-              <strong>Error:</strong> {{ taskStore.error }}
-            </div>
-          </div>
-        </form>
+        </div>
 
         <!-- 快速操作 -->
         <div class="mt-4 p-3 bg-light rounded">
@@ -108,7 +98,6 @@
             <button
               class="btn btn-outline-secondary btn-sm"
               @click="loadExampleConfig"
-              :disabled="isSubmitting"
             >
               <FileText :size="14" class="me-1" />
               Load Example
@@ -116,7 +105,6 @@
             <button
               class="btn btn-outline-secondary btn-sm"
               @click="resetConfig"
-              :disabled="isSubmitting"
             >
               <RotateCcw :size="14" class="me-1" />
               Reset Form
@@ -129,30 +117,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Settings, CheckCircle, XCircle, FileText, RotateCcw } from 'lucide-vue-next'
+import { Settings, CheckCircle, XCircle, FileText, RotateCcw, Play } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
-import { useWorkspaceStore } from '@/stores/workspace'
 
 const taskStore = useTaskStore()
-const workspaceStore = useWorkspaceStore()
-
-const isSubmitting = ref(false)
-
-async function handleCheckFormat() {
-  isSubmitting.value = true
-  try {
-    const success = await taskStore.startTask()
-    if (success) {
-      // 自动切换到特征生成面板
-      setTimeout(() => {
-        workspaceStore.switchPanel('FeatureGenerationPanel')
-      }, 1000)
-    }
-  } finally {
-    isSubmitting.value = false
-  }
-}
 
 function loadExampleConfig() {
   taskStore.config.description = `Build machine learning features to predict customer churn for a telecommunications company. The dataset contains customer demographics, usage patterns, and service information. Create features that capture customer behavior, service utilization patterns, and risk indicators for churn prediction.`

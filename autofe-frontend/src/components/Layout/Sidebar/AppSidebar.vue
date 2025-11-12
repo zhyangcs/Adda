@@ -65,15 +65,6 @@
             </select>
           </div>
 
-          <!-- 检查格式按钮 -->
-          <button
-            class="btn btn-outline-light btn-sm w-100 mb-3"
-            @click="handleCheckFormat"
-            :disabled="isSubmitting"
-          >
-            <CheckCircle :size="14" class="me-1" />
-            {{ isSubmitting ? 'Checking...' : 'Check Format' }}
-          </button>
         </div>
       </div>
 
@@ -96,11 +87,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronLeft, ChevronRight, Settings, CheckCircle } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 
 const taskStore = useTaskStore()
-const isSubmitting = ref(false)
 const isCollapsed = ref(false)
 
 // 折叠功能
@@ -124,17 +114,6 @@ const statusDotClass = computed(() => {
   }
 })
 
-async function handleCheckFormat() {
-  isSubmitting.value = true
-  try {
-    const success = await taskStore.checkFormat()
-    if (success) {
-      taskStore.addNotification('Task configuration validated successfully!', 'success')
-    }
-  } finally {
-    isSubmitting.value = false
-  }
-}
 </script>
 
 <style scoped>

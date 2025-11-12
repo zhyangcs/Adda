@@ -5,7 +5,7 @@
       <button
         class="btn btn-success btn-sm"
         @click="handleStart"
-        :disabled="!taskStore.canStartTask || taskStore.isLoading"
+        :disabled="!taskStore.canStartTask || taskStore.isRunning"
       >
         <Play :size="16" class="me-1" />
         Start

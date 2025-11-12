@@ -75,7 +75,7 @@
               id="nextStep"
               class="btn btn-primary"
               @click="handleNextStep"
-              :disabled="!taskStore.isRunning || isNextStepLoading"
+              :disabled="!taskStore.canDoNextStep || isNextStepLoading"
             >
               <div
                 v-if="isNextStepLoading"
@@ -219,8 +219,9 @@ function goToTaskConfig() {
 async function handleNextStep() {
   isNextStepLoading.value = true
   try {
-    const success = await featureTreeStore.nextStep()
+    const success = await taskStore.nextStep()
     if (success) {
+      await featureTreeStore.loadTreeData()
       taskStore.addNotification('Next step completed successfully', 'success')
     } else {
       taskStore.addNotification('Failed to execute next step', 'fail')
