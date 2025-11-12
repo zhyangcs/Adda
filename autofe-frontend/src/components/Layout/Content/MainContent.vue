@@ -1,5 +1,9 @@
 <template>
-  <div class="main-content" :class="{ 'splitter-collapsed': rightPanelCollapsed }">
+  <div
+    class="main-content"
+    :class="{ 'splitter-collapsed': rightPanelCollapsed }"
+    :data-display-mode="displayMode"
+  >
     <!-- 使用Splitpanes实现左右分区布局 -->
     <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
       <!-- 左侧面板：Agent流程图（上方） + Node Information（下方） -->
@@ -272,6 +276,7 @@ const agentStore = useAgentStore()
 const { currentAgentThinking, allAgentStates } = storeToRefs(agentStore)
 
 type AgentKey = 'system' | 'main' | 'optimization' | 'validation'
+type DisplayMode = 'paper'
 
 const agentDisplayConfig: Record<AgentKey, { label: string; initial: string }> = {
   system: { label: 'System', initial: 'S' },
@@ -286,6 +291,7 @@ const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
 const connectionActiveSystem = ref(false)
+const displayMode = ref<DisplayMode>('paper')
 
 // 右侧面板数据
 const sqlCode = ref('')
@@ -350,7 +356,6 @@ function toggleRightPanel() {
   localStorage.setItem('right-panel-collapsed', rightPanelCollapsed.value.toString())
   console.log('New sizes - left:', leftPaneSize.value, 'right:', rightPaneSize.value)
 }
-
 
 // Agent interaction
 function setActiveAgent(agent: AgentKey) {
@@ -932,6 +937,63 @@ function handleRefreshData() {
   overflow: hidden;
   background-color: var(--bg-primary);
   height: 100%;
+  --font-size-sm: 1rem;
+  --font-size-md: 1.35rem;
+  --font-size-lg: 1.6rem;
+  --font-size-xl: 2rem;
+  --spacing-md: 1.25rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 2.75rem;
+  background-color: #fff;
+}
+
+.main-content > .splitpanes {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Scrollbar behavior - hidden until actively interacting */
+.main-content,
+.main-content * {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
+.main-content *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.main-content *:hover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.main-content *:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.main-content *:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.main-content *:hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media print {
+  .main-content {
+    background-color: #fff;
+  }
+
+  .info-card,
+  .agent-chat-panel {
+    box-shadow: none;
+    border-color: #000;
+  }
 }
 
 /* 左侧面板布局 */
@@ -959,7 +1021,7 @@ function handleRefreshData() {
   display: flex;
   gap: 1.25rem;
   height: 100%;
-  padding: 1rem;
+  padding: calc(var(--spacing-md) * 1.25);
 }
 
 .agent-process-content > .agent-flow-diagram,
@@ -972,9 +1034,9 @@ function handleRefreshData() {
   display: flex;
   flex-direction: column;
   border-radius: 12px;
-  border: 1px solid #e9ecef;
+  border: 2px solid #d0d7e2;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  padding: 1rem;
+  padding: calc(var(--spacing-md) * 1.1);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -1002,13 +1064,13 @@ function handleRefreshData() {
   flex-direction: column;
   font-weight: 600;
   color: #0f172a;
-  font-size: 0.95rem;
+  font-size: var(--font-size-md);
 }
 
 .chat-panel-title small {
   font-weight: 400;
   color: #64748b;
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
 }
 
 .chat-panel-body {
@@ -1033,14 +1095,14 @@ function handleRefreshData() {
 }
 
 .chat-avatar {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--font-size-md);
   color: #fff;
   background-color: #adb5bd;
   letter-spacing: 0.5px;
@@ -1059,7 +1121,7 @@ function handleRefreshData() {
   display: flex;
   justify-content: space-between;
   margin-bottom: 0.25rem;
-  font-size: 0.75rem;
+  font-size: calc(var(--font-size-sm) * 0.9);
   color: #6c757d;
 }
 
@@ -1069,13 +1131,13 @@ function handleRefreshData() {
 }
 
 .chat-time {
-  font-size: 0.7rem;
+  font-size: calc(var(--font-size-sm) * 0.85);
   color: #94a3b8;
 }
 
 .chat-text {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--font-size-md);
   color: #1f2933;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1309,16 +1371,16 @@ function handleRefreshData() {
 
 .info-card {
   height: 100%;
-  background-color: var(--bg-secondary);
+  background-color: #fff;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 2px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .info-header {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: calc(var(--spacing-md) * 1.1) calc(var(--spacing-lg) * 1.1);
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-primary);
   border-radius: 8px 8px 0 0;
@@ -1333,7 +1395,7 @@ function handleRefreshData() {
 
 .info-content {
   flex: 1;
-  padding: 1rem;
+  padding: calc(var(--spacing-md) * 1.15);
   overflow-y: auto;
 }
 
@@ -1510,14 +1572,14 @@ function handleRefreshData() {
   color: var(--text-primary);
   min-width: 80px;
   flex-shrink: 0;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
 }
 
 .detail-value {
   color: var(--text-secondary);
   word-break: break-word;
   flex: 1;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
 }
 
 .no-node-info {
@@ -1713,7 +1775,7 @@ function handleRefreshData() {
   padding: 14px 18px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   color: #37474f;
-  font-size: 0.95rem;
+  font-size: var(--font-size-md);
   line-height: 1.5;
   font-weight: 500;
   max-width: 400px;

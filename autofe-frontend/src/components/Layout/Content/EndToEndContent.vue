@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { apiService } from '@/services/APIService'
 import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
@@ -477,15 +477,67 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-light);
+  background: #fff;
   overflow: hidden;
+  padding: var(--spacing-lg);
+  gap: var(--spacing-md);
+  --font-size-sm: 1rem;
+  --font-size-md: 1.35rem;
+  --font-size-lg: 1.65rem;
+  --font-size-xl: 2.1rem;
+  --spacing-md: 1.25rem;
+  --spacing-lg: 2rem;
+}
+
+/* Scrollbar behavior - hidden by default, visible on interaction */
+.end-to-end-content,
+.end-to-end-content * {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
+.end-to-end-content *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.end-to-end-content *:hover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.end-to-end-content *:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.end-to-end-content *:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.end-to-end-content *:hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media print {
+  .end-to-end-content {
+    background: #fff;
+    padding: 0.5in;
+  }
+
+  .end-to-end-content .grid-section {
+    box-shadow: none;
+    border-color: #000;
+  }
 }
 
 /* 页面头部 */
 .page-header {
   background: var(--bg-white);
   border-bottom: 1px solid var(--border-color);
-  padding: 16px 20px;
+  padding: var(--spacing-md) var(--spacing-lg);
   flex-shrink: 0;
 }
 
@@ -516,7 +568,7 @@ onUnmounted(() => {
 
 .header-title h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -663,11 +715,11 @@ onUnmounted(() => {
 /* 主要网格布局 */
 .main-grid {
   flex: 1;
-  padding: 20px;
+  padding: var(--spacing-md);
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 20px;
+  gap: 28px;
   overflow: hidden;
   min-height: 0;
 }
@@ -675,12 +727,13 @@ onUnmounted(() => {
 .grid-section {
   background: var(--bg-white);
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  border: 2px solid var(--border-color);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding: 1.25rem;
 }
 
 /* 特定区域样式 */
@@ -741,7 +794,7 @@ onUnmounted(() => {
 
 .loading-content h4 {
   margin: 0 0 12px 0;
-  font-size: 20px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -749,7 +802,7 @@ onUnmounted(() => {
 .loading-content p {
   margin: 0 0 24px 0;
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: var(--font-size-md);
 }
 
 .progress-bar {
@@ -769,7 +822,7 @@ onUnmounted(() => {
 }
 
 .progress-text {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -789,6 +842,7 @@ onUnmounted(() => {
   gap: 12px;
   z-index: 1001;
   min-width: 320px;
+  font-size: var(--font-size-md);
   animation: slideInRight 0.3s ease;
 }
 
@@ -803,13 +857,13 @@ onUnmounted(() => {
 
 .notification-content h5 {
   margin: 0 0 4px 0;
-  font-size: 18px;
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 .notification-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   opacity: 0.9;
 }
 
