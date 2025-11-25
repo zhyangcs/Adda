@@ -16,7 +16,10 @@ class WebSocketService {
   private maxReconnectAttempts = 5
   private reconnectDelay = 1000
   private isConnected = false
-  private defaultUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_URL) || ''
+  private defaultUrl =
+    (typeof import.meta !== 'undefined' &&
+      (import.meta.env?.VITE_WS_URL || import.meta.env?.VITE_API_BASE_URL)) ||
+    'http://10.82.1.203:5000'
 
   constructor() {
     this.connect()

@@ -7,7 +7,9 @@ import type {
 } from '@/types'
 
 class APIService {
-  private baseURL = ''
+  private baseURL =
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
+    'http://10.82.1.203:5000'
 
   async post<T = any>(endpoint: string, data?: any, timeoutMs: number = 10 * 60 * 1000): Promise<T> {
     // 默认10分钟超时，对于长时操作如next step
@@ -66,7 +68,7 @@ class APIService {
     formData.append('dataset', datasetMap[config.dataset] || config.dataset)
     formData.append('model', modelMap[config.model] || config.model)
 
-    const response = await fetch('/check-format/', {
+    const response = await fetch(`${this.baseURL}/check-format/`, {
       method: 'POST',
       body: formData
     })
@@ -88,7 +90,7 @@ class APIService {
   }
 
   async generateModel(nodeIds: string[]): Promise<Blob> {
-    const response = await fetch('/gen-model/', {
+    const response = await fetch(`${this.baseURL}/gen-model/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -116,7 +118,7 @@ class APIService {
   }
 
   async getNotifications(): Promise<{ notifications: Notification[] }> {
-    const response = await fetch('/get-notifications/', {
+    const response = await fetch(`${this.baseURL}/get-notifications/`, {
       method: 'GET'
     })
 
@@ -167,7 +169,7 @@ class APIService {
       formData.append('dataset', datasetMap[config.dataset] || config.dataset)
       formData.append('model', modelMap[config.model] || config.model)
 
-      const response = await fetch('/auto-step/', {
+      const response = await fetch(`${this.baseURL}/auto-step/`, {
         method: 'POST',
         body: formData
       })
