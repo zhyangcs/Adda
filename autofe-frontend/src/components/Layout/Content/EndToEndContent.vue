@@ -24,7 +24,7 @@
     </div>
 
     <!-- 加载遮罩 -->
-    <div v-if="executionStatus === 'running'" class="loading-overlay">
+    <div v-if="showLoadingOverlay && executionStatus === 'running'" class="loading-overlay">
       <div class="loading-content">
         <div class="loading-spinner">
           <i class="bi bi-arrow-repeat"></i>
@@ -296,6 +296,8 @@ const realImportanceData = computed(() => {
 // 端到端执行相关的状态管理
 const progressPercentage = ref(0)
 const loadingMessage = ref('Initializing feature engineering pipeline...')
+// 默认不展示运行遮罩层
+const showLoadingOverlay = ref(false)
 const showSuccessNotification = ref(false)
 const executionTimeout = ref<number | null>(null)
 const POLLING_INTERVAL = 5000 // 5秒轮询一次
