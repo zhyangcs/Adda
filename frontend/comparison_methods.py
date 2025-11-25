@@ -1098,11 +1098,25 @@ class CAAFEMethod(ComparisonMethod):
             import openai
             openai.api_key = openai_api_key
             openai.base_url = openai_base_url
+            if hasattr(openai, "api_base"):
+                openai.api_base = openai_base_url
+
+            # 同步到环境变量，兼容依赖 OPENAI_API_KEY/OPENAI_API_BASE 的库（如 CAAFE 内部）
+            if openai_api_key:
+                os.environ["OPENAI_API_KEY"] = openai_api_key
+            if openai_base_url:
+                os.environ["OPENAI_API_BASE"] = openai_base_url
+                os.environ["OPENAI_BASE_URL"] = openai_base_url
+
+            # 确保使用真正的LLM模型，而不是auto-step里传入的ML模型标识（如"RF"）
+            # 用户要求：写死使用 deepseek-chat，避免 auto-step 传入 ML 模型名导致 400
+            model_name = "deepseek-chat"
+            os.environ["DEFAULT_LLM_MODEL"] = model_name
 
             print(f"[CAAFE] Configured with API: {openai_base_url}")
-            print(f"[CAAFE] Using model: {default_model}")
+            print(f"[CAAFE] Using model: {model_name}")
 
-            return default_model
+            return model_name
 
         except Exception as e:
             print(f"[CAAFE] Warning: Failed to configure custom API settings: {e}")
@@ -1469,10 +1483,18 @@ class ComparisonEngine:
                         else:
                             results["performance_data"][metric].append(0.0)
 
-                # 记录时间数据
+                # 记录时间数据（键名与返回的下划线风格对齐）
                 time_breakdown = method.get_time_breakdown()
+                time_key_map = {
+                    "totalTime": "total_time",
+                    "preprocessingTime": "preprocessing_time",
+                    "featureGenerationTime": "feature_generation_time",
+                    "trainingTime": "training_time",
+                    "evaluationTime": "evaluation_time",
+                }
                 for time_metric in ["totalTime", "preprocessingTime", "featureGenerationTime", "trainingTime", "evaluationTime"]:
-                    results["time_data"][time_metric].append(time_breakdown.get(time_metric.lower(), 0.0))
+                    mapped_key = time_key_map.get(time_metric, time_metric.lower())
+                    results["time_data"][time_metric].append(time_breakdown.get(mapped_key, 0.0))
 
                 # 记录特征数据
                 feature_info = method.get_feature_info()
