@@ -5,12 +5,14 @@
 """
 
 import os
+import re
 import time
 import json
 import warnings
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Any
+import subprocess
 
 # 机器学习库（所有特征工程方法使用相同的模型进行评估）
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -29,7 +31,7 @@ except ImportError:
 # PostgreSQL相关（pgml）
 try:
     import psycopg2
-    from psycopg2.extras import RealDictCursor
+    from psycopg2.extras import RealDictCursor, execute_values
     PGML_DB_AVAILABLE = True
 
     # 从src.env导入数据库配置
@@ -55,6 +57,9 @@ PGML_AVAILABLE = PGML_DB_AVAILABLE or PGML_SDK_AVAILABLE
 
 # 暂时标记PGML为不可用（根据用户要求）
 PGML_AVAILABLE = False
+
+# MADlib插件依赖数据库连接即可
+MADLIB_AVAILABLE = PGML_DB_AVAILABLE
 
 # caafe特征工程库
 try:
@@ -802,6 +807,266 @@ class PGMLMethod(ComparisonMethod):
         }
 
 
+class MadlibMethod(ComparisonMethod):
+    """MADlib特征工程方法（基于PostgreSQL插件）"""
+
+    def __init__(self, db_config=None):
+        super().__init__("MADlib")
+        self.available = MADLIB_AVAILABLE
+        self.db_config = db_config or {
+            'host': 'localhost',
+            'port': pg_port,
+            'database': pg_db,
+            'user': pg_user
+        }
+        self.connection = None
+        self._safe_name_map = {}
+        self._madlib_categorical_columns = []
+        self.feature_names = []
+        self.encode_null = False
+        # 允许通过环境变量覆盖madpack路径
+        self.madpack_path = os.environ.get("MADPACK_PATH", "/home/lizhenyu/madlib/madpack/madpack.py")
+
+    def _get_connection(self):
+        """获取PostgreSQL连接"""
+        if not self.available:
+            raise ImportError("MADlib不可用，缺少psycopg2或数据库连接")
+        try:
+            if self.connection is None:
+                self.connection = psycopg2.connect(**self.db_config)
+            return self.connection
+        except Exception as e:
+            raise ConnectionError(f"连接PostgreSQL失败: {str(e)}")
+
+    def _ensure_madlib_extension(self, cursor):
+        """检测并尝试通过madpack安装MADlib"""
+        try:
+            cursor.execute("SELECT 1 FROM pg_extension WHERE extname='madlib'")
+            row = cursor.fetchone()
+            if row:
+                return
+        except Exception:
+            pass
+
+        # 若未安装且存在madpack，尝试安装
+        if os.path.isfile(self.madpack_path):
+            conn_str = f"{self.db_config['user']}@{self.db_config.get('host', 'localhost')}:{self.db_config.get('port', 5432)}/{self.db_config['database']}"
+            try:
+                result = subprocess.run(
+                    ["python3", self.madpack_path, "install", "-p", "postgres", "-c", conn_str],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                print(f"[MADlib] madpack install output:\n{result.stdout}")
+            except subprocess.CalledProcessError as exc:
+                print(f"[MADlib] madpack install failed: {exc.stderr}")
+        else:
+            print(f"[MADlib] madpack未找到，路径: {self.madpack_path}")
+
+    def _sanitize_identifier(self, name: str, existing: set) -> str:
+        """清洗列名以便在SQL中安全使用"""
+        safe = re.sub(r'[^0-9a-zA-Z_]', '_', name)
+        if safe == "":
+            safe = "col"
+        if safe[0].isdigit():
+            safe = f"col_{safe}"
+        base = safe
+        counter = 1
+        while safe in existing:
+            safe = f"{base}_{counter}"
+            counter += 1
+        return safe
+
+    def _convert_value(self, value: Any) -> Any:
+        """将Pandas值转换为SQL兼容的Python类型"""
+        if pd.isna(value):
+            return None
+        if isinstance(value, (np.integer, np.floating)):
+            return float(value)
+        return value
+
+    def _preprocess_data(self, X: pd.DataFrame) -> pd.DataFrame:
+        """覆盖基类预处理，保留分类信息供MADlib编码"""
+        X_processed = X.copy()
+
+        numeric_columns = X_processed.select_dtypes(include=[np.number]).columns
+        X_processed[numeric_columns] = X_processed[numeric_columns].fillna(X_processed[numeric_columns].median())
+
+        categorical_columns = list(X_processed.select_dtypes(include=['object', 'category']).columns)
+        bool_columns = [col for col in X_processed.columns if pd.api.types.is_bool_dtype(X_processed[col])]
+        for col in set(categorical_columns + bool_columns):
+            mode_val = X_processed[col].mode()[0] if not X_processed[col].mode().empty else 'unknown'
+            X_processed[col] = X_processed[col].fillna(mode_val).astype(str)
+
+        return X_processed
+
+    def _drop_temp_tables(self, cursor, tables: List[str]):
+        """清理临时表"""
+        for table in tables:
+            if table:
+                try:
+                    cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+                except Exception:
+                    continue
+
+    def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
+        """利用MADlib在数据库端进行特征工程（主要是一键编码分类变量）"""
+        if not self.available:
+            raise ImportError("MADlib not available. Please ensure psycopg2和MADlib已安装并可连接数据库。")
+
+        # 记录分类列并构建安全列名映射
+        categorical_columns = list(X.select_dtypes(include=['object', 'category']).columns)
+        bool_columns = [col for col in X.columns if pd.api.types.is_bool_dtype(X[col])]
+        categorical_columns = list(set(categorical_columns + bool_columns))
+
+        safe_names = {}
+        existing = set()
+        for col in X.columns:
+            safe_col = self._sanitize_identifier(col, existing)
+            safe_names[col] = safe_col
+            existing.add(safe_col)
+        self._safe_name_map = safe_names
+        self._madlib_categorical_columns = [safe_names[col] for col in categorical_columns]
+
+        X_safe = X.rename(columns=safe_names)
+
+        source_table = f"madlib_fe_{int(time.time() * 1000)}"
+        encoded_table = f"{source_table}_enc"
+        dictionary_table = f"{encoded_table}_dictionary"
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # 确认MADlib已安装，如缺失尝试使用madpack安装一次
+            self._ensure_madlib_extension(cursor)
+
+            # 构建CREATE TABLE语句
+            columns_sql = ["row_id SERIAL PRIMARY KEY"]
+            for col in X_safe.columns:
+                dtype = 'DOUBLE PRECISION' if pd.api.types.is_numeric_dtype(X_safe[col]) else 'TEXT'
+                columns_sql.append(f"{col} {dtype}")
+            if y is not None:
+                target_dtype = 'DOUBLE PRECISION' if pd.api.types.is_numeric_dtype(y) else 'TEXT'
+                columns_sql.append(f"target {target_dtype}")
+
+            cursor.execute(f"CREATE TEMP TABLE {source_table} ({', '.join(columns_sql)})")
+
+            # 插入数据
+            insert_columns = list(X_safe.columns)
+            if y is not None:
+                insert_columns.append("target")
+            records = []
+            for idx, (_, row) in enumerate(X_safe.iterrows()):
+                values = [self._convert_value(row[col]) for col in X_safe.columns]
+                if y is not None:
+                    values.append(self._convert_value(y.iloc[idx]))
+                records.append(tuple(values))
+
+            insert_sql = f"INSERT INTO {source_table} ({', '.join(insert_columns)}) VALUES %s"
+            execute_values(cursor, insert_sql, records)
+            conn.commit()
+
+            table_to_fetch = source_table
+            if self._madlib_categorical_columns:
+                # 通过MADlib进行一键编码
+                cat_cols_str = ", ".join(self._madlib_categorical_columns)
+                cursor.execute(
+                    """
+                    SELECT madlib.encode_categorical_variables(
+                        %s,        -- source_table
+                        %s,        -- output_table
+                        %s         -- categorical_cols
+                    )
+                    """,
+                    (source_table, encoded_table, cat_cols_str)
+                )
+                conn.commit()
+                table_to_fetch = encoded_table
+
+            # 取回特征
+            cursor.execute(f"SELECT * FROM {table_to_fetch} ORDER BY row_id")
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            features_df = pd.DataFrame(rows, columns=columns)
+
+            # 清理辅助列
+            for col in ["row_id", "target"]:
+                if col in features_df.columns:
+                    features_df = features_df.drop(columns=[col])
+
+            # 确保都是数值类型
+            features_df = features_df.apply(pd.to_numeric, errors='ignore')
+            self.feature_names = list(features_df.columns)
+
+            # 使用标准化以便在测试集复用
+            scaler = StandardScaler()
+            scaled_values = scaler.fit_transform(features_df)
+            scaled_df = pd.DataFrame(scaled_values, columns=self.feature_names, index=X.index)
+
+            self.fitted_scaler = scaler
+            self.generated_features = scaled_df
+            return scaled_df
+
+        finally:
+            try:
+                if 'cursor' in locals():
+                    self._drop_temp_tables(cursor, [source_table, encoded_table, dictionary_table])
+                    conn.commit()
+            except Exception:
+                pass
+
+    def _transform_test_features(self, X_test: pd.DataFrame) -> pd.DataFrame:
+        """在测试集上重放训练时的MADlib编码，保持列对齐"""
+        X_processed = self._preprocess_data(X_test)
+        X_safe = X_processed.rename(columns=self._safe_name_map)
+
+        if self._madlib_categorical_columns:
+            encoded = pd.get_dummies(
+                X_safe,
+                columns=self._madlib_categorical_columns,
+                dummy_na=self.encode_null
+            )
+        else:
+            encoded = X_safe.copy()
+
+        encoded = encoded.reindex(columns=self.feature_names, fill_value=0)
+
+        if hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
+            scaled = self.fitted_scaler.transform(encoded)
+            return pd.DataFrame(scaled, columns=self.feature_names, index=X_test.index)
+
+        return encoded
+
+    def evaluate_features(self, X_generated: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
+        """使用生成的特征进行训练和评估"""
+        return self._train_and_evaluate_with_rf(X_generated, y, task_type)
+
+    def get_feature_info(self) -> Dict[str, Any]:
+        """获取生成的特征信息"""
+        if self.generated_features is not None:
+            original_count = len(self._safe_name_map)
+            generated_count = self.generated_features.shape[1]
+            new_features_count = max(0, generated_count - original_count)
+            return {
+                "original_feature_count": original_count,
+                "generated_feature_count": generated_count,
+                "new_features_count": new_features_count,
+                "feature_names": list(self.generated_features.columns),
+                "generated_features": self.generated_features,
+                "description": "使用MADlib编码分类变量并拉取编码后的宽表，保持与数据库端一致的特征空间"
+            }
+        return {
+            "original_feature_count": 0,
+            "generated_feature_count": 0,
+            "new_features_count": 0,
+            "feature_names": [],
+            "generated_features": None,
+            "description": "MADlib特征生成失败或未运行"
+        }
+
+
 class CAAFEMethod(ComparisonMethod):
     """CAAFE (Context-Aware Automated Feature Engineering)方法"""
 
@@ -1109,6 +1374,7 @@ class ComparisonEngine:
             "Baseline": BaselineMethod(),
             "AutoFeat": AutoFeatMethod(),
             "PGML": PGMLMethod(db_config),
+            "MADlib": MadlibMethod(db_config),
             "CAAFE": CAAFEMethod()
         }
 
@@ -1128,7 +1394,7 @@ class ComparisonEngine:
             对比结果字典
         """
         if methods is None:
-            methods = ["Baseline", "AutoFeat", "PGML", "CAAFE"]
+            methods = ["Baseline", "AutoFeat", "PGML", "MADlib", "CAAFE"]
 
         results = {
             "methods": [],
@@ -1267,6 +1533,7 @@ class ComparisonEngine:
             "Baseline": "原始特征，无特征工程",
             "AutoFeat": "自动化特征工程库，生成数学变换特征",
             "PGML": "PostgreSQL机器学习扩展，使用真正的pgml库进行数据库内特征工程和自动化机器学习",
+            "MADlib": "使用PostgreSQL MADlib插件进行数据库端的分类变量编码和特征预处理",
             "CAAFE": "基于大语言模型的上下文感知自动化特征工程，生成语义有意义的特征"
         }
 
