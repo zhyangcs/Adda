@@ -699,9 +699,9 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             # 增强的Node Validator思考过程
             try:
                 performance_metrics = {
-                    "评估分数": node.final_score,
-                    "特征数量": len(node.column_info),
-                    "节点ID": node.node_id
+                    "evaluation_score": node.final_score,
+                    "feature_count": len(node.column_info),
+                    "node_id": node.node_id
                 }
 
                 # 添加更多性能指标（如果有的话）

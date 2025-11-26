@@ -9,7 +9,7 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
   const selectedNodes = ref<Set<string>>(new Set())
   const selectedNode = ref<TreeNode | null>(null)
   const currentFeatures = ref<string[]>([])
-  const performance = ref<string>('未计算')
+  const performance = ref<string>('not calculated yet')
   const isLoading = ref(false)
   const root = ref<any>(null)
 

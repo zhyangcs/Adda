@@ -1492,9 +1492,23 @@ class ComparisonEngine:
                     "trainingTime": "training_time",
                     "evaluationTime": "evaluation_time",
                 }
+                # total_time 在少数方法里会遗漏（保持 0），这里用各阶段时间求和兜底，避免返回 0 导致前端被过滤
+                computed_total = (
+                    float(time_breakdown.get("preprocessing_time", 0.0))
+                    + float(time_breakdown.get("feature_generation_time", 0.0))
+                    + float(time_breakdown.get("training_time", 0.0))
+                    + float(time_breakdown.get("evaluation_time", 0.0))
+                )
+
                 for time_metric in ["totalTime", "preprocessingTime", "featureGenerationTime", "trainingTime", "evaluationTime"]:
                     mapped_key = time_key_map.get(time_metric, time_metric.lower())
-                    results["time_data"][time_metric].append(time_breakdown.get(mapped_key, 0.0))
+                    value = time_breakdown.get(mapped_key, 0.0)
+
+                    # 只对 totalTime 做兜底，保持其他字段原值
+                    if time_metric == "totalTime" and (value is None or float(value) <= 0):
+                        value = computed_total
+
+                    results["time_data"][time_metric].append(float(value or 0.0))
 
                 # 记录特征数据
                 feature_info = method.get_feature_info()

@@ -95,10 +95,14 @@ const realTimeData = computed(() => {
   const data = taskStore.autoStepData?.timeData
   if (!data) return null
 
+  // 将后端传来的时间统一转换为 number，避免字符串被过滤掉导致图表缺项
+  const toNumberArray = (arr: any[] | undefined) =>
+    Array.isArray(arr) ? arr.map(v => (typeof v === 'number' ? v : Number(v) || 0)) : []
+
   return {
     methods: data.methods || [],
-    totalTime: data.totalTime || [],
-    trainingTime: data.trainingTime || []
+    totalTime: toNumberArray(data.totalTime),
+    trainingTime: toNumberArray(data.trainingTime)
   } as TimeData
 })
 

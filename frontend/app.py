@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_cors import CORS
 import json
 import os
 import io
+import pandas as pd
 
 from adda_connector import AddaConnector
 
@@ -22,6 +24,8 @@ from frontend.paper_metrics_simplified import calculate_simplified_paper_metrics
 from websocket_server import get_websocket_server
 
 app = Flask(__name__)
+# 允许前端从不同端口访问
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # 初始化WebSocket服务器
 ws_server = get_websocket_server()
@@ -261,18 +265,23 @@ def auto_step():
             model = data.get('model_type', 'RF')  # 支持model_type或model参数
 
         # 可选参数 - 修复参数解析逻辑
+        # default_methods = ["Adda", "CAAFE", "AutoFeat", "MADlib"]
+        # default_methods = ["Adda", "MADlib", "AutoFeat"]
+        # default_methods = ["Adda", "CAAFE", "MADlib"]
+        default_methods = ["Adda", "CAAFE", "MADlib"]
+
         if request.form:
             # 表单数据格式
             max_search_depth = request.form.get('max_search_depth', MAX_SEARCH_DEPTH)
             use_performance_test = request.form.get('use_performance_test', 'true')
-            comparison_methods = request.form.get('comparison_methods', '["Adda"]')
+            comparison_methods = request.form.get('comparison_methods', json.dumps(default_methods))
             paper_top_k = request.form.get('paper_top_k', '7')
         else:
             # JSON格式
             data = json.loads(request.data) if request.data else {}
             max_search_depth = data.get('max_search_depth', MAX_SEARCH_DEPTH)
             use_performance_test = data.get('use_performance_test', True)
-            comparison_methods = data.get('comparison_methods', ["Adda"])
+            comparison_methods = data.get('comparison_methods', default_methods)
             paper_top_k = data.get('paper_top_k', 7)
 
         # 转换参数类型
@@ -293,9 +302,9 @@ def auto_step():
             if isinstance(comparison_methods, str):
                 comparison_methods = json.loads(comparison_methods)
             if not isinstance(comparison_methods, list):
-                comparison_methods = ["Adda"]
+                comparison_methods = default_methods
         except (json.JSONDecodeError, TypeError):
-            comparison_methods = ["Adda"]
+            comparison_methods = default_methods
 
         # paper_metrics 总是启用，固定使用 top-7
         paper_top_k = 7
@@ -522,7 +531,7 @@ def auto_step():
                     # 构建特征描述文本
                     description = ""
                     if feature_descriptions:
-                        description = "## 生成的特征\n\n"
+                        description = "## features:\n\n"
                         for i, feat_desc in enumerate(feature_descriptions[:5], 1):  # 只显示前5个特征
                             if isinstance(feat_desc, dict):
                                 # 如果是字典，提取description字段
@@ -949,7 +958,7 @@ def auto_step():
                                 if "auc" not in response_data["data"]["performanceData"] or response_data["data"]["performanceData"]["auc"][method_idx] == 0.0:
                                     response_data["data"]["performanceData"]["auc"][method_idx] = 1.0 / (1.0 + comparison_results["performance_data"]["rmse"][i])  # 转换RMSE为类似AUC的指标
 
-                            # 填充时间数据
+                            # 填充时间数据（前端TimeComparisonChart需要非零totalTime才会展示）
                             while len(response_data["data"]["timeData"]["totalTime"]) <= method_idx:
                                 response_data["data"]["timeData"]["totalTime"].append(0.0)
                                 response_data["data"]["timeData"]["trainingTime"].append(0.0)
