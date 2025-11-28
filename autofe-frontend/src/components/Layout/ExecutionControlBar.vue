@@ -1,75 +1,88 @@
 <template>
-  <div class="execution-control-bar" :class="{ 'is-loading': isNextStepLoading }">
-    <!-- 端到端模式按钮 -->
-    <div v-if="isEndToEndPage" class="button-group">
-      <button
-        class="btn btn-success btn-sm"
-        @click="handleStart"
-        :disabled="!taskStore.canStartTask || taskStore.isRunning"
-      >
-        <Play :size="16" class="me-1" />
-        Start
+  <div class="execution-control-bar" :class="{ 'is-loading': isNextStepLoading, collapsed: isCollapsed }">
+    <template v-if="isCollapsed">
+      <button class="collapse-toggle floating-toggle" @click="toggleCollapse(false)" title="Show controls">
+        <ChevronRight :size="16" />
       </button>
+    </template>
+    <template v-else>
+      <div class="bar-content">
+        <button class="collapse-toggle inline-toggle" @click="toggleCollapse(true)" title="Hide controls">
+          <ChevronLeft :size="16" />
+        </button>
 
-      <button
-        class="btn btn-danger btn-sm"
-        @click="handleStop"
-        :disabled="!taskStore.isRunning"
-      >
-        <Square :size="16" class="me-1" />
-        End&Clear
-      </button>
+        <!-- 端到端模式按钮 -->
+        <div v-if="isEndToEndPage" class="button-group">
+          <button
+            class="btn btn-success btn-sm"
+            @click="handleStart"
+            :disabled="!taskStore.canStartTask || taskStore.isRunning"
+          >
+            <Play :size="16" class="me-1" />
+            Start
+          </button>
 
-      <button
-        class="btn btn-primary btn-sm"
-        @click="handleDownload"
-        :disabled="!featureTreeStore.hasSelection"
-      >
-        <Download :size="16" class="me-1" />
-        Download Model
-      </button>
-    </div>
+          <button
+            class="btn btn-danger btn-sm"
+            @click="handleStop"
+            :disabled="!taskStore.isRunning"
+          >
+            <Square :size="16" class="me-1" />
+            End&Clear
+          </button>
 
-    <!-- 逐步执行模式按钮 -->
-    <div v-else class="button-group">
-      <button
-        class="btn btn-success btn-sm"
-        @click="handleNextStep"
-        :disabled="!taskStore.canDoNextStep || isNextStepLoading"
-      >
-        <div v-if="isNextStepLoading" class="spinner-border spinner-border-sm me-1" role="status">
-          <span class="visually-hidden">Loading...</span>
+          <button
+            class="btn btn-primary btn-sm"
+            @click="handleDownload"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <Download :size="16" class="me-1" />
+            Download Model
+          </button>
         </div>
-        <SkipForward v-else :size="16" class="me-1" />
-        {{ isNextStepLoading ? 'Processing...' : 'Next Step' }}
-      </button>
 
-      <button
-        class="btn btn-info btn-sm"
-        @click="handleTestPerformance"
-        :disabled="!featureTreeStore.hasSelection"
-      >
-        <BarChart :size="16" class="me-1" />
-        Test Performance
-      </button>
+        <!-- 逐步执行模式按钮 -->
+        <div v-else class="button-group">
+          <button
+            class="btn btn-success btn-sm"
+            @click="handleNextStep"
+            :disabled="!taskStore.canDoNextStep || isNextStepLoading"
+          >
+            <div v-if="isNextStepLoading" class="spinner-border spinner-border-sm me-1" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <SkipForward v-else :size="16" class="me-1" />
+            {{ isNextStepLoading ? 'Processing...' : 'Next Step' }}
+          </button>
 
-      <button
-        class="btn btn-primary btn-sm"
-        @click="handleGenerateModel"
-        :disabled="!featureTreeStore.hasSelection"
-      >
-        <Download :size="16" class="me-1" />
-        Generate & Download Model
-      </button>
+          <button
+            class="btn btn-info btn-sm"
+            @click="handleTestPerformance"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <BarChart :size="16" class="me-1" />
+            Test Performance
+          </button>
 
-      <button
-        class="btn btn-outline-secondary btn-sm"
-        @click="handleShowThinking"
-      >
-        <Brain :size="16" class="me-1" />
-        Show Agent Thinking
-      </button>
-    </div>
+          <button
+            class="btn btn-primary btn-sm"
+            @click="handleGenerateModel"
+            :disabled="!featureTreeStore.hasSelection"
+          >
+            <Download :size="16" class="me-1" />
+            Generate & Download Model
+          </button>
+
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            @click="handleShowThinking"
+          >
+            <Brain :size="16" class="me-1" />
+            Show Agent Thinking
+          </button>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -77,7 +90,7 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Play, Square, Download, SkipForward, BarChart, Brain
+  Play, Square, Download, SkipForward, BarChart, Brain, ChevronRight, ChevronLeft
 } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
@@ -90,6 +103,15 @@ const workspaceStore = useWorkspaceStore()
 
 // Next step loading状态
 const isNextStepLoading = ref(false)
+const isCollapsed = ref(false)
+
+const toggleCollapse = (state?: boolean) => {
+  if (typeof state === 'boolean') {
+    isCollapsed.value = state
+  } else {
+    isCollapsed.value = !isCollapsed.value
+  }
+}
 
 // 根据路由判断当前页面模式
 const isEndToEndPage = computed(() => route.path === '/end-to-end')
@@ -182,7 +204,54 @@ function handleShowThinking() {
   position: sticky;
   top: 0;
   z-index: 10;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
+  gap: var(--spacing-sm);
+}
+
+.execution-control-bar.collapsed {
+  padding: 0;
+  min-height: 0;
+  height: 0;
+  border: none;
+  background: transparent;
+  justify-content: center;
+  overflow: visible;
+}
+
+.bar-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.collapse-toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: #fff;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.collapse-toggle:hover {
+  background: #f8fafc;
+  transform: scale(1.05);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.floating-toggle {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 20;
 }
 
 .button-group {

@@ -236,25 +236,19 @@ onMounted(() => {
 
 .info-card {
   height: 100%;
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
+  background-color: #fff;
+  border-radius: 12px;
+  border: none;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-sm);
-  /* 确保样式优先级 */
-  background-color: #fafafa !important;
-  border: 1px solid #e0e0e0 !important;
+  box-shadow: none;
 }
 
 .info-header {
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-primary);
-  border-radius: 8px 8px 0 0;
-  /* 确保样式优先级 */
-  background-color: #ffffff !important;
-  border-bottom: 1px solid #e0e0e0 !important;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background-color: transparent;
+  border-radius: 12px 12px 0 0;
 }
 
 .info-title {
@@ -268,16 +262,16 @@ onMounted(() => {
 
 .info-content {
   flex: 1;
-  padding: 1rem;
+  padding: 0.85rem;
   overflow-y: auto;
 }
 
 .feature-tree-container {
   height: 75%; /* 减少到原来的3/4 */
-  background-color: #f0f0f0;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
-  padding: 0.5rem;
+  background-color: #f7f9fc;
+  border-radius: 10px;
+  border: none;
+  padding: 0.6rem;
   min-height: 150px; /* 相应减少最小高度 */
 }
 
@@ -298,11 +292,12 @@ onMounted(() => {
 
 /* 特征选择信息样式（简化显示） */
 .feature-selection-info {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid #dee2e6;
-  border-radius: 6px;
-  background-color: #f8f9fa;
+  margin-top: 0.8rem;
+  padding: 0.7rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #fff;
+  box-shadow: none;
 }
 
 .feature-list {

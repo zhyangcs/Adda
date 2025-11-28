@@ -58,12 +58,17 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useTaskStore } from '@/stores/task'
-import { apiService } from '@/services/APIService'
 import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
 import PerformanceComparisonChart from '../../EndToEnd/PerformanceComparisonChart.vue'
 import TimeComparisonChart from '../../EndToEnd/TimeComparisonChart.vue'
 import FeatureImportancePanel from '../../EndToEnd/FeatureImportancePanel.vue'
-import type { FeatureInfo, PerformanceData, TimeData, ImportanceData } from '@/types'
+import type {
+  FeatureInfo,
+  PerformanceData,
+  TimeData,
+  ImportanceData,
+  FeatureImportance
+} from '@/types'
 
 // 获取任务store
 const taskStore = useTaskStore()
@@ -483,16 +488,17 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
+  background: #f7f9fc;
   overflow: hidden;
-  padding: var(--spacing-lg);
-  gap: var(--spacing-md);
+  padding: 0.75rem 0.9rem;
+  gap: 0.55rem;
   --font-size-sm: 1rem;
-  --font-size-md: 1.35rem;
-  --font-size-lg: 1.65rem;
-  --font-size-xl: 2.1rem;
-  --spacing-md: 1.25rem;
-  --spacing-lg: 2rem;
+  --font-size-md: 1.25rem;
+  --font-size-lg: 1.5rem;
+  --font-size-xl: 2rem;
+  --spacing-md: 0.65rem;
+  --spacing-lg: 0.95rem;
+  --accent-blue: #2a7de1;
 }
 
 /* Scrollbar behavior - hidden by default, visible on interaction */
@@ -541,9 +547,9 @@ onUnmounted(() => {
 
 /* 页面头部 */
 .page-header {
-  background: var(--bg-white);
-  border-bottom: 1px solid var(--border-color);
-  padding: var(--spacing-md) var(--spacing-lg);
+  background: transparent;
+  border-bottom: none;
+  padding: 0.75rem 0.5rem;
   flex-shrink: 0;
 }
 
@@ -552,7 +558,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   max-width: 1400px;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .header-title {
@@ -618,7 +624,9 @@ onUnmounted(() => {
   border-radius: 20px;
   font-size: 15px;
   font-weight: 500;
-  border: 1px solid var(--border-color);
+  border: none;
+  background: #fff;
+  box-shadow: none;
 }
 
 .status-badge.completed {
@@ -674,7 +682,7 @@ onUnmounted(() => {
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+  box-shadow: none;
 }
 
 .btn-primary:disabled {
@@ -701,7 +709,7 @@ onUnmounted(() => {
 .btn-danger:hover {
   background: #c82333;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+  box-shadow: none;
 }
 
 .spinning {
@@ -721,25 +729,41 @@ onUnmounted(() => {
 /* 主要网格布局 */
 .main-grid {
   flex: 1;
-  padding: var(--spacing-md);
+  padding: 0.45rem;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 28px;
+  gap: 18px;
   overflow: hidden;
   min-height: 0;
 }
 
 .grid-section {
-  background: var(--bg-white);
+  background: transparent;
   border-radius: 12px;
-  box-shadow: var(--shadow-md);
-  border: 2px solid var(--border-color);
-  overflow: hidden;
+  box-shadow: none;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 1.25rem;
+  padding: 0;
+}
+
+:deep(.card),
+:deep(.panel),
+:deep(.chart-card) {
+  border: none !important;
+  background: #fff;
+  box-shadow: none;
+}
+
+:deep(.card-header),
+:deep(.panel-header),
+:deep(.section-header) {
+  margin: 0 0 0.65rem 0;
+  padding: 0 0 0.45rem 0;
+  border-bottom: 2px solid var(--accent-blue);
+  background: transparent;
 }
 
 /* 特定区域样式 */
@@ -783,7 +807,7 @@ onUnmounted(() => {
   border-radius: 16px;
   padding: 40px;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
   max-width: 400px;
   width: 90%;
 }
@@ -842,7 +866,7 @@ onUnmounted(() => {
   color: white;
   border-radius: 12px;
   padding: 16px 20px;
-  box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
+  box-shadow: none;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -967,10 +991,10 @@ onUnmounted(() => {
 
 /* CSS变量支持 */
 :root {
-  --bg-light: #f8f9fa;
+  --bg-light: #eef1f5;
   --bg-white: #ffffff;
-  --bg-primary: #e9ecef;
-  --border-color: #dee2e6;
+  --bg-primary: #f2f4f8;
+  --border-color: #dfe3eb;
   --text-primary: #212529;
   --text-secondary: #6c757d;
   --text-placeholder: #adb5bd;

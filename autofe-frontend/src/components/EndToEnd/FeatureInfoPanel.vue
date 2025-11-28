@@ -171,10 +171,10 @@ const formatSqlCode = () => {
 
 <style scoped>
 .feature-info-panel {
-  background: var(--bg-white);
+  background: #fff;
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: none;
+  border: none;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -186,9 +186,9 @@ const formatSqlCode = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -255,8 +255,8 @@ const formatSqlCode = () => {
 
 .tab-navigation {
   display: flex;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -277,13 +277,13 @@ const formatSqlCode = () => {
 
 .tab-button:hover {
   color: var(--text-primary);
-  background: rgba(0, 123, 255, 0.05);
+  background: rgba(42, 125, 225, 0.06);
 }
 
 .tab-button.active {
-  color: var(--primary-color);
-  border-bottom-color: var(--primary-color);
-  background: rgba(0, 123, 255, 0.1);
+  color: var(--accent-blue, #2a7de1);
+  border-bottom-color: var(--accent-blue, #2a7de1);
+  background: rgba(42, 125, 225, 0.1);
 }
 
 .tab-content {
@@ -293,7 +293,7 @@ const formatSqlCode = () => {
 }
 
 .content-section {
-  padding: 16px;
+  padding: 14px;
 }
 
 .description-content {
@@ -321,9 +321,8 @@ const formatSqlCode = () => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: var(--bg-light);
-  border: 1px solid var(--border-color);
-  border-bottom: none;
+  background: #f7f9fc;
+  border: none;
   border-radius: 8px 8px 0 0;
   flex-shrink: 0;
 }
@@ -385,7 +384,7 @@ const formatSqlCode = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
   z-index: 10;
   animation: slideIn 0.3s ease;
 }

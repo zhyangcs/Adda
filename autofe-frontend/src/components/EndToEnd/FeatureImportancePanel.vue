@@ -734,10 +734,10 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 <style scoped>
 .feature-importance-panel {
-  background: var(--bg-white);
+  background: #fff;
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: none;
+  border: none;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -748,9 +748,9 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -782,8 +782,8 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .btn-icon:hover {
-  background: var(--bg-primary);
-  color: var(--primary-color);
+  background: rgba(42, 125, 225, 0.08);
+  color: var(--accent-blue, #2a7de1);
 }
 
 .panel-content {
@@ -807,8 +807,8 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .importance-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
   flex-shrink: 0;
   overflow-x: auto;
 }
@@ -835,9 +835,9 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .tab-button.active {
-  color: var(--primary-color);
-  border-bottom-color: var(--primary-color);
-  background: rgba(0, 123, 255, 0.1);
+  color: var(--accent-blue, #2a7de1);
+  border-bottom-color: var(--accent-blue, #2a7de1);
+  background: rgba(42, 125, 225, 0.1);
 }
 
 .visualization-container {
@@ -907,7 +907,7 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .ranking-item:hover {
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   transform: translateY(-1px);
 }
 
@@ -1176,12 +1176,12 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .performance-card:hover {
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .performance-card.best-performer {
   border-color: #ffc107;
-  box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+  box-shadow: none;
 }
 
 .method-header {

@@ -559,10 +559,10 @@ watch(() => props.timeData, () => {
 
 <style scoped>
 .time-comparison-chart {
-  background: var(--bg-white);
+  background: #fff;
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: none;
+  border: none;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -573,9 +573,9 @@ watch(() => props.timeData, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-light);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -596,10 +596,10 @@ watch(() => props.timeData, () => {
 
 .unit-toggle {
   display: flex;
-  background: var(--bg-primary);
+  background: #f7f9fc;
   border-radius: 6px;
   padding: 2px;
-  border: 1px solid var(--border-color);
+  border: none;
 }
 
 .unit-btn {
@@ -615,7 +615,7 @@ watch(() => props.timeData, () => {
 }
 
 .unit-btn.active {
-  background: var(--primary-color);
+  background: var(--accent-blue, #2a7de1);
   color: white;
 }
 
@@ -637,8 +637,8 @@ watch(() => props.timeData, () => {
 }
 
 .btn-icon:hover {
-  background: var(--bg-primary);
-  color: var(--primary-color);
+  background: rgba(42, 125, 225, 0.08);
+  color: var(--accent-blue, #2a7de1);
 }
 
 .chart-container {
@@ -735,7 +735,7 @@ watch(() => props.timeData, () => {
   font-size: 14px;
   pointer-events: none;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
   min-width: 160px;
 }
 

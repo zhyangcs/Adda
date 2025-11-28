@@ -82,10 +82,10 @@ const toggleFullscreen = () => {
 
 <style scoped>
 .sql-code-container {
-  background: var(--bg-primary);
+  background: #fff;
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: none;
+  border: none;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -96,9 +96,9 @@ const toggleFullscreen = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  background: transparent;
 }
 
 .title {
@@ -129,8 +129,8 @@ const toggleFullscreen = () => {
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: var(--bg-primary);
-  color: var(--primary-color);
+  background: rgba(42, 125, 225, 0.08);
+  color: var(--accent-blue, #2a7de1);
 }
 
 .btn-icon:disabled {
@@ -140,7 +140,7 @@ const toggleFullscreen = () => {
 
 .sql-code-content {
   flex: 1;
-  padding: var(--spacing-lg);
+  padding: 0.85rem;
   overflow-y: auto;
   min-height: 0;
 }
@@ -149,7 +149,7 @@ const toggleFullscreen = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 
@@ -163,7 +163,8 @@ const toggleFullscreen = () => {
   background: #1e1e1e;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: none;
+  box-shadow: none;
 }
 
 .code-editor pre {
@@ -238,7 +239,7 @@ const toggleFullscreen = () => {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
 .fullscreen-header {

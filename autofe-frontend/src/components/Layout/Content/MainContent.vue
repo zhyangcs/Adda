@@ -933,18 +933,18 @@ function handleRefreshData() {
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: var(--spacing-lg);
+  padding: 0.85rem 1rem;
   overflow: hidden;
-  background-color: var(--bg-primary);
+  background-color: #f7f9fc;
   height: 100%;
   --font-size-sm: 1rem;
-  --font-size-md: 1.35rem;
-  --font-size-lg: 1.6rem;
-  --font-size-xl: 2rem;
-  --spacing-md: 1.25rem;
-  --spacing-lg: 2rem;
-  --spacing-xl: 2.75rem;
-  background-color: #fff;
+  --font-size-md: 1.25rem;
+  --font-size-lg: 1.5rem;
+  --font-size-xl: 1.9rem;
+  --spacing-md: 0.7rem;
+  --spacing-lg: 1rem;
+  --spacing-xl: 1.35rem;
+  --accent-blue: #2a7de1;
 }
 
 .main-content > .splitpanes {
@@ -1002,7 +1002,7 @@ function handleRefreshData() {
   flex-direction: column;
   height: 100%;
   gap: 0;
-  padding-right: 1rem;
+  padding-right: 0.6rem;
 }
 
 .agent-flow-section {
@@ -1010,7 +1010,7 @@ function handleRefreshData() {
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 0.375rem;
+  padding-bottom: 0.3rem;
 }
 
 .agent-flow-section .info-card {
@@ -1019,9 +1019,9 @@ function handleRefreshData() {
 
 .agent-process-content {
   display: flex;
-  gap: 1.25rem;
+  gap: 0.85rem;
   height: 100%;
-  padding: calc(var(--spacing-md) * 1.25);
+  padding: calc(var(--spacing-md) * 1.05);
 }
 
 .agent-process-content > .agent-flow-diagram,
@@ -1034,18 +1034,18 @@ function handleRefreshData() {
   display: flex;
   flex-direction: column;
   border-radius: 12px;
-  border: 2px solid #d0d7e2;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  padding: calc(var(--spacing-md) * 1.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  border: none;
+  background: #fff;
+  padding: calc(var(--spacing-md) * 0.95);
+  box-shadow: none;
 }
 
 .chat-panel-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #edf2f7;
+  padding-bottom: 0.55rem;
+  border-bottom: 2px solid var(--accent-blue);
 }
 
 .chat-panel-icon {
@@ -1112,9 +1112,9 @@ function handleRefreshData() {
   flex: 1;
   padding: 0.5rem 0.75rem;
   border-radius: 12px;
-  border: 1px solid #e9ecef;
+  border: none;
   background-color: #fff;
-  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.05);
+  box-shadow: none;
 }
 
 .chat-meta {
@@ -1220,8 +1220,8 @@ function handleRefreshData() {
   display: flex;
   flex-direction: column;
   gap: 0;
-  background-color: #ffffff;
-  padding-left: 1rem;
+  background-color: transparent;
+  padding-left: 0.5rem;
 }
 
 .sql-code-section {
@@ -1356,8 +1356,8 @@ function handleRefreshData() {
 /* 通用样式 */
 .section-header {
   margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 0.45rem;
+  border-bottom: 2px solid var(--accent-blue);
 }
 
 .section-title {
@@ -1373,16 +1373,16 @@ function handleRefreshData() {
   height: 100%;
   background-color: #fff;
   border-radius: 8px;
-  border: 2px solid var(--border-color);
+  border: none;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
 }
 
 .info-header {
-  padding: calc(var(--spacing-md) * 1.1) calc(var(--spacing-lg) * 1.1);
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-primary);
+  padding: 0.55rem 0.85rem 0.5rem;
+  border-bottom: 2px solid var(--accent-blue);
+  background-color: #fff;
   border-radius: 8px 8px 0 0;
 }
 
@@ -1395,7 +1395,7 @@ function handleRefreshData() {
 
 .info-content {
   flex: 1;
-  padding: calc(var(--spacing-md) * 1.15);
+  padding: calc(var(--spacing-md) * 0.95);
   overflow-y: auto;
 }
 
@@ -1592,11 +1592,8 @@ function handleRefreshData() {
 
 /* 动画 */
 @keyframes breathe {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+  0%, 50%, 100% {
+    box-shadow: none;
   }
 }
 
@@ -1637,7 +1634,7 @@ function handleRefreshData() {
   border: none;
   border-radius: 4px 0 0 4px;
   padding: 0.75rem 1rem;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
   transition: all 0.3s ease;
   white-space: nowrap;
 }
@@ -1645,7 +1642,7 @@ function handleRefreshData() {
 .expand-button:hover {
   background-color: #495057;
   transform: translateY(-50%) translateX(-4px);
-  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+  box-shadow: none;
 }
 
 .expand-arrow {
@@ -1773,7 +1770,7 @@ function handleRefreshData() {
   border: 2px solid #e3f2fd;
   border-radius: 12px;
   padding: 14px 18px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: none;
   color: #37474f;
   font-size: var(--font-size-md);
   line-height: 1.5;
@@ -2010,6 +2007,6 @@ function handleRefreshData() {
 
 .btn-info:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(23, 162, 184, 0.2);
+  box-shadow: none;
 }
 </style>
