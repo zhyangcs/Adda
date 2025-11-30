@@ -45,7 +45,7 @@
                         @click="setActiveAgent('system')"
                       >
                         <div class="agent-icon">
-                          <Monitor :size="32" />
+                          <Monitor :size="28" />
                         </div>
                         <div class="agent-label">System</div>
                         <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
@@ -111,7 +111,7 @@
                         @click="setActiveAgent('validation')"
                       >
                         <div class="agent-icon">
-                          <Cog :size="32" />
+                          <Cog :size="28" />
                         </div>
                         <div class="agent-label">Node Validation</div>
                         <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
@@ -1018,7 +1018,8 @@ function handleRefreshData() {
 }
 
 .agent-process-content {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 0.85rem;
   height: 100%;
   padding: calc(var(--spacing-md) * 1.05);
@@ -1026,8 +1027,15 @@ function handleRefreshData() {
 
 .agent-process-content > .agent-flow-diagram,
 .agent-process-content > .agent-chat-panel {
-  flex: 1;
   min-width: 0;
+}
+
+.agent-process-content > .agent-flow-diagram {
+  min-height: 430px;
+}
+
+.agent-process-content > .agent-chat-panel {
+  min-height: 430px;
 }
 
 .agent-chat-panel {
@@ -1038,6 +1046,7 @@ function handleRefreshData() {
   background: #fff;
   padding: calc(var(--spacing-md) * 0.95);
   box-shadow: none;
+  height: 100%;
 }
 
 .chat-panel-header {
@@ -1181,6 +1190,7 @@ function handleRefreshData() {
 
 @media (max-width: 1280px) {
   .agent-process-content {
+    display: flex;
     flex-direction: column;
   }
 
@@ -1403,7 +1413,7 @@ function handleRefreshData() {
 .agent-flow-diagram {
   flex: 1;
   position: relative;
-  min-height: 350px; /* 增加最小高度以容纳所有节点 */
+  min-height: 320px; /* 增加最小高度以容纳所有节点 */
 }
 
 .flow-container {
@@ -1418,12 +1428,13 @@ function handleRefreshData() {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 400px; /* 确保有足够的高度 */
+  min-height: 320px; /* 确保有足够的高度 */
+  transform: translateY(-41px);
 }
 
 .agent-node {
   position: absolute;
-  width: 90px;
+  width: 75px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1439,37 +1450,37 @@ function handleRefreshData() {
 .system-agent {
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) translate(-135px, -135px);
+  transform: translate(-50%, -50%) translate(-110px, -110px);
 }
 
 .main-agent {
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) translate(135px, -135px);
+  transform: translate(-50%, -50%) translate(110px, -110px);
 }
 
 .opt-agent {
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) translate(135px, 135px);
+  transform: translate(-50%, -50%) translate(110px, 110px);
 }
 
 .validation-agent {
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) translate(-135px, 135px);
+  transform: translate(-50%, -50%) translate(-110px, 110px);
 }
 
 .agent-icon {
-  width: 70px;
-  height: 70px;
+  width: 58px;
+  height: 58px;
   background-color: transparent;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto;
-  border: 3px solid transparent;
+  border: 2px solid transparent;
   transition: all 0.3s ease;
   color: #6c757d;
 }
@@ -1663,8 +1674,8 @@ function handleRefreshData() {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 130px;
-  height: 4px;
+  width: 100px;
+  height: 3px;
   background-color: #dee2e6;
   transition: all 0.3s ease;
 }
@@ -1672,14 +1683,14 @@ function handleRefreshData() {
 .arrow-horizontal::after {
   content: '';
   position: absolute;
-  right: -8px;
+  right: -6px;
   top: 50%;
   transform: translateY(-50%);
   width: 0;
   height: 0;
-  border-left: 12px solid #dee2e6;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
+  border-left: 10px solid #dee2e6;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
 }
 
 /* 垂直箭头基础样式 */
@@ -1687,8 +1698,8 @@ function handleRefreshData() {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 4px;
-  height: 130px;
+  width: 3px;
+  height: 100px;
   background-color: #dee2e6;
   transition: all 0.3s ease;
 }
@@ -1696,34 +1707,34 @@ function handleRefreshData() {
 .arrow-vertical::after {
   content: '';
   position: absolute;
-  bottom: -8px;
+  bottom: -6px;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
   height: 0;
-  border-top: 12px solid #dee2e6;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
+  border-top: 10px solid #dee2e6;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
 }
 
 /* 上横箭头位置 - 匹配新的节点位置 */
 .top-arrow {
-  transform: translate(-50%, -50%) translateY(-135px);
+  transform: translate(-50%, -50%) translateY(-110px);
 }
 
 /* 右纵箭头位置 - 匹配新的节点位置 */
 .right-arrow {
-  transform: translate(-50%, -50%) translateX(135px);
+  transform: translate(-50%, -50%) translateX(110px);
 }
 
 /* 下横箭头位置和方向 - 匹配新的节点位置 */
 .bottom-arrow {
-  transform: translate(-50%, -50%) translateY(135px) rotate(180deg);
+  transform: translate(-50%, -50%) translateY(110px) rotate(180deg);
 }
 
 /* 左纵箭头位置和方向 - 匹配新的节点位置 */
 .left-arrow {
-  transform: translate(-50%, -50%) translateX(-135px) rotate(180deg);
+  transform: translate(-50%, -50%) translateX(-110px) rotate(180deg);
 }
 
 /* 激活状态样式 */
