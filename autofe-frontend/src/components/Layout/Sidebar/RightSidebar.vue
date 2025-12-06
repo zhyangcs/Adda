@@ -2,16 +2,16 @@
   <aside class="right-sidebar" :class="{ collapsed: isCollapsed }">
     <!-- 折叠按钮 -->
     <button
-      class="collapse-toggle btn btn-sm btn-outline-secondary"
+      class="collapse-toggle"
       @click="toggleCollapse"
       :title="isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'"
     >
-      <ChevronLeft v-if="!isCollapsed" :size="16" />
-      <ChevronRight v-else :size="16" />
+      <ChevronRight v-if="!isCollapsed" :size="16" />
+      <ChevronLeft v-else :size="16" />
     </button>
 
     <!-- 展开时的内容 -->
-    <div v-if="!isCollapsed" class="sidebar-content">
+    <div v-show="!isCollapsed" class="sidebar-content">
       <!-- 标题 -->
       <div class="sidebar-header">
         <h6 class="mb-0">
@@ -236,23 +236,38 @@ onMounted(() => {
 <style scoped>
 .right-sidebar {
   width: var(--right-sidebar-width);
-  background-color: var(--bg-primary);
-  border-left: 1px solid var(--border-color);
+  min-width: var(--right-sidebar-width);
+  max-width: var(--right-sidebar-width);
+  height: 100vh;
+  padding-top: 1rem;
+  background-color: white;
+  border-left: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s ease;
+  overflow-y: auto;
   position: relative;
+  transition: all 0.3s ease;
 }
 
 .right-sidebar.collapsed {
-  width: 50px;
+  width: 20px;
+  min-width: 20px;
+  max-width: 20px;
+  overflow: visible;
+  border: none;
+  padding: 0;
+  background-color: transparent;
+}
+
+.right-sidebar.collapsed .sidebar-content {
+  display: none;
 }
 
 .collapse-toggle {
   position: absolute;
   left: -12px;
-  top: 20px;
-  z-index: 10;
+  top: 1.25rem;
+  z-index: 50;
   border-radius: 50%;
   width: 24px;
   height: 24px;
@@ -260,15 +275,28 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background-color: white;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.collapse-toggle:hover {
+  background-color: #f8fafc;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+:global(.right-sidebar .collapse-toggle) {
+  z-index: 1001 !important;
 }
 
 .sidebar-content {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1rem;
+  padding: 0 1rem 1rem;
 }
 
 .sidebar-header {

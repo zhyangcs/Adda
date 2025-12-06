@@ -255,7 +255,7 @@ onMounted(() => {
   color: var(--text-primary);
   font-weight: 600;
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
   display: flex;
   align-items: center;
 }
