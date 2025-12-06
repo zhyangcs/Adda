@@ -36,24 +36,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 特征选择信息（简化显示） -->
-        <div class="feature-selection-info">
-          <div class="feature-list">
-            <div v-if="featureTreeStore.currentFeatures.length === 0" class="no-features">
-              <span class="feature-label">Current Feature Set:</span> No features selected (click node for choose/delete)
-            </div>
-            <div v-else class="features-container">
-              <span class="feature-label">Current Feature Set:</span>
-              <span class="features-text">{{ featureTreeStore.currentFeatures.join(', ') }}</span>
-            </div>
-          </div>
-          <div class="performance-info">
-            <strong>Performance:</strong>
-            <span class="performance-value">{{ featureTreeStore.performance }}</span>
-            <div v-if="isPerformanceLoading" class="spinner-border spinner-border-sm ms-2"></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -76,7 +58,8 @@ function renderTree(treeStructure: any) {
   // 清空容器
   d3.select(treeContainer.value).selectAll("*").remove()
 
-  let { root_id, parent_child_relations, node_info, cur_selected_idx } = treeStructure
+  let { root_id, parent_child_relations, node_info } = treeStructure
+  const selectedNodeId = featureTreeStore.selectedNode?.node_id
 
   // 将节点信息转换为字典
   const nodeInfoMap = node_info.reduce((map: any, info: any) => {
@@ -90,17 +73,20 @@ function renderTree(treeStructure: any) {
       id: rootId,
       ...nodeInfoMap[rootId],
       children: [],
-      selected: cur_selected_idx.includes(rootId)
+      selected: selectedNodeId === rootId
     }
     const nodeMap: { [key: string]: any } = { [rootId]: tree }
 
     parent_child_relations.forEach(([parent_id, child_id]: [string, string]) => {
       const parentNode = nodeMap[parent_id]
+      // 如果父节点不存在（可能是数据不一致），跳过
+      if (!parentNode) return
+      
       const childNode = {
         id: child_id,
         ...nodeInfoMap[child_id],
         children: [],
-        selected: cur_selected_idx.includes(child_id)
+        selected: selectedNodeId === child_id
       }
       parentNode.children.push(childNode)
       nodeMap[child_id] = childNode
@@ -116,25 +102,86 @@ function renderTree(treeStructure: any) {
 function renderD3Tree(data: any) {
   if (!treeContainer.value) return
 
-  // 创建树布局
-  const treeLayout = d3.tree()
-    .size([280, 200])
-    .separation(() => 1)
+  // 清空容器
+  d3.select(treeContainer.value).selectAll("*").remove()
 
-  // 创建SVG容器
-  const svg = d3.select(treeContainer.value)
-    .append("svg")
-    .attr("width", "100%")
-    .attr("height", 250)
-    .attr("viewBox", "0 0 300 250")
-    .append("g")
-    .attr("transform", "translate(10, 25)")
+  // 节点尺寸配置（字体大，但卡片更紧凑）
+  const nodeWidth = 170
+  const nodeHeight = 74
+  const horizontalSpacing = 34
+  const verticalSpacing = 72
 
   // 创建层次结构
   const root = d3.hierarchy(data)
+
+  // 使用 nodeSize 而不是 size，这样树可以根据内容自动扩展
+  const treeLayout = d3.tree()
+    .nodeSize([nodeWidth + horizontalSpacing, nodeHeight + verticalSpacing])
+  
   treeLayout(root)
 
-  // 绘制连接线
+  // 计算边界以设置 SVG 大小
+  let xMin = Infinity
+  let xMax = -Infinity
+  let yMin = Infinity
+  let yMax = -Infinity
+
+  root.descendants().forEach((d: any) => {
+    if (d.x < xMin) xMin = d.x
+    if (d.x > xMax) xMax = d.x
+    if (d.y < yMin) yMin = d.y
+    if (d.y > yMax) yMax = d.y
+  })
+
+  // 加上边距
+  const margin = { top: 40, right: 20, bottom: 40, left: 20 }
+  const widthNeeded = (xMax - xMin) + nodeWidth + margin.left + margin.right
+  const heightNeeded = (yMax - yMin) + nodeHeight + margin.top + margin.bottom
+  const containerWidth = treeContainer.value.clientWidth || widthNeeded
+  const containerHeight = treeContainer.value.clientHeight || heightNeeded
+
+  const depth = root.height + 1
+  // 根据层级设置填充比例，尽量填满容器但保留留白
+  // 3 层场景放大展示，填充比例更高
+  const fillRatio = depth >= 5 ? 0.7 : depth === 4 ? 0.78 : depth === 3 ? 0.95 : 0.9
+  const targetScaleX = (containerWidth * fillRatio) / widthNeeded
+  const targetScaleY = (containerHeight * fillRatio) / heightNeeded
+  let scale = Math.min(targetScaleX, targetScaleY)
+
+  // 3 层特例：整体再放大 2 倍
+  if (depth === 3) {
+    scale *= 2
+  }
+
+  // 不同层数的放大/缩小限制，保持既不太小也不撑满
+  const maxScale = depth <= 2 ? 1.4 : depth === 3 ? 2.2 : depth === 4 ? 1.15 : 1.0
+  const minScale = depth >= 5 ? 0.5 : depth === 4 ? 0.55 : depth === 3 ? 0.65 : 0.75
+  scale = Math.max(minScale, Math.min(maxScale, scale))
+  const needsScale = scale !== 1
+
+  const svgWidth = Math.max(containerWidth, widthNeeded)
+  const svgHeight = Math.max(containerHeight, heightNeeded)
+  const translateX = svgWidth / 2 - (xMin + xMax) / 2
+  const translateY = margin.top - yMin
+
+  // 创建SVG容器
+  const svgRoot = d3.select(treeContainer.value)
+    .append("svg")
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .attr("viewBox", `0 0 ${svgWidth} ${svgHeight}`)
+    .attr("preserveAspectRatio", "xMidYMid meet")
+
+  // 平移到居中位置
+  const translatedGroup = svgRoot.append("g")
+    .attr("transform", `translate(${translateX}, ${translateY})`)
+
+  // 如需缩放则在内层套一层 scale
+  const svg = needsScale
+    ? translatedGroup.append("g").attr("transform", `scale(${scale})`)
+    : translatedGroup
+
+  // 绘制连接线 (曲线更美观)
   svg.selectAll(".link")
     .data(root.links())
     .enter()
@@ -155,58 +202,113 @@ function renderD3Tree(data: any) {
     .on("click", function (_event: any, d: any) {
       handleNodeClick(d.data)
     })
-    .on("mouseover", function (_event: any, d: any) {
-      showNodeInfo(d.data)
-    })
-    .on("mouseout", hideNodeInfo)
 
-  // 绘制节点矩形
+  // 添加阴影滤镜
+  const defs = svg.append("defs")
+  const filter = defs.append("filter")
+    .attr("id", "drop-shadow")
+    .attr("height", "130%")
+  
+  filter.append("feGaussianBlur")
+    .attr("in", "SourceAlpha")
+    .attr("stdDeviation", 2)
+    .attr("result", "blur")
+  
+  filter.append("feOffset")
+    .attr("in", "blur")
+    .attr("dx", 0)
+    .attr("dy", 2)
+    .attr("result", "offsetBlur")
+  
+  filter.append("feFlood")
+    .attr("flood-color", "rgba(0,0,0,0.1)")
+    .attr("result", "colorBlur")
+    
+  filter.append("feComposite")
+    .attr("in", "colorBlur")
+    .attr("in2", "offsetBlur")
+    .attr("operator", "in")
+  
+  filter.append("feMerge")
+    .append("feMergeNode")
+  filter.select("feMerge")
+    .append("feMergeNode")
+    .attr("in", "SourceGraphic")
+
+  // 绘制节点矩形 (卡片样式)
   nodes.append("rect")
-    .attr("width", 80)
-    .attr("height", 30)
-    .attr("x", -40)
-    .attr("y", -15)
-    .attr("fill", (d: any) => d.data.selected ? "#2ecc71" : "#c8c8c8")
-    .attr("stroke", "#b4b4b4")
-    .attr("stroke-width", 2)
-    .attr("rx", 4)
+    .attr("width", nodeWidth)
+    .attr("height", nodeHeight)
+    .attr("x", -nodeWidth / 2)
+    .attr("y", 0) // 从 y=0 开始
+    .attr("rx", 10) // 圆角略大
+    .attr("ry", 10)
+    .style("filter", "url(#drop-shadow)")
+    .attr("fill", (d: any) => d.data.selected ? "#ecfdf5" : "#ffffff") // 选中背景改为浅绿
+    .attr("stroke", (d: any) => d.data.selected ? "#10b981" : "#cbd5e1") // 选中边框改为绿色
+    .attr("stroke-width", (d: any) => d.data.selected ? 2 : 1)
     .on("mouseover", function (_event: any, d: any) {
-      d3.select(this).attr("fill", d.data.selected ? "#27ae60" : "#b4b4b4")
+      if (!d.data.selected) {
+        d3.select(this).attr("stroke", "#94a3b8")
+      }
     })
     .on("mouseout", function (_event: any, d: any) {
-      d3.select(this).attr("fill", d.data.selected ? "#2ecc71" : "#c8c8c8")
+      if (!d.data.selected) {
+        d3.select(this).attr("stroke", "#cbd5e1")
+      }
     })
 
-  // 添加节点文字
-  nodes.append("text")
-    .attr("dy", -5)
-    .style("font-weight", "bold")
-    .style("font-size", "10px")
-    .text((d: any) => `${d.data.feature_name?.substring(0, 8) || ''}`)
+  // 移除原来的左侧蓝色装饰线
 
+  // 添加特征名称文字
   nodes.append("text")
-    .attr("dy", 8)
-    .style("font-size", "9px")
+    .attr("dy", 24)
+    .attr("text-anchor", "middle")
+    .style("font-weight", "700")
+    .style("font-size", "16px") // 再增大字号
+    .style("fill", "#1e293b")
+    .text((d: any) => {
+      const name = d.data.feature_name || 'Unknown'
+      // 增加显示长度但保持卡片紧凑
+      return name.length > 20 ? name.substring(0, 18) + '...' : name
+    })
+    .append("title") // Tooltip
+    .text((d: any) => d.data.feature_name)
+
+  // 添加 ID 文字
+  nodes.append("text")
+    .attr("dy", 42)
+    .attr("text-anchor", "middle")
+    .style("font-size", "13px") // 增大字号
+    .style("fill", "#64748b")
+    .style("font-family", "monospace")
     .text((d: any) => `ID: ${d.data.node_id}`)
+
+  // 添加 Score 文字
+  nodes.append("text")
+    .attr("dy", 60)
+    .attr("text-anchor", "middle")
+    .style("font-size", "13px")
+    .style("fill", (d: any) => d.data.score !== undefined ? "#059669" : "#94a3b8") // 有分数为绿色，否则灰色
+    .style("font-weight", "500")
+    .text((d: any) => {
+       if (d.data.score !== undefined && d.data.score !== null) {
+         // 格式化分数，保留4位小数
+         return `Score: ${Number(d.data.score).toFixed(4)}`
+       }
+       return ''
+    })
 
   // 设置根节点引用
   featureTreeStore.setRoot(root)
 }
 
 function handleNodeClick(nodeData: any) {
-  featureTreeStore.toggleNodeSelection(nodeData.node_id)
-  // 重新渲染树以更新选中状态
+  featureTreeStore.setSelectedNode(nodeData)
+  // 重新渲染树以更新高亮状态
   if (featureTreeStore.treeData) {
     renderTree(featureTreeStore.treeData)
   }
-}
-
-function showNodeInfo(nodeData: any) {
-  featureTreeStore.setSelectedNode(nodeData)
-}
-
-function hideNodeInfo() {
-  featureTreeStore.setSelectedNode(null)
 }
 
 // 监听树数据变化，重新渲染
@@ -267,12 +369,12 @@ onMounted(() => {
 }
 
 .feature-tree-container {
-  height: 75%; /* 减少到原来的3/4 */
+  height: 100%; /* 占满剩余空间 */
   background-color: #f7f9fc;
   border-radius: 10px;
   border: none;
   padding: 0.6rem;
-  min-height: 150px; /* 相应减少最小高度 */
+  min-height: 150px;
 }
 
 .tree-visualization {
@@ -290,83 +392,25 @@ onMounted(() => {
   color: #6c757d;
 }
 
-/* 特征选择信息样式（简化显示） */
-.feature-selection-info {
-  margin-top: 0.8rem;
-  padding: 0.7rem 0.9rem;
-  border: none;
-  border-radius: 8px;
-  background-color: #fff;
-  box-shadow: none;
-}
-
-.feature-list {
-  margin-bottom: 1rem;
-}
-
-.no-features {
-  color: #6c757d;
-  font-style: italic;
-}
-
-.feature-label {
-  color: #495057;
-  font-weight: 500;
-}
-
-.features-container {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.features-text {
-  color: #155724;
-  background-color: #d4edda;
-  padding: 0.5rem;
-  border-radius: 4px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.performance-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.performance-value {
-  color: #007bff;
-  font-weight: 600;
-}
-
 /* D3.js 样式 */
 :deep(.link) {
   fill: none;
-  stroke: #666;
-  stroke-width: 1.5px;
+  stroke: #cbd5e1;
+  stroke-width: 2px;
+  transition: stroke 0.3s ease;
 }
 
 :deep(.node) {
   cursor: pointer;
 }
 
-:deep(.node.selected rect) {
-  stroke: #27ae60;
-  stroke-width: 2px;
-}
-
 :deep(.node rect) {
   transition: all 0.2s ease;
-}
-
-:deep(.node:hover rect) {
-  filter: brightness(0.9);
 }
 
 :deep(.node text) {
   pointer-events: none;
   user-select: none;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 </style>

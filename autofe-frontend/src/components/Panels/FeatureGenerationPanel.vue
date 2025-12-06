@@ -164,7 +164,7 @@
               </div>
             </div>
             <div v-else class="text-muted">
-              Hover over a node to see details.
+              Click a node to see details.
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@ const isModelLoading = ref(false)
 
 const featureTreeDisplay = computed(() => {
   if (featureTreeStore.currentFeatures.length === 0) {
-    return 'No features selected (click node for choose/delete)'
+    return 'No features selected'
   }
   return featureTreeStore.currentFeatures.join(', ')
 })
@@ -271,7 +271,8 @@ function renderTree(treeStructure: any) {
   // 清空容器
   d3.select(treeContainer.value).selectAll("*").remove()
 
-  let { root_id, parent_child_relations, node_info, cur_selected_idx } = treeStructure
+  let { root_id, parent_child_relations, node_info } = treeStructure
+  const selectedNodeId = featureTreeStore.selectedNode?.node_id
 
   // 将节点信息转换为字典
   const nodeInfoMap = node_info.reduce((map: any, info: any) => {
@@ -285,7 +286,7 @@ function renderTree(treeStructure: any) {
       id: rootId,
       ...nodeInfoMap[rootId],
       children: [],
-      selected: cur_selected_idx.includes(rootId)
+      selected: selectedNodeId === rootId
     }
     const nodeMap: { [key: string]: any } = { [rootId]: tree }
 
@@ -295,7 +296,7 @@ function renderTree(treeStructure: any) {
         id: child_id,
         ...nodeMap[child_id],
         children: [],
-        selected: cur_selected_idx.includes(child_id)
+        selected: selectedNodeId === child_id
       }
       parentNode.children.push(childNode)
       nodeMap[child_id] = childNode
@@ -348,13 +349,9 @@ function renderD3Tree(data: any) {
     .attr("class", "node")
     .attr("transform", (d: any) => `translate(${d.x},${d.y})`)
     .classed("selected", (d: any) => d.data.selected)
-    .on("click", function (event, d: any) {
+    .on("click", function (_event, d: any) {
       handleNodeClick(d.data)
     })
-    .on("mouseover", function (event, d: any) {
-      showNodeInfo(d.data)
-    })
-    .on("mouseout", hideNodeInfo)
 
   // 绘制节点矩形
   nodes.append("rect")
@@ -390,19 +387,11 @@ function renderD3Tree(data: any) {
 }
 
 function handleNodeClick(nodeData: any) {
-  featureTreeStore.toggleNodeSelection(nodeData.node_id)
-  // 重新渲染树以更新选中状态
+  featureTreeStore.setSelectedNode(nodeData)
+  // 重新渲染树以更新高亮状态
   if (featureTreeStore.treeData) {
     renderTree(featureTreeStore.treeData)
   }
-}
-
-function showNodeInfo(nodeData: any) {
-  featureTreeStore.setSelectedNode(nodeData)
-}
-
-function hideNodeInfo() {
-  featureTreeStore.setSelectedNode(null)
 }
 </script>
 

@@ -146,6 +146,9 @@ class AddaConnector:
 
             # 生成前端需要的树形结构
             tree_structure = self._convert_dag_to_tree()
+            # 缓存树结构，供/get-treejson读取
+            if tree_structure:
+                self.current_tree = tree_structure
             print(f"Generated tree structure: {tree_structure}")
             return True, "任务启动成功", tree_structure
 
@@ -417,6 +420,16 @@ class AddaConnector:
             draw_nodes.add_edge(nodes_map[edge[0]], nodes_map[edge[1]])
         
         # 构建树形结构
+        # 使用真实的根节点分数/耗时，如果不可用则回退为0
+        root_score = 0.0
+        root_exec_time = 0.0
+        try:
+            if getattr(self, "llm_dag_constructor", None) and getattr(self.llm_dag_constructor, "root", None):
+                root_score = float(getattr(self.llm_dag_constructor.root, "final_score", 0.0) or 0.0)
+                root_exec_time = float(getattr(self.llm_dag_constructor.root, "exec_time", 0.0) or 0.0)
+        except Exception:
+            pass
+
         tree = {
             "root_id": 1,
             "parent_child_relations": [],
@@ -425,8 +438,8 @@ class AddaConnector:
                 "feature_name": "All original features",
                 "task_code": "# Root node",
                 "op_type": "root",
-                "score": 0.0,
-                "exec_time": 0.0,
+                "score": root_score,
+                "exec_time": root_exec_time,
                 "operation_desc": "特征树根节点"
             }],
             "cur_selected_idx": []  # 新增必填字段

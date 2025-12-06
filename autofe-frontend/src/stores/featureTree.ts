@@ -39,6 +39,7 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
 
       if (response.status === 'success') {
         treeData.value = response.json
+        selectedNode.value = null
         // 更新选中状态
         updateSelectionFromTree()
       }

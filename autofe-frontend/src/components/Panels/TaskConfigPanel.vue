@@ -156,6 +156,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { Settings, CheckCircle, XCircle, FileText, RotateCcw, Play } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 
