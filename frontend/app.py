@@ -934,7 +934,8 @@ def auto_step():
                         y=pd.read_csv(csv_path)[target_col],
                         task_type=task_type,
                         methods=comparison_list,
-                        time_limit=120  # 每个AutoML方法2分钟限制
+                        time_limit=120,  # 每个AutoML方法2分钟限制
+                        model_type=ml_model_type
                     )
 
                     # 合并对比结果到响应数据

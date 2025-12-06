@@ -20,6 +20,7 @@ class WebSocketServer:
         self.app = app
         self.connected_clients = set()
         self.status_cache = {}
+        self.thinking_cache = {}
         self.lock = Lock()
 
         if app:
@@ -34,8 +35,8 @@ class WebSocketServer:
             async_mode='eventlet',
             logger=False,
             engineio_logger=False,
-            ping_timeout=60,  # 60秒ping超时
-            ping_interval=25,  # 25秒ping间隔
+            ping_timeout=120,  # 加长ping超时，降低误判断线
+            ping_interval=40,  # 加长ping间隔，减少心跳压力
             http_open_timeout=60  # HTTP连接超时
         )
         self.setup_handlers()
@@ -61,6 +62,8 @@ class WebSocketServer:
 
                 # 发送当前缓存的状态
                 self.send_cached_status()
+                # 发送最近的思考消息
+                self.send_cached_thinking()
             except Exception as e:
                 logger.error(f"Error in handle_connect: {e}")
 
@@ -134,6 +137,15 @@ class WebSocketServer:
                 # 添加时间戳
                 thinking_data['timestamp'] = time.time()
 
+                # 缓存思考内容，便于短暂掉线后恢复
+                agent = thinking_data.get('agent', 'unknown')
+                if agent not in self.thinking_cache:
+                    self.thinking_cache[agent] = []
+                self.thinking_cache[agent].append(thinking_data.copy())
+                # 保留最近50条思考
+                if len(self.thinking_cache[agent]) > 50:
+                    self.thinking_cache[agent] = self.thinking_cache[agent][-50:]
+
                 # 广播思考过程
                 self.socketio.emit('agent_thinking', thinking_data)
 
@@ -141,6 +153,19 @@ class WebSocketServer:
 
         except Exception as e:
             logger.error(f"Error sending agent thinking: {e}")
+
+    def send_cached_thinking(self, limit_per_agent: int = 5):
+        """发送缓存的思考消息（防止掉线期间丢失）"""
+        try:
+            for agent, messages in self.thinking_cache.items():
+                if not messages:
+                    continue
+                # 只补发最近几条，避免刷屏
+                for message in messages[-limit_per_agent:]:
+                    self.socketio.emit('agent_thinking', message)
+                    logger.info(f"Sent cached thinking for agent: {agent}")
+        except Exception as e:
+            logger.error(f"Error sending cached thinking: {e}")
 
     def send_system_notification(self, notification: Dict[str, Any]):
         """发送系统通知到所有连接的客户端"""
@@ -179,6 +204,14 @@ class WebSocketServer:
             else:
                 self.status_cache.clear()
                 logger.info("Cleared all agent cache")
+        # 同步清理思考缓存
+        with self.lock:
+            if agent:
+                self.thinking_cache.pop(agent, None)
+                logger.info(f"Cleared thinking cache for agent: {agent}")
+            else:
+                self.thinking_cache.clear()
+                logger.info("Cleared all thinking cache")
 
     def get_connection_count(self):
         """获取当前连接的客户端数量"""
