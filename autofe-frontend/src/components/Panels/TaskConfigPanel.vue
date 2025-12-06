@@ -25,6 +25,27 @@
           </div>
         </div>
 
+        <!-- Comparison methods - only show on End-to-End page -->
+        <div class="mb-4" v-if="isEndToEnd">
+          <label class="form-label fw-bold">Comparison Methods (Adda always included)</label>
+          <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              :id="`cmp-panel-${method.value}`"
+              :value="method.value"
+              :checked="taskStore.config.comparisonMethods.includes(method.value)"
+              @change="toggleComparisonMethod(method.value)"
+            />
+            <label class="form-check-label" :for="`cmp-panel-${method.value}`">
+              {{ method.label }}
+            </label>
+          </div>
+          <div class="form-text">
+            Select additional comparison baselines. Adda runs by default.
+          </div>
+        </div>
+
         <div class="mb-4">
           <label for="dataset" class="form-label fw-bold">Dataset</label>
           <select
@@ -139,6 +160,26 @@ import { Settings, CheckCircle, XCircle, FileText, RotateCcw, Play } from 'lucid
 import { useTaskStore } from '@/stores/task'
 
 const taskStore = useTaskStore()
+const route = useRoute()
+const isEndToEnd = computed(() => route.path.includes('end-to-end'))
+
+const comparisonOptions = [
+  { value: 'AutoFeat', label: 'AutoFeat' },
+  { value: 'MADlib', label: 'MADlib' },
+  { value: 'CAAFE', label: 'CAAFE' },
+  { value: 'Baseline', label: 'Baseline' },
+  { value: 'PGML', label: 'PGML' }
+]
+
+function toggleComparisonMethod(method: string) {
+  const list = taskStore.config.comparisonMethods
+  const idx = list.indexOf(method)
+  if (idx >= 0) {
+    list.splice(idx, 1)
+  } else {
+    list.push(method)
+  }
+}
 
 function loadExampleConfig() {
   taskStore.config.description = `Build machine learning features to predict customer churn for a telecommunications company. The dataset contains customer demographics, usage patterns, and service information. Create features that capture customer behavior, service utilization patterns, and risk indicators for churn prediction.`

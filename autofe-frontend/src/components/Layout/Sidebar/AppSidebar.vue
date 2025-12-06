@@ -99,6 +99,24 @@
             </select>
           </div>
 
+          <!-- Comparison methods (only in End-to-End) -->
+          <div class="mb-3" v-if="showComparisonOptions">
+            <label class="form-label">Comparison Methods (Adda always included)</label>
+            <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                :id="`cmp-${method.value}`"
+                :value="method.value"
+                :checked="isComparisonSelected(method.value)"
+                @change="toggleComparisonMethod(method.value)"
+              />
+              <label class="form-check-label" :for="`cmp-${method.value}`">
+                {{ method.label }}
+              </label>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -129,6 +147,14 @@ const taskStore = useTaskStore()
 const isCollapsed = ref(false)
 const router = useRouter()
 const route = useRoute()
+
+const comparisonOptions = [
+  { value: 'AutoFeat', label: 'AutoFeat' },
+  { value: 'MADlib', label: 'MADlib' },
+  { value: 'CAAFE', label: 'CAAFE' },
+  { value: 'Baseline', label: 'Baseline' },
+  { value: 'PGML', label: 'PGML' }
+]
 
 // 折叠功能
 function toggleCollapse() {
@@ -161,6 +187,22 @@ const statusDotClass = computed(() => {
       return 'status-idle'
   }
 })
+
+const showComparisonOptions = computed(() => currentRoute.value === 'end-to-end')
+
+function toggleComparisonMethod(method: string) {
+  const list = taskStore.config.comparisonMethods
+  const idx = list.indexOf(method)
+  if (idx >= 0) {
+    list.splice(idx, 1)
+  } else {
+    list.push(method)
+  }
+}
+
+function isComparisonSelected(method: string) {
+  return taskStore.config.comparisonMethods.includes(method)
+}
 
 </script>
 

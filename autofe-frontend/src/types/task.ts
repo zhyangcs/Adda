@@ -4,6 +4,8 @@ export interface TaskConfig {
   model: string
   /** Downstream ML model used for training/evaluation (e.g., RF/XGB/LightGBM) */
   mlModel: string
+  /** Comparison methods to run alongside Adda (Adda always runs by default) */
+  comparisonMethods: string[]
 }
 
 export type TaskStatus = 'idle' | 'initializing' | 'running' | 'completed' | 'error'

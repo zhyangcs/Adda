@@ -14,12 +14,25 @@ import pandas as pd
 from typing import Dict, List, Tuple, Any
 import subprocess
 
-# 机器学习库（所有特征工程方法使用相同的模型进行评估）
+# 机器学习库（所有特征工程方法使用统一的模型进行评估，模型类型可配置）
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+# 可选模型：XGBoost / LightGBM（缺失时回退到RF）
+try:
+    from xgboost import XGBClassifier, XGBRegressor
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+
+try:
+    from lightgbm import LGBMClassifier, LGBMRegressor
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
 
 # 特征工程库 (如果可用)
 try:
@@ -75,7 +88,7 @@ warnings.filterwarnings("ignore")
 class ComparisonMethod:
     """特征工程对比方法基类"""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, model_type: str = "RF"):
         self.name = name
         self.execution_time = 0.0
         self.preprocessing_time = 0.0
@@ -83,6 +96,11 @@ class ComparisonMethod:
         self.training_time = 0.0
         self.evaluation_time = 0.0
         self.generated_features = None  # 存储生成的特征
+        self.model_type = model_type.upper() if model_type else "RF"
+
+    def set_model_type(self, model_type: str):
+        """在运行前配置下游模型类型，默认RF"""
+        self.model_type = (model_type or "RF").upper()
 
     def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
         """生成特征"""
@@ -244,13 +262,60 @@ class ComparisonMethod:
         else:
             return X_test_processed
 
-    def _train_and_evaluate_with_rf(self, X: pd.DataFrame, y: pd.Series, task_type: str) -> Dict[str, float]:
-        """使用随机森林进行训练和评估（所有方法统一使用RF）"""
+    def _build_model(self, task_type: str):
+        """根据配置的model_type构建模型；缺失依赖时回退到RF"""
+        mt = (self.model_type or "RF").upper()
+
+        if mt in ["XGB", "XGBOOST"] and XGBOOST_AVAILABLE:
+            if task_type == "classify":
+                return XGBClassifier(
+                    n_estimators=200,
+                    max_depth=6,
+                    learning_rate=0.1,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    random_state=42,
+                    eval_metric="logloss",
+                    tree_method="hist"
+                )
+            return XGBRegressor(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.1,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42,
+                tree_method="hist"
+            )
+
+        if mt in ["LIGHTGBM", "LGBM", "LGB"] and LIGHTGBM_AVAILABLE:
+            if task_type == "classify":
+                return LGBMClassifier(
+                    n_estimators=200,
+                    learning_rate=0.05,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    random_state=42
+                )
+            return LGBMRegressor(
+                n_estimators=200,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42
+            )
+
+        # 默认回退随机森林
         if task_type == "classify":
-            model = RandomForestClassifier(n_estimators=100, random_state=42)
+            return RandomForestClassifier(n_estimators=100, random_state=42)
+        return RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def _train_and_evaluate_with_rf(self, X: pd.DataFrame, y: pd.Series, task_type: str) -> Dict[str, float]:
+        """使用配置的模型进行训练和评估（默认RF）"""
+        model = self._build_model(task_type)
+        if task_type == "classify":
             scoring = 'roc_auc'
         else:
-            model = RandomForestRegressor(n_estimators=100, random_state=42)
             scoring = 'neg_mean_squared_error'
 
         # 交叉验证评估
@@ -290,10 +355,7 @@ class ComparisonMethod:
     def _train_and_evaluate_with_split(self, X_train: pd.DataFrame, X_test: pd.DataFrame,
                                       y_train: pd.Series, y_test: pd.Series, task_type: str) -> Dict[str, float]:
         """使用分离的训练集和测试集进行训练和评估（避免数据泄露）"""
-        if task_type == "classify":
-            model = RandomForestClassifier(n_estimators=100, random_state=42)
-        else:
-            model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model = self._build_model(task_type)
 
         # 训练模型
         model.fit(X_train, y_train)
@@ -350,8 +412,8 @@ class ComparisonMethod:
 class BaselineMethod(ComparisonMethod):
     """基线方法：原始特征，不做特征工程"""
 
-    def __init__(self):
-        super().__init__("Baseline (Raw Features)")
+    def __init__(self, model_type: str = "RF"):
+        super().__init__("Baseline (Raw Features)", model_type)
 
     def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
         """基线方法不生成新特征，直接返回原始特征"""
@@ -381,8 +443,8 @@ class BaselineMethod(ComparisonMethod):
 class AutoFeatMethod(ComparisonMethod):
     """AutoFeat特征工程方法"""
 
-    def __init__(self):
-        super().__init__("AutoFeat")
+    def __init__(self, model_type: str = "RF"):
+        super().__init__("AutoFeat", model_type)
         self.available = AUTOFEAT_AVAILABLE
         self.feateng_cols = []  # 存储生成的特征列名
 
@@ -1393,7 +1455,7 @@ class ComparisonEngine:
         }
 
     def run_comparison(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify",
-                      methods: List[str] = None, time_limit: int = 120) -> Dict[str, Any]:
+                      methods: List[str] = None, time_limit: int = 120, model_type: str = "RF") -> Dict[str, Any]:
         """
         运行特征工程框架对比
 
@@ -1403,6 +1465,7 @@ class ComparisonEngine:
             task_type: 任务类型 ("classify" 或 "regress")
             methods: 要对比的特征工程框架列表，None表示使用所有可用方法
             time_limit: 每个方法的时间限制（秒）
+            model_type: 下游评估模型类型 (RF/XGB/LightGBM)，默认RF
 
         Returns:
             对比结果字典
@@ -1447,6 +1510,10 @@ class ComparisonEngine:
                 continue
 
             method = self.methods[method_name]
+
+            # 设置下游模型类型
+            if hasattr(method, "set_model_type"):
+                method.set_model_type(model_type)
 
             # 检查方法是否可用
             if hasattr(method, 'available') and not method.available:
@@ -1576,7 +1643,8 @@ class ComparisonEngine:
 
 # 便利函数
 def run_comparison_from_csv(csv_path: str, target_column: str, task_type: str = "classify",
-                          methods: List[str] = None, time_limit: int = 120, db_config=None) -> Dict[str, Any]:
+                          methods: List[str] = None, time_limit: int = 120, db_config=None,
+                          model_type: str = "RF") -> Dict[str, Any]:
     """
     从CSV文件运行特征工程框架对比
 
@@ -1603,7 +1671,7 @@ def run_comparison_from_csv(csv_path: str, target_column: str, task_type: str = 
 
     # 运行对比
     engine = ComparisonEngine(db_config)
-    return engine.run_comparison(X, y, task_type, methods, time_limit)
+    return engine.run_comparison(X, y, task_type, methods, time_limit, model_type)
 
 
 def install_dependencies():

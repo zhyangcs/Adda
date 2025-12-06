@@ -271,10 +271,7 @@ def auto_step():
             data = json.loads(request.data) if request.data else {}
             ml_model_type = data.get('ml_model_type', data.get('mlModel', 'RF'))
 
-        # 可选参数 - 修复参数解析逻辑
-        # default_methods = ["Adda", "CAAFE", "AutoFeat", "MADlib"]
-        # default_methods = ["Adda", "MADlib", "AutoFeat"]
-        # default_methods = ["Adda", "CAAFE", "MADlib"]
+        # 可选参数 - 对比方法列表（始终包含Adda）
         default_methods = ["Adda", "CAAFE", "MADlib"]
 
         if request.form:
@@ -312,6 +309,10 @@ def auto_step():
                 comparison_methods = default_methods
         except (json.JSONDecodeError, TypeError):
             comparison_methods = default_methods
+
+        # 确保Adda在对比列表中（Adda不是可选对比项，默认包含）
+        if "Adda" not in comparison_methods:
+            comparison_methods.insert(0, "Adda")
 
         # paper_metrics 总是启用，固定使用 top-7
         paper_top_k = 7

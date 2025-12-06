@@ -174,6 +174,7 @@ class APIService {
       formData.append('dataset', datasetMap[config.dataset] || config.dataset)
       formData.append('model', modelMap[config.model] || config.model)
       formData.append('ml_model_type', config.mlModel || 'RF')
+      formData.append('comparison_methods', JSON.stringify(config.comparisonMethods || []))
 
       const response = await fetch(`${this.baseURL}/auto-step/`, {
         method: 'POST',
