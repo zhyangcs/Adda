@@ -51,12 +51,20 @@ const featureTreeStore = useFeatureTreeStore()
 const treeContainer = ref<HTMLElement>()
 const isPerformanceLoading = ref(false)
 
+// 缩放行为引用（滚轮/拖拽），以及当前变换（用于保持用户缩放/平移）
+let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
+let svgRootSelection: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
+let currentTransform: d3.ZoomTransform = d3.zoomIdentity
+let hasUserTransform = false
+
 // D3.js 树形图渲染
 function renderTree(treeStructure: any) {
   if (!treeContainer.value) return
 
   // 清空容器
   d3.select(treeContainer.value).selectAll("*").remove()
+  zoomBehavior = null
+  svgRootSelection = null
 
   let { root_id, parent_child_relations, node_info } = treeStructure
   const selectedNodeId = featureTreeStore.selectedNode?.node_id
@@ -165,7 +173,7 @@ function renderD3Tree(data: any) {
   const translateY = margin.top - yMin
 
   // 创建SVG容器
-  const svgRoot = d3.select(treeContainer.value)
+  svgRootSelection = d3.select(treeContainer.value)
     .append("svg")
     .attr("width", "100%")
     .attr("height", "100%")
@@ -173,15 +181,29 @@ function renderD3Tree(data: any) {
     .attr("preserveAspectRatio", "xMidYMid meet")
 
   // 平移到居中位置
-  const translatedGroup = svgRoot.append("g")
-    .attr("transform", `translate(${translateX}, ${translateY})`)
+  const zoomGroup = svgRootSelection.append("g")
+    .attr("transform", `translate(${translateX}, ${translateY}) scale(${scale})`)
 
-  // 如需缩放则在内层套一层 scale
-  const svg = needsScale
-    ? translatedGroup.append("g").attr("transform", `scale(${scale})`)
-    : translatedGroup
+  // 设置缩放行为（包含拖拽平移）
+  zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.4, 3])
+    .on("zoom", (event) => {
+      zoomGroup.attr("transform", event.transform)
+      currentTransform = event.transform
+      hasUserTransform = true
+    })
+
+  const initialTransform = hasUserTransform
+    ? currentTransform
+    : d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+  svgRootSelection
+    .call(zoomBehavior as any)
+    .call(zoomBehavior!.transform as any, initialTransform)
+  currentTransform = initialTransform
 
   // 绘制连接线 (曲线更美观)
+  const svg = zoomGroup
+
   svg.selectAll(".link")
     .data(root.links())
     .enter()
