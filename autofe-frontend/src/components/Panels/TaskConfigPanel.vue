@@ -65,6 +65,24 @@
           </div>
         </div>
 
+        <div class="mb-4">
+          <label for="mlModel" class="form-label fw-bold">Downstream ML Model</label>
+          <select
+            id="mlModel"
+            v-model="taskStore.config.mlModel"
+            class="form-select"
+            required
+          >
+            <option selected disabled value="">Choose ML model for training</option>
+            <option value="RF">Random Forest (RF)</option>
+            <option value="XGB">XGBoost (XGB)</option>
+            <option value="LightGBM">LightGBM</option>
+          </select>
+          <div class="form-text">
+            Choose the downstream ML model used for training/evaluation.
+          </div>
+        </div>
+
         <div class="alert alert-info d-flex align-items-start mt-4" role="alert">
           <Play :size="18" class="me-2 flex-shrink-0" />
           <div class="small text-start">
@@ -126,12 +144,14 @@ function loadExampleConfig() {
   taskStore.config.description = `Build machine learning features to predict customer churn for a telecommunications company. The dataset contains customer demographics, usage patterns, and service information. Create features that capture customer behavior, service utilization patterns, and risk indicators for churn prediction.`
   taskStore.config.dataset = '3'
   taskStore.config.model = '2'
+  taskStore.config.mlModel = 'RF'
 }
 
 function resetConfig() {
   taskStore.config.description = ''
   taskStore.config.dataset = '2'
   taskStore.config.model = '2'
+  taskStore.config.mlModel = 'RF'
 }
 </script>
 

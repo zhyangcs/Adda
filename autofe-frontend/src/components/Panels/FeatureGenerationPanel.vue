@@ -213,7 +213,7 @@ onMounted(() => {
 })
 
 function goToTaskConfig() {
-  workspaceStore.switchPanel('TaskConfigPanel')
+  taskStore.addNotification('Please configure the task in the left Task Configuration panel', 'info')
 }
 
 async function handleNextStep() {
@@ -234,7 +234,7 @@ async function handleNextStep() {
 async function handleTestPerformance() {
   isPerformanceLoading.value = true
   try {
-    const success = await featureTreeStore.testPerformance()
+    const success = await featureTreeStore.testPerformance(taskStore.config.mlModel)
     if (success) {
       taskStore.addNotification('Performance test completed', 'success')
     } else {
@@ -280,7 +280,7 @@ function renderTree(treeStructure: any) {
   }, {})
 
   // 构建树结构
-  function buildTree(rootId: string, relations: [string, string][], nodeInfoMap: any) {
+  function buildTree(rootId: string, relations: Array<[string, string]>, nodeInfoMap: any) {
     const tree = {
       id: rootId,
       ...nodeInfoMap[rootId],
@@ -289,7 +289,7 @@ function renderTree(treeStructure: any) {
     }
     const nodeMap: { [key: string]: any } = { [rootId]: tree }
 
-    parent_child_relations.forEach(([parent_id, child_id]) => {
+    parent_child_relations.forEach(([parent_id, child_id]: [string, string]) => {
       const parentNode = nodeMap[parent_id]
       const childNode = {
         id: child_id,
@@ -335,9 +335,10 @@ function renderD3Tree(data: any) {
     .enter()
     .append("path")
     .attr("class", "link")
-    .attr("d", d3.linkVertical()
+    // 类型告警：d3 提供的Link类型与ts定义不完全匹配，显式断言
+    .attr("d", d3.linkVertical<any, any>()
       .x((d: any) => d.x)
-      .y((d: any) => d.y))
+      .y((d: any) => d.y) as any)
 
   // 创建节点组
   const nodes = svg.selectAll(".node")

@@ -8,7 +8,8 @@ export const useTaskStore = defineStore('task', () => {
   const config = ref<TaskConfig>({
     description: '',
     dataset: '2',
-    model: '2'
+    model: '2',
+    mlModel: 'RF'
   })
 
   const status = ref<TaskStatus>('idle')
@@ -82,7 +83,8 @@ export const useTaskStore = defineStore('task', () => {
         config.value = {
           description: '',
           dataset: '2',
-          model: '2'
+          model: '2',
+          mlModel: 'RF'
         }
         status.value = 'idle'
         isInitialized.value = false
@@ -140,7 +142,8 @@ export const useTaskStore = defineStore('task', () => {
           description: config.value.description,
           descriptionLength: config.value.description?.length || 0,
           dataset: config.value.dataset,
-          model: config.value.model
+        model: config.value.model,
+        mlModel: config.value.mlModel
         })
       }
 

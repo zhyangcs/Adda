@@ -33,6 +33,26 @@
             ></textarea>
           </div>
 
+          <div class="workflow-toggle mb-3">
+            <label class="form-label">Workflow</label>
+            <div class="workflow-buttons">
+              <button
+                class="workflow-btn"
+                :class="{ active: currentRoute === 'step-by-step' }"
+                @click="navigateTo('step-by-step')"
+              >
+                Step-by-Step
+              </button>
+              <button
+                class="workflow-btn"
+                :class="{ active: currentRoute === 'end-to-end' }"
+                @click="navigateTo('end-to-end')"
+              >
+                End-to-End
+              </button>
+            </div>
+          </div>
+
           <!-- 数据集选择 -->
           <div class="mb-3">
             <label class="form-label">Dataset</label>
@@ -65,6 +85,20 @@
             </select>
           </div>
 
+          <!-- 下游ML模型选择 -->
+          <div class="mb-3">
+            <label class="form-label">Downstream ML Model</label>
+            <select
+              v-model="taskStore.config.mlModel"
+              class="form-select form-select-sm"
+            >
+              <option value="" disabled>Select ML Model</option>
+              <option value="RF">Random Forest (RF)</option>
+              <option value="XGB">XGBoost (XGB)</option>
+              <option value="LightGBM">LightGBM</option>
+            </select>
+          </div>
+
         </div>
       </div>
 
@@ -89,13 +123,27 @@
 import { computed, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
+import { useRoute, useRouter } from 'vue-router'
 
 const taskStore = useTaskStore()
 const isCollapsed = ref(false)
+const router = useRouter()
+const route = useRoute()
 
 // 折叠功能
 function toggleCollapse() {
   isCollapsed.value = !isCollapsed.value
+}
+
+const currentRoute = computed(() => {
+  const path = route.path
+  if (path === '/step-by-step') return 'step-by-step'
+  if (path === '/end-to-end') return 'end-to-end'
+  return 'step-by-step'
+})
+
+function navigateTo(routeName: string) {
+  router.push(`/${routeName}`)
 }
 
 const statusDotClass = computed(() => {
@@ -316,6 +364,43 @@ const statusDotClass = computed(() => {
   font-weight: 600;
   margin-bottom: 0.5rem;
   font-size: var(--font-size-base);
+}
+
+.workflow-buttons {
+  display: flex;
+  gap: 0.5rem;
+  background-color: #f8fafc;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+}
+
+.workflow-btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background-color: transparent;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.workflow-btn:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+.workflow-btn.active {
+  background-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.workflow-btn.active:hover {
+  background-color: #2563eb;
 }
 
 /* 标签页样式 */

@@ -66,3 +66,5 @@ cd demo && python app.py  # Runs on localhost:5000
 - **SQL**: `/test/store/{dataset}_{model}_Full/pipe_*/*.sql`
 - **Models**: `/src/clib/models/*.pkl`
 - **Visualizations**: `/test/store/{dataset}_{model}_Full/graph/*.png`
+
+- Frontend UI must not display Chinese text; use English-only user-facing strings.

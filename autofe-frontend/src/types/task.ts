@@ -2,6 +2,8 @@ export interface TaskConfig {
   description: string
   dataset: string
   model: string
+  /** Downstream ML model used for training/evaluation (e.g., RF/XGB/LightGBM) */
+  mlModel: string
 }
 
 export type TaskStatus = 'idle' | 'initializing' | 'running' | 'completed' | 'error'

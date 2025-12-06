@@ -264,6 +264,13 @@ def auto_step():
             data = json.loads(request.data) if request.data else {}
             model = data.get('model_type', 'RF')  # 支持model_type或model参数
 
+        # 下游ML模型类型（非LLM）
+        if request.form:
+            ml_model_type = request.form.get('ml_model_type', 'RF')
+        else:
+            data = json.loads(request.data) if request.data else {}
+            ml_model_type = data.get('ml_model_type', data.get('mlModel', 'RF'))
+
         # 可选参数 - 修复参数解析逻辑
         # default_methods = ["Adda", "CAAFE", "AutoFeat", "MADlib"]
         # default_methods = ["Adda", "MADlib", "AutoFeat"]
@@ -309,7 +316,7 @@ def auto_step():
         # paper_metrics 总是启用，固定使用 top-7
         paper_top_k = 7
 
-        print(f"Starting end-to-end execution: dataset={dataset}, model={model}, depth={max_search_depth}")
+        print(f"Starting end-to-end execution: dataset={dataset}, model={model}, ml_model={ml_model_type}, depth={max_search_depth}")
 
         # 初始化时间记录变量
         astar_time_data = None
@@ -579,7 +586,7 @@ def auto_step():
                 print("Starting performance testing...")
 
                 # 修复LLM/ML模型混淆问题：model是LLM模型，ml_model_type才是ML模型
-                ml_model_type = "RF"  # 默认使用RF作为ML模型类型
+                ml_model_type = ml_model_type if ml_model_type else "RF"  # 默认使用RF作为ML模型类型
                 print(f"Debug: Performance test with task_name={task_name}, LLM model={model}, ML model={ml_model_type}")
 
                 # 检查pickle文件是否存在
@@ -623,14 +630,14 @@ def auto_step():
                         response_data["data"]["performance_metrics"] = {
                             "auc": 0.0,
                             "execution_time": 0.0,
-                            "model_type": model,
+                            "model_type": ml_model_type,
                             "method": "skipped",
                             "error": "所有特征管道都无效"
                         }
                         response_data["data"]["training_result"] = {
                             "success": False,
                             "message": "特征搜索完成，但所有生成的特征管道都无效。请检查数据质量。",
-                            "model_type": model,
+                            "model_type": ml_model_type,
                             "method": "skipped"
                         }
 
@@ -662,7 +669,7 @@ def auto_step():
                             response_data["data"]["performance_metrics"] = {
                                 "auc": auc,
                                 "execution_time": exec_time,
-                                "model_type": performance_result.get("model_type", model),
+                                "model_type": performance_result.get("model_type", ml_model_type),
                                 "task_name": performance_result.get("task_name", task_name),
                                 "task_type": performance_result.get("task_type", task_type),
                                 "row_num": performance_result.get("row_num", 0),
@@ -704,7 +711,7 @@ def auto_step():
                             response_data["data"]["training_result"] = {
                                 "success": True,
                                 "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
-                                "model_type": model,
+                                "model_type": ml_model_type,
                                 "method": "in_database_ml"
                             }
 
@@ -869,14 +876,14 @@ def auto_step():
                             response_data["data"]["performance_metrics"] = {
                                 "auc": 0.0,
                                 "execution_time": 0.0,
-                                "model_type": model,
+                                "model_type": ml_model_type,
                                 "method": "error",
                                 "error": error_msg
                             }
                             response_data["data"]["training_result"] = {
                                 "success": False,
                                 "message": f"性能测试失败: {error_msg}",
-                                "model_type": model,
+                                "model_type": ml_model_type,
                                 "method": "error"
                             }
 
@@ -886,14 +893,14 @@ def auto_step():
                 response_data["data"]["performance_metrics"] = {
                     "auc": 0.0,
                     "execution_time": 0.0,
-                    "model_type": model,
+                    "model_type": ml_model_type,
                     "method": "exception",
                     "error": error_msg
                 }
                 response_data["data"]["training_result"] = {
                     "success": False,
                     "message": error_msg,
-                    "model_type": model,
+                    "model_type": ml_model_type,
                     "method": "exception"
                 }
 

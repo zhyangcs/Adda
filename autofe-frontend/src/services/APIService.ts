@@ -67,6 +67,7 @@ class APIService {
 
     formData.append('dataset', datasetMap[config.dataset] || config.dataset)
     formData.append('model', modelMap[config.model] || config.model)
+    formData.append('ml_model_type', config.mlModel || 'RF')
 
     const response = await fetch(`${this.baseURL}/check-format/`, {
       method: 'POST',
@@ -85,8 +86,12 @@ class APIService {
     return this.post('/next-step/', undefined, 15 * 60 * 1000)
   }
 
-  async testPerformance(nodeIds: string[]): Promise<PerformanceResponse> {
-    return this.post('/test-performance/', { selectedNodeIds: nodeIds })
+  async testPerformance(nodeIds: string[], modelType?: string, useInDbMl: boolean = true): Promise<PerformanceResponse> {
+    return this.post('/test-performance/', {
+      selectedNodeIds: nodeIds,
+      modelType: modelType || 'RF',
+      useInDbMl
+    })
   }
 
   async generateModel(nodeIds: string[]): Promise<Blob> {
@@ -168,6 +173,7 @@ class APIService {
 
       formData.append('dataset', datasetMap[config.dataset] || config.dataset)
       formData.append('model', modelMap[config.model] || config.model)
+      formData.append('ml_model_type', config.mlModel || 'RF')
 
       const response = await fetch(`${this.baseURL}/auto-step/`, {
         method: 'POST',

@@ -91,11 +91,11 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     }
   }
 
-  async function testPerformance(): Promise<boolean> {
+  async function testPerformance(modelType?: string): Promise<boolean> {
     if (!hasSelection.value) return false
 
     try {
-      const response = await apiService.testPerformance(selectedNodeIds.value)
+      const response = await apiService.testPerformance(selectedNodeIds.value, modelType)
       if (response.status === 'success') {
         performance.value = response.message
         return true

@@ -347,7 +347,8 @@ const runEndToEndExecution = async () => {
       description: taskStore.config.description,
       descriptionLength: taskStore.config.description?.length || 0,
       dataset: taskStore.config.dataset,
-      model: taskStore.config.model
+    model: taskStore.config.model,
+    mlModel: taskStore.config.mlModel
     })
 
     // 检查配置是否有效
@@ -467,7 +468,8 @@ onMounted(() => {
     description: taskStore.config.description,
     descriptionLength: taskStore.config.description?.length || 0,
     dataset: taskStore.config.dataset,
-    model: taskStore.config.model
+    model: taskStore.config.model,
+    mlModel: taskStore.config.mlModel
   })
 
   // 检查任务状态
@@ -496,6 +498,8 @@ onUnmounted(() => {
   --font-size-md: 1.25rem;
   --font-size-lg: 1.5rem;
   --font-size-xl: 2rem;
+  --font-size-2xl: 2.35rem;
+  --font-size-3xl: 2.7rem;
   --spacing-md: 0.65rem;
   --spacing-lg: 0.95rem;
   --accent-blue: #2a7de1;
@@ -747,6 +751,12 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   padding: 0;
+}
+
+:deep(.panel-title) {
+  font-size: var(--font-size-lg) !important;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 :deep(.card),

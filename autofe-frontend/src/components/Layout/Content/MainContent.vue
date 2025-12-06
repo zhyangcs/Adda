@@ -860,7 +860,9 @@ async function testPerformance(selectedNodeIds?: string[]) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        selectedNodeIds: nodeIds
+        selectedNodeIds: nodeIds,
+        modelType: taskStore.config.mlModel || 'RF',
+        useInDbMl: true
       })
     })
 
@@ -941,6 +943,8 @@ function handleRefreshData() {
   --font-size-md: 1.25rem;
   --font-size-lg: 1.5rem;
   --font-size-xl: 1.9rem;
+  --font-size-2xl: 2.25rem;
+  --font-size-3xl: 2.5rem;
   --spacing-md: 0.7rem;
   --spacing-lg: 1rem;
   --spacing-xl: 1.35rem;
@@ -1073,7 +1077,7 @@ function handleRefreshData() {
   flex-direction: column;
   font-weight: 600;
   color: #0f172a;
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
 }
 
 .chat-panel-title small {
@@ -1376,7 +1380,7 @@ function handleRefreshData() {
   margin: 0;
   display: flex;
   align-items: center;
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-2xl);
 }
 
 .info-card {
@@ -1400,7 +1404,7 @@ function handleRefreshData() {
   color: var(--text-primary);
   font-weight: 600;
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
 }
 
 .info-content {
