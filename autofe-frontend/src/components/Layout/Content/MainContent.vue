@@ -135,15 +135,6 @@
                   </div>
                 </div>
                 <div class="agent-chat-panel">
-                  <div class="chat-panel-header">
-                    <div class="chat-panel-icon">
-                      <Bot :size="18" />
-                    </div>
-                    <div class="chat-panel-title">
-                      <span>Live Agent Feed</span>
-                      <small>Streaming thinking updates</small>
-                    </div>
-                  </div>
                   <div class="chat-panel-body" ref="chatListRef">
                     <div v-if="!chatMessages.length" class="chat-empty-state">
                       Agent thinking updates will appear here in real time.
@@ -1051,6 +1042,7 @@ function handleRefreshData() {
   padding: calc(var(--spacing-md) * 0.95);
   box-shadow: none;
   height: 100%;
+  overflow: hidden; /* 保持内部滚动，不让整体跟随拉长 */
 }
 
 .chat-panel-header {
@@ -1088,9 +1080,10 @@ function handleRefreshData() {
 
 .chat-panel-body {
   flex: 1;
-  margin-top: 0.75rem;
+  margin-top: 0;
   overflow-y: auto;
   padding-right: 0.25rem;
+  max-height: 100%;
 }
 
 .chat-empty-state {

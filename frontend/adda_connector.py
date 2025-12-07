@@ -440,7 +440,7 @@ class AddaConnector:
                 "op_type": "root",
                 "score": root_score,
                 "exec_time": root_exec_time,
-                "operation_desc": "特征树根节点"
+                "operation_desc": "root node"
             }],
             "cur_selected_idx": []  # 新增必填字段
         }
