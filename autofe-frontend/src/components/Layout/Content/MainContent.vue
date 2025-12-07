@@ -1395,7 +1395,7 @@ function handleRefreshData() {
 
 .info-title {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
   font-size: var(--font-size-lg);
 }

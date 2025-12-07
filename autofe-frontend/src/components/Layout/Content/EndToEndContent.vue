@@ -758,9 +758,13 @@ onUnmounted(() => {
 }
 
 :deep(.panel-title) {
-  font-size: var(--font-size-lg) !important;
+  font-size: 1.5rem !important;
   font-weight: 700;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.1;
 }
 
 :deep(.card),
@@ -774,10 +778,42 @@ onUnmounted(() => {
 :deep(.card-header),
 :deep(.panel-header),
 :deep(.section-header) {
-  margin: 0 0 0.65rem 0;
-  padding: 0 0 0.45rem 0;
+  margin: 0;
+  padding: 10px 14px;
   border-bottom: 2px solid var(--accent-blue);
   background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 54px;
+  min-height: 54px;
+  box-sizing: border-box;
+}
+
+:deep(.panel-actions) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+:deep(.panel-actions > *) {
+  display: flex;
+  align-items: center;
+}
+
+:deep(.panel-actions .tab-navigation),
+:deep(.panel-actions .metric-toggle),
+:deep(.panel-actions .unit-toggle) {
+  min-height: 40px;
+  height: 40px;
+  align-items: center;
+  box-shadow: none;
+  background: #f7f9fc;
+  border: 1px solid var(--border-color);
+  padding: 4px 6px;
+  border-radius: 8px;
 }
 
 /* 特定区域样式 */

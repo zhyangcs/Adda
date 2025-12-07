@@ -21,13 +21,6 @@
         <div class="action-buttons">
           <button
             class="btn-icon"
-            @click="exportData"
-            title="Export importance data"
-          >
-            <i class="bi bi-download"></i>
-          </button>
-          <button
-            class="btn-icon"
             @click="toggleFullscreen"
             title="Toggle fullscreen"
           >
@@ -408,24 +401,6 @@ const toggleFullscreen = () => {
   }, 100)
 }
 
-const exportData = () => {
-  const data = {
-    selectedMethod: selectedMethod.value,
-    features: currentFeatures.value,
-    timestamp: new Date().toISOString()
-  }
-
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `feature-importance-${selectedMethod.value}-${Date.now()}.json`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
 // 响应式处理
 const handleResize = () => {
   if (barChartRef.value) {
@@ -558,6 +533,8 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
+  min-height: 54px;
+  gap: 12px;
   border-bottom: 2px solid var(--accent-blue, #2a7de1);
   background: transparent;
   flex-shrink: 0;
@@ -566,16 +543,16 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 .panel-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 10px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .action-buttons {
@@ -627,10 +604,12 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   background: #f7f9fc;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 2px;
-  gap: 4px;
+  padding: 4px 6px;
+  gap: 6px;
   flex-shrink: 0;
   overflow-x: auto;
+  min-height: 40px;
+  box-shadow: none;
 }
 
 .importance-tabs.header-tabs {

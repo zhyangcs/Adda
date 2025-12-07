@@ -369,7 +369,7 @@ onMounted(() => {
 }
 
 .info-header {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 2px solid var(--accent-blue, #2a7de1);
   background-color: transparent;
   border-radius: 12px 12px 0 0;
@@ -377,7 +377,7 @@ onMounted(() => {
 
 .info-title {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
   font-size: var(--font-size-lg);
   display: flex;

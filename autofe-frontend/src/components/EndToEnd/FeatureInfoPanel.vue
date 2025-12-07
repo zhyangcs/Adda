@@ -180,7 +180,6 @@ const formatSqlCode = () => {
   height: 100%;
   overflow: hidden;
   position: relative;
-  min-width: 0; /* prevent long code line from expanding layout */
 }
 
 .panel-header {
@@ -188,24 +187,26 @@ const formatSqlCode = () => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
+  min-height: 54px;
   border-bottom: 2px solid var(--accent-blue, #2a7de1);
   background: transparent;
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .panel-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 10px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .action-buttons {
@@ -248,7 +249,6 @@ const formatSqlCode = () => {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-  min-width: 0;
 }
 
 .panel-content.fullscreen {
@@ -268,19 +268,25 @@ const formatSqlCode = () => {
   background: #f7f9fc;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 2px;
-  gap: 4px;
+  padding: 4px 6px;
+  gap: 6px;
   flex-shrink: 0;
+  min-height: 40px;
+  box-shadow: none;
 }
 
 .tab-navigation.header-tabs {
   border-bottom: none;
+  height: 40px;
+  align-items: center;
+  padding: 4px 6px;
 }
 
 .tab-button {
   background: none;
   border: none;
   padding: 8px 12px;
+  min-height: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -289,6 +295,7 @@ const formatSqlCode = () => {
   font-size: 14px;
   font-weight: 500;
   border-radius: 6px;
+  line-height: 1.2;
   transition: all 0.2s ease;
 }
 
@@ -307,7 +314,6 @@ const formatSqlCode = () => {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  min-width: 0;
 }
 
 .content-section {
@@ -366,7 +372,6 @@ const formatSqlCode = () => {
   flex: 1;
   font-size: 18px;
   line-height: 1.5;
-  max-width: 100%;
 }
 
 .code-block code {
@@ -377,7 +382,6 @@ const formatSqlCode = () => {
   white-space: pre;
   overflow-x: auto;
   font-size: 22px;
-  word-break: break-word; /* allow very long tokens to wrap instead of forcing layout */
 }
 
 /* 语法高亮（简单版本） */

@@ -438,6 +438,8 @@ watch(() => props.performanceData, () => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
+  min-height: 54px;
+  gap: 12px;
   border-bottom: 2px solid var(--accent-blue, #2a7de1);
   background: transparent;
   flex-shrink: 0;
@@ -446,24 +448,27 @@ watch(() => props.performanceData, () => {
 .panel-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 10px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .metric-toggle {
   display: flex;
+  align-items: center;
   background: #f7f9fc;
-  border-radius: 6px;
-  padding: 2px;
-  border: none;
+  border-radius: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-color);
+  min-height: 40px;
+  box-shadow: none;
 }
 
 .metric-btn {
