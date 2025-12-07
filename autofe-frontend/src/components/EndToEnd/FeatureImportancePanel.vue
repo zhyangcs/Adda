@@ -6,38 +6,38 @@
         Feature Importance Analysis
       </div>
       <div class="panel-actions">
-        <button
-          class="btn-icon"
-          @click="exportData"
-          title="Export importance data"
-        >
-          <i class="bi bi-download"></i>
-        </button>
-        <button
-          class="btn-icon"
-          @click="toggleFullscreen"
-          title="Toggle fullscreen"
-        >
-          <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'"></i>
-        </button>
+        <div class="importance-tabs header-tabs">
+          <button
+            v-for="tab in importanceTabs"
+            :key="tab.key"
+            class="tab-button"
+            :class="{ active: selectedMethod === tab.key }"
+            @click="setSelectedMethod(tab.key)"
+          >
+            <i :class="tab.icon"></i>
+            {{ tab.label }}
+          </button>
+        </div>
+        <div class="action-buttons">
+          <button
+            class="btn-icon"
+            @click="exportData"
+            title="Export importance data"
+          >
+            <i class="bi bi-download"></i>
+          </button>
+          <button
+            class="btn-icon"
+            @click="toggleFullscreen"
+            title="Toggle fullscreen"
+          >
+            <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'"></i>
+          </button>
+        </div>
       </div>
     </div>
 
     <div class="panel-content" :class="{ 'fullscreen': isFullscreen }">
-      <!-- 重要性指标选择 -->
-      <div class="importance-tabs">
-        <button
-          v-for="tab in importanceTabs"
-          :key="tab.key"
-          class="tab-button"
-          :class="{ active: selectedMethod === tab.key }"
-          @click="setSelectedMethod(tab.key)"
-        >
-          <i :class="tab.icon"></i>
-          {{ tab.label }}
-        </button>
-      </div>
-
       <!-- 可视化内容 -->
       <div class="visualization-container">
         <!-- Paper Metrics 视图 -->
@@ -127,7 +127,7 @@
         </div>
 
         <!-- 条形图视图 -->
-        <div v-else-if="selectedMethod !== 'radar'" class="bar-chart-container">
+        <div v-else class="bar-chart-container">
           <div ref="barChartRef" class="bar-chart"></div>
 
           <!-- 特征排名表格 -->
@@ -170,36 +170,6 @@
           </div>
         </div>
 
-        <!-- 雷达图视图 -->
-        <div v-else class="radar-chart-container">
-          <div ref="radarChartRef" class="radar-chart"></div>
-
-          <!-- 方法对比表格 -->
-          <div class="method-comparison">
-            <div class="comparison-header">
-              <h6>Method Comparison</h6>
-            </div>
-            <div class="comparison-table">
-              <div class="table-header">
-                <div class="header-cell">Feature</div>
-                <div class="header-cell" v-for="method in ['SHAP', 'IG', 'RFE', 'FI']" :key="method">
-                  {{ method }}
-                </div>
-              </div>
-              <div
-                v-for="feature in topFeatures"
-                :key="feature.name"
-                class="table-row"
-              >
-                <div class="cell feature-cell">{{ feature.name }}</div>
-                <div class="cell">{{ getRawFeatureImportance('shap', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getRawFeatureImportance('ig', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getRawFeatureImportance('rfe', feature.name).toFixed(3) }}</div>
-                <div class="cell">{{ getRawFeatureImportance('fi', feature.name).toFixed(3) }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       </div>
@@ -216,27 +186,35 @@ const props = defineProps<{
 }>()
 
 const barChartRef = ref<HTMLElement>()
-const radarChartRef = ref<HTMLElement>()
-const selectedMethod = ref<'shap' | 'ig' | 'rfe' | 'fi' | 'radar' | 'paper'>('paper')
-const isFullscreen = ref(false)
+
+type ImportanceMethod = 'shap' | 'ig' | 'rfe' | 'fi'
 
 const importanceTabs = [
-  { key: 'paper', label: 'Paper Analysis', icon: 'bi bi-journal-text' },
+  { key: 'paper', label: 'Top-7', icon: 'bi bi-journal-text' },
   { key: 'shap', label: 'SHAP', icon: 'bi bi-lightning' },
-  { key: 'ig', label: 'Integrated Gradients', icon: 'bi bi-graph-up' },
+  { key: 'ig', label: 'IG', icon: 'bi bi-graph-up' },
   { key: 'rfe', label: 'RFE', icon: 'bi bi-arrow-repeat' },
-  { key: 'fi', label: 'Feature Importance', icon: 'bi bi-star' },
-  { key: 'radar', label: 'Compare All', icon: 'bi bi-diagram-3' }
-]
+  { key: 'fi', label: 'FI', icon: 'bi bi-star' }
+] as const
+
+type ImportanceTab = typeof importanceTabs[number]
+type ImportanceTabKey = ImportanceTab['key']
+
+const selectedMethod = ref<ImportanceTabKey>('paper')
+const isFullscreen = ref(false)
 
 let barSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
-let radarSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 
-const currentFeatures = computed(() => {
-  if (!props.importanceData || selectedMethod.value === 'radar' || selectedMethod.value === 'paper') {
+const getFeatures = (method: ImportanceMethod): FeatureImportance[] => {
+  if (!props.importanceData) return []
+  return props.importanceData[method] || []
+}
+
+const currentFeatures = computed<FeatureImportance[]>(() => {
+  if (!props.importanceData || selectedMethod.value === 'paper') {
     return []
   }
-  return props.importanceData[selectedMethod.value as keyof ImportanceData] || []
+  return getFeatures(selectedMethod.value as ImportanceMethod)
 })
 
 const maxImportance = computed(() => {
@@ -244,26 +222,6 @@ const maxImportance = computed(() => {
   const values = currentFeatures.value.map(f => f.importance)
   return Math.max(...values, 1)
 })
-
-const topFeatures = computed(() => {
-  if (!props.importanceData) return []
-
-  // 获取所有方法的前5个特征的并集
-  const allFeatures = new Set<string>()
-
-  Object.values(props.importanceData).forEach(features => {
-    features.slice(0, 5).forEach(f => allFeatures.add(f.feature))
-  })
-
-  return Array.from(allFeatures).slice(0, 8).map(name => ({
-    name,
-    shap: getRawFeatureImportance('shap', name),
-    ig: getRawFeatureImportance('ig', name),
-    rfe: getRawFeatureImportance('rfe', name),
-    fi: getRawFeatureImportance('fi', name)
-  }))
-})
-
 
 // Paper Metrics 相关计算属性
 const paperMetrics = computed(() => {
@@ -274,24 +232,22 @@ const hasPaperMetrics = computed(() => {
   return paperMetrics.value && paperMetrics.value.success
 })
 
-
 // 获取方法在Top-K中的表现
-const getMethodTopKPerformance = (method: keyof typeof paperMetrics.value.top_k_analysis) => {
-  if (!hasPaperMetrics.value) return null
-  const analysis = paperMetrics.value!.top_k_analysis[method]
+const getMethodTopKPerformance = (method: keyof PaperMetrics['top_k_analysis']) => {
+  if (!hasPaperMetrics.value || !paperMetrics.value?.top_k_analysis) return null
+  const analysis = paperMetrics.value.top_k_analysis[method]
   return analysis || null
 }
 
-
 const getFeatureImportance = (method: keyof ImportanceData, featureName: string): number => {
   if (!props.importanceData) return 0
-  const feature = props.importanceData[method].find(f => f.feature === featureName)
+  const feature = getFeatures(method as ImportanceMethod).find(f => f.feature === featureName)
   return feature ? feature.importance : 0
 }
 
 const getRawFeatureImportance = (method: keyof ImportanceData, featureName: string): number => {
   if (!props.importanceData) return 0
-  const feature = props.importanceData[method].find(f => f.feature === featureName)
+  const feature = getFeatures(method as ImportanceMethod).find(f => f.feature === featureName)
   return feature ? (feature.rawImportance || feature.importance) : 0
 }
 
@@ -308,24 +264,36 @@ const getRankClass = (index: number): string => {
 }
 
 
-const setSelectedMethod = (method: 'shap' | 'ig' | 'rfe' | 'fi' | 'radar' | 'paper') => {
+const bestPerformingMethod = computed(() => {
+  if (!hasPaperMetrics.value || !paperMetrics.value?.top_k_analysis) return null
+  const entries = Object.entries(paperMetrics.value.top_k_analysis)
+  if (!entries.length) return null
+  return entries.reduce<{ method: string; percentage: number } | null>((best, [method, analysis]) => {
+    if (!analysis) return best
+    const pct = analysis.percentage || 0
+    if (!best || pct > best.percentage) {
+      return { method, percentage: pct }
+    }
+    return best
+  }, null)
+})
+
+const setSelectedMethod = (method: ImportanceTabKey) => {
   selectedMethod.value = method
   nextTick(() => {
-    if (method === 'radar') {
-      createRadarChart()
-    } else if (method === 'paper') {
+    if (method === 'paper') {
       // Paper metrics不需要创建图表，只需要刷新
       console.log('Switched to paper metrics view')
       console.log('Paper metrics data:', paperMetrics.value)
       console.log('Has paper metrics:', hasPaperMetrics.value)
-    } else if (method !== 'paper' && method !== 'radar') {
+    } else {
       createBarChart()
     }
   })
 }
 
 const createBarChart = () => {
-  if (!barChartRef.value || selectedMethod.value === 'radar' || selectedMethod.value === 'paper') return
+  if (!barChartRef.value || selectedMethod.value === 'paper') return
 
   const container = barChartRef.value
   const width = container.clientWidth
@@ -433,163 +401,10 @@ const createBarChart = () => {
     .style('opacity', 1)
 }
 
-const createRadarChart = () => {
-  if (!radarChartRef.value) return
-
-  const container = radarChartRef.value
-  const size = Math.min(container.clientWidth, 300)
-  const height = size
-  const width = size
-
-  // 清除现有图表
-  d3.select(container).selectAll('*').remove()
-
-  radarSvg = d3.select(container)
-    .append('svg')
-    .attr('width', width)
-    .attr('height', height)
-
-  const g = radarSvg.append('g')
-    .attr('transform', `translate(${width / 2},${height / 2})`)
-
-  // 如果没有数据，显示空图表
-  if (topFeatures.value.length === 0) {
-    showEmptyRadarChart(g, Math.min(width, height) / 2 - 40)
-    return
-  }
-
-  const radius = Math.min(width, height) / 2 - 40
-  const angleSlice = (Math.PI * 2) / topFeatures.value.length
-
-  // 比例尺
-  const rScale = d3.scaleLinear()
-    .domain([0, 1])
-    .range([0, radius])
-
-  // 颜色
-  const colors = {
-    shap: '#007bff',
-    ig: '#28a745',
-    rfe: '#ffc107',
-    fi: '#dc3545'
-  }
-
-  // 绘制网格
-  for (let level = 1; level <= 5; level++) {
-    const levelRadius = (radius / 5) * level
-    g.append('circle')
-      .attr('r', levelRadius)
-      .style('fill', 'none')
-      .style('stroke', '#e0e0e0')
-      .style('stroke-width', '1px')
-
-    // 添加刻度标签
-    if (level === 5) {
-      g.append('text')
-        .attr('x', 5)
-        .attr('y', -levelRadius + 3)
-        .style('font-size', '10px')
-        .style('fill', '#999')
-        .text((level / 5).toFixed(1))
-    }
-  }
-
-  // 绘制轴线
-  topFeatures.value.forEach((feature, i) => {
-    const angle = angleSlice * i - Math.PI / 2
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
-
-    g.append('line')
-      .attr('x1', 0)
-      .attr('y1', 0)
-      .attr('x2', x)
-      .attr('y2', y)
-      .style('stroke', '#e0e0e0')
-      .style('stroke-width', '1px')
-
-    // 特征标签
-    const labelX = Math.cos(angle) * (radius + 20)
-    const labelY = Math.sin(angle) * (radius + 20)
-
-    g.append('text')
-      .attr('x', labelX)
-      .attr('y', labelY)
-      .style('text-anchor', 'middle')
-      .style('dominant-baseline', 'middle')
-      .style('font-size', '11px')
-      .style('fill', '#495057')
-      .text(feature.name.length > 12 ? feature.name.substring(0, 12) + '...' : feature.name)
-  })
-
-  // 绘制每个方法的数据
-  Object.entries(colors).forEach(([method, color]) => {
-    const data = topFeatures.value.map(feature => {
-      const importance = getFeatureImportance(method as keyof ImportanceData, feature.name)
-      return {
-        feature: feature.name,
-        importance: importance / maxImportance.value // 标准化
-      }
-    })
-
-    const lineGenerator = d3.lineRadial()
-      .angle((d: any, i) => i * angleSlice)
-      .radius((d: any) => rScale(d.importance))
-      .curve(d3.curveLinearClosed)
-
-    // 绘制区域
-    g.append('path')
-      .datum(data)
-      .attr('d', lineGenerator)
-      .style('fill', color)
-      .style('fill-opacity', 0.1)
-      .style('stroke', color)
-      .style('stroke-width', '2px')
-
-    // 绘制点
-    g.selectAll(`.dot-${method}`)
-      .data(data)
-      .enter().append('circle')
-      .attr('class', `dot-${method}`)
-      .attr('cx', (d: any, i) => Math.cos(i * angleSlice - Math.PI / 2) * rScale(d.importance))
-      .attr('cy', (d: any, i) => Math.sin(i * angleSlice - Math.PI / 2) * rScale(d.importance))
-      .attr('r', 4)
-      .style('fill', color)
-      .style('stroke', 'white')
-      .style('stroke-width', '1px')
-  })
-
-  // 图例
-  const legend = radarSvg.append('g')
-    .attr('transform', `translate(10, 10)`)
-
-  Object.entries(colors).forEach(([method, color], i) => {
-    const legendItem = legend.append('g')
-      .attr('transform', `translate(0, ${i * 20})`)
-
-    legendItem.append('rect')
-      .attr('width', 12)
-      .attr('height', 12)
-      .style('fill', color)
-      .style('stroke', color)
-
-    legendItem.append('text')
-      .attr('x', 16)
-      .attr('y', 9)
-      .style('font-size', '11px')
-      .style('fill', '#495057')
-      .text(method.toUpperCase())
-  })
-}
-
 const toggleFullscreen = () => {
   isFullscreen.value = !isFullscreen.value
   setTimeout(() => {
-    if (selectedMethod.value === 'radar') {
-      createRadarChart()
-    } else {
-      createBarChart()
-    }
+    createBarChart()
   }, 100)
 }
 
@@ -613,9 +428,7 @@ const exportData = () => {
 
 // 响应式处理
 const handleResize = () => {
-  if (selectedMethod.value === 'radar' && radarChartRef.value) {
-    createRadarChart()
-  } else if (selectedMethod.value !== 'radar' && barChartRef.value) {
+  if (barChartRef.value) {
     createBarChart()
   }
 }
@@ -631,11 +444,7 @@ onUnmounted(() => {
 
 watch(() => props.importanceData, () => {
   nextTick(() => {
-    if (selectedMethod.value === 'radar') {
-      createRadarChart()
-    } else {
-      createBarChart()
-    }
+    createBarChart()
   })
 }, { deep: true })
 
@@ -765,6 +574,13 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .panel-actions {
   display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -807,37 +623,45 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .importance-tabs {
   display: flex;
-  border-bottom: 2px solid var(--accent-blue, #2a7de1);
-  background: transparent;
+  align-items: center;
+  background: #f7f9fc;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 4px;
   flex-shrink: 0;
   overflow-x: auto;
+}
+
+.importance-tabs.header-tabs {
+  border-bottom: none;
 }
 
 .tab-button {
   background: none;
   border: none;
-  padding: 10px 14px;
+  padding: 8px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 500;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .tab-button:hover {
   color: var(--text-primary);
-  background: rgba(0, 123, 255, 0.05);
+  background: rgba(0, 123, 255, 0.08);
 }
 
 .tab-button.active {
-  color: var(--accent-blue, #2a7de1);
-  border-bottom-color: var(--accent-blue, #2a7de1);
-  background: rgba(42, 125, 225, 0.1);
+  color: #fff;
+  background: var(--accent-blue, #2a7de1);
+  box-shadow: none;
 }
 
 .visualization-container {
@@ -847,15 +671,13 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   padding: 16px;
 }
 
-.bar-chart-container,
-.radar-chart-container {
+.bar-chart-container {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.bar-chart,
-.radar-chart {
+.bar-chart {
   flex-shrink: 0;
 }
 

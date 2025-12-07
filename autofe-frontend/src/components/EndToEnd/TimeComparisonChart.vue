@@ -43,25 +43,10 @@
         </div>
         <div class="legend-item">
           <div class="legend-segment other-segment"></div>
-          <span>Other Processing</span>
+          <span>Feature Generation</span>
         </div>
       </div>
 
-      <!-- 统计信息 -->
-      <div class="stats-summary">
-        <div class="stat-item">
-          <span class="stat-label">Fastest Method:</span>
-          <span class="stat-value fastest-method">{{ fastestMethod }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Speed Improvement:</span>
-          <span class="stat-value speed-improvement">{{ speedImprovement }}x</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Avg. Total Time:</span>
-          <span class="stat-value">{{ averageTotalTime }}</span>
-        </div>
-      </div>
     </div>
 
     <!-- 鼠标悬停提示 -->
@@ -81,7 +66,7 @@
           <strong>{{ formatTime(tooltip.data.trainingTime) }}</strong>
         </div>
         <div class="tooltip-row">
-          <span>Processing:</span>
+          <span>Feature Generation:</span>
           <strong>{{ formatTime(tooltip.data.otherTime) }}</strong>
         </div>
         <div class="tooltip-row">
@@ -94,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import * as d3 from 'd3'
 import type { TimeData } from '@/types'
 
@@ -103,6 +88,7 @@ const props = defineProps<{
 }>()
 
 const chartRef = ref<HTMLElement>()
+let resizeObserver: ResizeObserver | null = null
 const timeUnit = ref<'seconds' | 'minutes'>('seconds')
 const tooltip = ref({
   show: false,
@@ -123,11 +109,12 @@ let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let currentChart: any = null
 
 const chartData = computed(() => {
-  if (!props.timeData) return []
+  const data = props.timeData
+  if (!data) return []
 
-  return props.timeData.methods.map((method, index) => {
-    const totalTime = props.timeData.totalTime[index] || 0
-    const trainingTime = props.timeData.trainingTime[index] || 0
+  return data.methods.map((method, index) => {
+    const totalTime = data.totalTime?.[index] || 0
+    const trainingTime = data.trainingTime?.[index] || 0
     const otherTime = totalTime - trainingTime
     const trainingRatio = totalTime > 0 ? Math.round((trainingTime / totalTime) * 100) : 0
 
@@ -140,28 +127,6 @@ const chartData = computed(() => {
       isAdda: method === 'Adda'
     }
   }).sort((a, b) => (a.totalTime || 0) - (b.totalTime || 0)) // 按总时间升序排序
-})
-
-const fastestMethod = computed(() => {
-  if (chartData.value.length === 0) return 'N/A'
-  const fastest = chartData.value[0]
-  return fastest ? fastest.method : 'N/A'
-})
-
-const speedImprovement = computed(() => {
-  if (chartData.value.length === 0) return '1.0'
-
-  const addaData = chartData.value.find(d => d.isAdda)
-  if (!addaData) return '1.0'
-
-  const slowestTime = chartData.value[chartData.value.length - 1]?.totalTime || 1
-  return ((slowestTime || 1) / (addaData.totalTime || 1)).toFixed(1)
-})
-
-const averageTotalTime = computed(() => {
-  if (chartData.value.length === 0) return '0 s'
-  const total = chartData.value.reduce((sum, d) => sum + (d.totalTime || 0), 0)
-  return formatTime(total / chartData.value.length)
 })
 
 const formatTime = (seconds: number): string => {
@@ -189,8 +154,18 @@ const createChart = () => {
   if (!chartRef.value) return
 
   const container = chartRef.value
+  // 动态使用可用空间高度，避免固定 320px 导致在 100% 缩放时图表被裁切
   const width = container.clientWidth
-  const height = 320
+  const height = (() => {
+    const h = container.clientHeight && container.clientHeight > 0 ? container.clientHeight : 0
+    return Math.max(h, 360) // 保留较高最小值，但为下方图例腾出空间
+  })()
+
+  // 如果容器当前不可见或尺寸为0，延迟到下一帧再尝试，避免缓存/切换后刻度错位
+  if (width === 0 || height === 0) {
+    requestAnimationFrame(() => createChart())
+    return
+  }
 
   // 清除现有图表
   d3.select(container).selectAll('*').remove()
@@ -200,7 +175,8 @@ const createChart = () => {
     .attr('width', width)
     .attr('height', height)
 
-  const margin = { top: 20, right: 30, bottom: 60, left: 60 }
+  // 调整边距：给顶部留出空间放图例，避免与柱体重叠
+  const margin = { top: 48, right: 30, bottom: 80, left: 100 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -244,31 +220,39 @@ const createChart = () => {
     .attr('transform', `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale))
     .selectAll('text')
-    .style('text-anchor', 'end')
-    .attr('dx', '-.8em')
-    .attr('dy', '.15em')
-    .attr('transform', 'rotate(-45)')
+    .style('text-anchor', 'middle')
+    .attr('dx', '0')
+    .attr('dy', '0.75em')
+    .attr('transform', 'rotate(0)')
 
   // Y轴
   g.append('g')
-    .call(d3.axisLeft(yScale)
-      .tickFormat(d => {
-        if (timeUnit.value === 'minutes') {
-          return d >= 1 ? `${d.toFixed(1)} min` : `${(d * 60).toFixed(0)} s`
-        }
-        return d >= 60 ? `${(d / 60).toFixed(1)} min` : `${d.toFixed(0)} s`
-      })
+    .call(
+      d3.axisLeft(yScale)
+        .ticks(6)
+        .tickPadding(6)
+        .tickFormat(d => {
+          const value = Number(d)
+          if (timeUnit.value === 'minutes') {
+            const minutes = value
+            return minutes >= 1 ? `${minutes.toFixed(1)} min` : `${(minutes * 60).toFixed(0)} s`
+          }
+          // Seconds 模式下始终显示秒，不再转为分钟
+          return `${value.toFixed(0)} s`
+        })
     )
 
   // Y轴标签
   g.append('text')
     .attr('transform', 'rotate(-90)')
-    .attr('y', 0 - margin.left)
-    .attr('x', 0 - (innerHeight / 2))
-    .attr('dy', '1em')
+    .attr('y', -margin.left + 18)
+    .attr('x', -innerHeight / 2)
+    .attr('dy', '0')
     .style('text-anchor', 'middle')
-    .style('font-size', '12px')
-    .style('fill', '#6c757d')
+    .style('dominant-baseline', 'middle')
+    .style('font-size', '15px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
     .text(`Time (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
   // 堆叠柱状图数据
@@ -280,15 +264,15 @@ const createChart = () => {
   }))
 
   // 堆叠生成器
-  const stack = d3.stack()
+  const stack = d3.stack<any>()
     .keys(['training', 'other'])
 
-  const series = stack(stackedData)
+  const series = stack(stackedData as unknown as Array<{ training: number; other: number }>)
 
   // 颜色比例尺
-  const colorScale = d3.scaleOrdinal()
+  const colorScale = d3.scaleOrdinal<string, string>()
     .domain(['training', 'other'])
-    .range(['#28a745', '#17a2b8'])
+    .range(['#1d4ed8', '#f59e0b']) // training: blue, feature generation: yellow
 
   // 绘制堆叠柱状图
   const groups = g.selectAll('.method-group')
@@ -322,7 +306,7 @@ const createChart = () => {
       const endValue = isNaN(d.end) || d.end < 0 ? 0 : d.end
       return yScale(startValue) - yScale(endValue)
     })
-    .attr('fill', (d: any) => colorScale(d.key as string))
+    .attr('fill', (d: any) => colorScale(d.key as string) || '#1d4ed8')
     .attr('rx', 2)
     .style('cursor', 'pointer')
     .attr('opacity', 0)
@@ -357,26 +341,6 @@ const createChart = () => {
     .transition()
     .duration(800)
     .delay(1000)
-    .style('opacity', 1)
-
-  // 总数值标签
-  groups
-    .append('text')
-    .attr('x', (d: any) => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
-    .attr('y', (d: any) => {
-      const value = d.totalTime / timeScale
-      const yPos = isNaN(value) || value < 0 ? innerHeight : yScale(value)
-      return yPos - 8
-    })
-    .attr('text-anchor', 'middle')
-    .style('font-size', '14px')
-    .style('font-weight', 'bold')
-    .style('fill', (d: any) => d.isAdda ? '#007bff' : '#495057')
-    .style('opacity', 0)
-    .text((d: any) => formatTime(d.totalTime))
-    .transition()
-    .duration(800)
-    .delay((d, i) => i * 50 + 400)
     .style('opacity', 1)
 
   // 鼠标事件
@@ -543,13 +507,33 @@ const handleResize = () => {
   }
 }
 
+// keep-alive/tab 返回时确保重绘
+onActivated(() => {
+  nextTick(() => {
+    createChart()
+  })
+})
+
 onMounted(() => {
   createChart()
   window.addEventListener('resize', handleResize)
+
+  // 监听容器尺寸变化，避免隐藏/显示后尺寸为0导致的刻度问题
+  if (chartRef.value && 'ResizeObserver' in window) {
+    resizeObserver = new ResizeObserver(() => {
+      createChart()
+    })
+    resizeObserver.observe(chartRef.value)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 
 watch(() => props.timeData, () => {
@@ -642,27 +626,34 @@ watch(() => props.timeData, () => {
 }
 
 .chart-container {
+  position: relative;
   flex: 1;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
+  overflow: visible;
+  min-height: 360px;
 }
 
 .time-chart {
   flex: 1;
-  min-height: 0;
+  min-height: 300px;
   overflow: hidden;
 }
 
 .chart-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.08));
+  z-index: 5;
 }
 
 .legend-item {
@@ -681,49 +672,11 @@ watch(() => props.timeData, () => {
 }
 
 .training-segment {
-  background: #28a745;
+  background: #1d4ed8;
 }
 
 .other-segment {
-  background: #17a2b8;
-}
-
-.stats-summary {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--bg-light);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.fastest-method {
-  color: var(--success-color, #28a745);
-}
-
-.speed-improvement {
-  color: var(--info-color, #17a2b8);
+  background: #f59e0b;
 }
 
 .chart-tooltip {

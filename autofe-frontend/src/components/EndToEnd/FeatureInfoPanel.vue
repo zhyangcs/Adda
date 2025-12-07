@@ -6,39 +6,39 @@
         Feature Information
       </div>
       <div class="panel-actions">
-        <button
-          class="btn-icon"
-          @click="copyToClipboard"
-          :disabled="!activeContent"
-          :title="'Copy ' + activeTab + ' to clipboard'"
-        >
-          <i class="bi bi-clipboard"></i>
-        </button>
-        <button
-          class="btn-icon"
-          @click="toggleFullscreen"
-          :title="'Toggle fullscreen'"
-        >
-          <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'"></i>
-        </button>
+        <div class="tab-navigation header-tabs">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            class="tab-button"
+            :class="{ active: activeTab === tab.key }"
+            @click="setActiveTab(tab.key)"
+          >
+            <i :class="tab.icon"></i>
+            {{ tab.label }}
+          </button>
+        </div>
+        <div class="action-buttons">
+          <button
+            class="btn-icon"
+            @click="copyToClipboard"
+            :disabled="!activeContent"
+            :title="'Copy ' + activeTab + ' to clipboard'"
+          >
+            <i class="bi bi-clipboard"></i>
+          </button>
+          <button
+            class="btn-icon"
+            @click="toggleFullscreen"
+            :title="'Toggle fullscreen'"
+          >
+            <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'"></i>
+          </button>
+        </div>
       </div>
     </div>
 
     <div class="panel-content" :class="{ 'fullscreen': isFullscreen }">
-      <!-- 标签页导航 -->
-      <div class="tab-navigation">
-        <button
-          v-for="tab in tabs"
-          :key="tab.key"
-          class="tab-button"
-          :class="{ active: activeTab === tab.key }"
-          @click="setActiveTab(tab.key)"
-        >
-          <i :class="tab.icon"></i>
-          {{ tab.label }}
-        </button>
-      </div>
-
       <!-- 标签页内容 -->
       <div class="tab-content">
         <!-- 特征描述 -->
@@ -180,6 +180,7 @@ const formatSqlCode = () => {
   height: 100%;
   overflow: hidden;
   position: relative;
+  min-width: 0; /* prevent long code line from expanding layout */
 }
 
 .panel-header {
@@ -203,6 +204,13 @@ const formatSqlCode = () => {
 
 .panel-actions {
   display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -240,6 +248,7 @@ const formatSqlCode = () => {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
 }
 
 .panel-content.fullscreen {
@@ -255,15 +264,23 @@ const formatSqlCode = () => {
 
 .tab-navigation {
   display: flex;
-  border-bottom: 2px solid var(--accent-blue, #2a7de1);
-  background: transparent;
+  align-items: center;
+  background: #f7f9fc;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 4px;
   flex-shrink: 0;
+}
+
+.tab-navigation.header-tabs {
+  border-bottom: none;
 }
 
 .tab-button {
   background: none;
   border: none;
-  padding: 12px 16px;
+  padding: 8px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -271,25 +288,26 @@ const formatSqlCode = () => {
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px;
   transition: all 0.2s ease;
 }
 
 .tab-button:hover {
   color: var(--text-primary);
-  background: rgba(42, 125, 225, 0.06);
+  background: rgba(42, 125, 225, 0.08);
 }
 
 .tab-button.active {
-  color: var(--accent-blue, #2a7de1);
-  border-bottom-color: var(--accent-blue, #2a7de1);
-  background: rgba(42, 125, 225, 0.1);
+  color: #fff;
+  background: var(--accent-blue, #2a7de1);
+  box-shadow: none;
 }
 
 .tab-content {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .content-section {
@@ -348,6 +366,7 @@ const formatSqlCode = () => {
   flex: 1;
   font-size: 18px;
   line-height: 1.5;
+  max-width: 100%;
 }
 
 .code-block code {
@@ -358,6 +377,7 @@ const formatSqlCode = () => {
   white-space: pre;
   overflow-x: auto;
   font-size: 22px;
+  word-break: break-word; /* allow very long tokens to wrap instead of forcing layout */
 }
 
 /* 语法高亮（简单版本） */

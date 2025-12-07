@@ -112,11 +112,12 @@ const realTimeData = computed(() => {
 })
 
 const realImportanceData = computed(() => {
-  const data = taskStore.autoStepData?.importanceData
-  if (!data) return null
+  // importanceData 在 store 中类型较窄，额外字段用 any 兼容
+  const rawImportance = taskStore.autoStepData?.importanceData as any
+  if (!rawImportance) return null
 
   // 基础重要性数据（兼容旧格式），添加数据验证
-  const validateAndCleanData = (data: any[] | undefined): FeatureImportance[] => {
+  const validateAndCleanData = (data: unknown): FeatureImportance[] => {
     if (!data || !Array.isArray(data)) return []
 
     return data
@@ -133,17 +134,17 @@ const realImportanceData = computed(() => {
 
   // 添加调试信息
   console.log('Raw importance data from backend:', {
-    shap: data.shap,
-    ig: data.ig,
-    rfe: data.rfe,
-    fi: data.fi
+    shap: rawImportance.shap,
+    ig: rawImportance.ig,
+    rfe: rawImportance.rfe,
+    fi: rawImportance.fi
   })
 
-  const importanceData: ImportanceData = {
-    shap: validateAndCleanData(data.shap),
-    ig: validateAndCleanData(data.ig),
-    rfe: validateAndCleanData(data.rfe),
-    fi: validateAndCleanData(data.fi)
+  const importanceData: ImportanceData & { paperMetrics?: any } = {
+    shap: validateAndCleanData(rawImportance.shap),
+    ig: validateAndCleanData(rawImportance.ig),
+    rfe: validateAndCleanData(rawImportance.rfe),
+    fi: validateAndCleanData(rawImportance.fi)
   }
 
   console.log('Validated importance data:', {
@@ -154,35 +155,36 @@ const realImportanceData = computed(() => {
   })
 
   // 添加 paper metrics 数据（如果存在）
-  if (data.paperMetrics) {
-    importanceData.paperMetrics = data.paperMetrics
+  const paperMetrics = rawImportance.paperMetrics
+  if (paperMetrics) {
+    importanceData.paperMetrics = paperMetrics
 
     // 只要有成功的 paper metrics 就进行转换，因为数据更完整
-    const needsConversion = data.paperMetrics && data.paperMetrics.success
+    const needsConversion = paperMetrics && paperMetrics.success
 
     console.log('Paper metrics conversion check:', {
-      hasPaperMetrics: !!data.paperMetrics,
-      isSuccess: data.paperMetrics?.success,
-      shapLength: data.shap?.length || 0,
+      hasPaperMetrics: !!paperMetrics,
+      isSuccess: paperMetrics?.success,
+      shapLength: rawImportance.shap?.length || 0,
       needsConversion: needsConversion
     })
 
     if (needsConversion) {
       console.log('Converting paper metrics to importance data format...')
-      console.log('Original data.shap:', data.shap)
-      console.log('Original data.ig:', data.ig)
-      console.log('Paper metrics:', data.paperMetrics)
+        console.log('Original data.shap:', rawImportance.shap)
+        console.log('Original data.ig:', rawImportance.ig)
+        console.log('Paper metrics:', paperMetrics)
 
-      const metrics = data.paperMetrics.metrics
+      const metrics = paperMetrics.metrics as any
 
       // 转换每个方法的特征重要性数据
       const convertMethodData = (method: keyof typeof metrics): FeatureImportance[] => {
-        const methodData = metrics[method]
+        const methodData = metrics[method] as any
         if (!methodData || !methodData.feature_importance || methodData.error) {
           return []
         }
 
-        const rawFeatures = Object.entries(methodData.feature_importance)
+        const rawFeatures = Object.entries(methodData.feature_importance as Record<string, any>)
           .map(([feature, importance]) => {
             // 数据验证和清理
             let numImportance: number
@@ -190,12 +192,13 @@ const realImportanceData = computed(() => {
             // 处理各种类型的importance值
             if (Array.isArray(importance)) {
               // JavaScript数组
-              numImportance = importance.reduce((sum, val) => sum + Math.abs(val), 0) / importance.length
+              numImportance = importance.reduce((sum: number, val: number) => sum + Math.abs(val), 0) / importance.length
             } else if (typeof importance === 'object' && importance !== null) {
               // 处理类似Python numpy数组的对象格式
               // 假设格式如 { "type": "numpy.ndarray", "data": [0.002, 0.003] }
-              if (importance.type === 'numpy.ndarray' && Array.isArray(importance.data)) {
-                numImportance = importance.data.reduce((sum, val) => sum + Math.abs(val), 0) / importance.data.length
+              const importanceObj = importance as any
+              if (importanceObj.type === 'numpy.ndarray' && Array.isArray(importanceObj.data)) {
+                numImportance = importanceObj.data.reduce((sum: number, val: number) => sum + Math.abs(val), 0) / importanceObj.data.length
               } else {
                 console.warn(`Unsupported object type for feature ${feature}:`, importance)
                 numImportance = Number(importance) || 0
@@ -751,6 +754,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   padding: 0;
+  min-width: 0; /* allow child panels to shrink even with long code lines */
 }
 
 :deep(.panel-title) {

@@ -46,22 +46,6 @@
           <span>Baseline Methods</span>
         </div>
       </div>
-
-      <!-- 统计信息 -->
-      <div class="stats-summary">
-        <div class="stat-item">
-          <span class="stat-label">Best Method:</span>
-          <span class="stat-value best-method">{{ bestMethod }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Improvement:</span>
-          <span class="stat-value improvement">+{{ (improvement || 0).toFixed(2) }}%</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Average:</span>
-          <span class="stat-value">{{ averageScore.toFixed(3) }}</span>
-        </div>
-      </div>
     </div>
 
     <!-- 鼠标悬停提示 -->
@@ -174,7 +158,15 @@ const createChart = () => {
 
   const container = chartRef.value
   const width = container.clientWidth
-  const height = 300
+  const height = (() => {
+    const h = container.clientHeight && container.clientHeight > 0 ? container.clientHeight : 0
+    return Math.max(h, 360)
+  })()
+
+  if (width === 0 || height === 0) {
+    requestAnimationFrame(() => createChart())
+    return
+  }
 
   // 清除现有图表
   d3.select(container).selectAll('*').remove()
@@ -184,7 +176,8 @@ const createChart = () => {
     .attr('width', width)
     .attr('height', height)
 
-  const margin = { top: 20, right: 30, bottom: 60, left: 50 }
+  // 为右上角图例预留顶部空间
+  const margin = { top: 48, right: 40, bottom: 70, left: 70 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -214,10 +207,10 @@ const createChart = () => {
     .attr('transform', `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale))
     .selectAll('text')
-    .style('text-anchor', 'end')
-    .attr('dx', '-.8em')
-    .attr('dy', '.15em')
-    .attr('transform', 'rotate(-45)')
+    .style('text-anchor', 'middle')
+    .attr('dx', '0')
+    .attr('dy', '0.75em')
+    .attr('transform', 'rotate(0)')
 
   // Y轴
   g.append('g')
@@ -232,8 +225,9 @@ const createChart = () => {
     .attr('x', 0 - (innerHeight / 2))
     .attr('dy', '1em')
     .style('text-anchor', 'middle')
-    .style('font-size', '12px')
-    .style('fill', '#6c757d')
+    .style('font-size', '15px')
+    .style('font-weight', '600')
+    .style('fill', '#495057')
     .text(selectedMetric.value.toUpperCase())
 
   // 柱状图
@@ -512,27 +506,34 @@ watch(() => props.performanceData, () => {
 }
 
 .chart-container {
+  position: relative;
   flex: 1;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
+  overflow: visible;
+  min-height: 360px;
 }
 
 .performance-chart {
   flex: 1;
-  min-height: 0;
+  min-height: 320px;
   overflow: hidden;
 }
 
 .chart-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.08));
+  z-index: 5;
 }
 
 .legend-item {
@@ -555,44 +556,6 @@ watch(() => props.performanceData, () => {
 
 .baseline-color {
   background: #6c757d;
-}
-
-.stats-summary {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--bg-light);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.best-method {
-  color: var(--primary-color);
-}
-
-.improvement {
-  color: var(--success-color, #28a745);
 }
 
 .chart-tooltip {
