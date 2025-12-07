@@ -1,5 +1,6 @@
 /test/**
 /dataset/**
+scripts/
 **/__pycache__/**
 **/.idea/
 *.pkl
@@ -49,3 +50,6 @@ Thumbs.db
 # Apache MADlib installation files
 apache-madlib-*.tar.gz
 apache-madlib-*/
+
+*.sql
+logfile
