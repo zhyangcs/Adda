@@ -157,8 +157,9 @@ const createChart = () => {
   // 动态使用可用空间高度，避免固定 320px 导致在 100% 缩放时图表被裁切
   const width = container.clientWidth
   const height = (() => {
-    const h = container.clientHeight && container.clientHeight > 0 ? container.clientHeight : 0
-    return Math.max(h, 360) // 保留较高最小值，但为下方图例腾出空间
+    const rectHeight = container.getBoundingClientRect().height
+    const h = rectHeight && rectHeight > 0 ? rectHeight : container.clientHeight
+    return Math.max(h || 0, 320) // 保留较高最小值，但为下方图例腾出空间
   })()
 
   // 如果容器当前不可见或尺寸为0，延迟到下一帧再尝试，避免缓存/切换后刻度错位
@@ -176,7 +177,7 @@ const createChart = () => {
     .attr('height', height)
 
   // 调整边距：给顶部留出空间放图例，避免与柱体重叠
-  const margin = { top: 48, right: 30, bottom: 80, left: 100 }
+  const margin = { top: 44, right: 32, bottom: 72, left: 96 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -250,9 +251,9 @@ const createChart = () => {
     .attr('dy', '0')
     .style('text-anchor', 'middle')
     .style('dominant-baseline', 'middle')
-    .style('font-size', '15px')
-    .style('font-weight', '600')
-    .style('fill', '#374151')
+    .style('font-size', '16px')
+    .style('font-weight', '700')
+    .style('fill', '#1f2937')
     .text(`Time (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
   // 堆叠柱状图数据
@@ -633,16 +634,18 @@ watch(() => props.timeData, () => {
 .chart-container {
   position: relative;
   flex: 1;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   overflow: visible;
-  min-height: 360px;
+  min-height: 0;
 }
 
 .time-chart {
   flex: 1;
-  min-height: 300px;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -651,29 +654,31 @@ watch(() => props.timeData, () => {
   top: 12px;
   right: 12px;
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.08));
+  box-shadow: var(--shadow-md, 0 4px 8px rgba(0,0,0,0.08));
   z-index: 5;
+  color: #1f2937;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text-secondary);
+  gap: 10px;
 }
 
 .legend-segment {
   width: 16px;
   height: 12px;
-  border-radius: 2px;
-  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  border: 1px solid #cbd5e1;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
 }
 
 .training-segment {
@@ -760,16 +765,19 @@ watch(() => props.timeData, () => {
 }
 
 :deep(.domain) {
-  stroke: #dee2e6;
+  stroke: #cbd5e1;
+  stroke-width: 1.2;
 }
 
 :deep(.tick line) {
-  stroke: #dee2e6;
+  stroke: #cbd5e1;
+  stroke-width: 1.2;
 }
 
 :deep(.tick text) {
-  fill: #6c757d;
-  font-size: 16px;
+  fill: #1f2937;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 :deep(.method-group text) {

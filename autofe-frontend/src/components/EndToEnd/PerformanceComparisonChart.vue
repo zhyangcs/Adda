@@ -159,8 +159,9 @@ const createChart = () => {
   const container = chartRef.value
   const width = container.clientWidth
   const height = (() => {
-    const h = container.clientHeight && container.clientHeight > 0 ? container.clientHeight : 0
-    return Math.max(h, 360)
+    const rectHeight = container.getBoundingClientRect().height
+    const h = rectHeight && rectHeight > 0 ? rectHeight : container.clientHeight
+    return Math.max(h || 0, 320)
   })()
 
   if (width === 0 || height === 0) {
@@ -177,7 +178,7 @@ const createChart = () => {
     .attr('height', height)
 
   // 为右上角图例预留顶部空间
-  const margin = { top: 48, right: 40, bottom: 70, left: 70 }
+  const margin = { top: 42, right: 36, bottom: 64, left: 76 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -225,9 +226,9 @@ const createChart = () => {
     .attr('x', 0 - (innerHeight / 2))
     .attr('dy', '1em')
     .style('text-anchor', 'middle')
-    .style('font-size', '15px')
-    .style('font-weight', '600')
-    .style('fill', '#495057')
+    .style('font-size', '16px')
+    .style('font-weight', '700')
+    .style('fill', '#1f2937')
     .text(selectedMetric.value.toUpperCase())
 
   // 柱状图
@@ -239,7 +240,7 @@ const createChart = () => {
     .attr('width', xScale.bandwidth())
     .attr('y', innerHeight)
     .attr('height', 0)
-    .attr('fill', (d: any) => d.isAdda ? '#007bff' : '#6c757d')
+    .attr('fill', (d: any) => d.isAdda ? '#007bff' : '#4b5563')
     .attr('rx', 4)
     .style('cursor', 'pointer')
 
@@ -287,7 +288,7 @@ const createChart = () => {
     .attr('text-anchor', 'middle')
     .style('font-size', '16px')
     .style('font-weight', 'bold')
-    .style('fill', (d: any) => d.isAdda ? '#007bff' : '#6c757d')
+    .style('fill', (d: any) => d.isAdda ? '#007bff' : '#4b5563')
     .style('opacity', 0)
     .text((d: any) => d.value.toFixed(3))
     .transition()
@@ -513,16 +514,18 @@ watch(() => props.performanceData, () => {
 .chart-container {
   position: relative;
   flex: 1;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   overflow: visible;
-  min-height: 360px;
+  min-height: 0;
 }
 
 .performance-chart {
   flex: 1;
-  min-height: 320px;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -531,28 +534,30 @@ watch(() => props.performanceData, () => {
   top: 12px;
   right: 12px;
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.08));
+  box-shadow: var(--shadow-md, 0 4px 8px rgba(0,0,0,0.08));
   z-index: 5;
+  color: #1f2937;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text-secondary);
+  gap: 10px;
 }
 
 .legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
 }
 
 .adda-color {
@@ -560,7 +565,7 @@ watch(() => props.performanceData, () => {
 }
 
 .baseline-color {
-  background: #6c757d;
+  background: #4b5563;
 }
 
 .chart-tooltip {
@@ -634,15 +639,18 @@ watch(() => props.performanceData, () => {
 }
 
 :deep(.domain) {
-  stroke: #dee2e6;
+  stroke: #cbd5e1;
+  stroke-width: 1.2;
 }
 
 :deep(.tick line) {
-  stroke: #dee2e6;
+  stroke: #cbd5e1;
+  stroke-width: 1.2;
 }
 
 :deep(.tick text) {
-  fill: #6c757d;
-  font-size: 16px;
+  fill: #1f2937;
+  font-size: 15px;
+  font-weight: 600;
 }
 </style>
