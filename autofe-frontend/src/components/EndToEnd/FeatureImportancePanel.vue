@@ -42,81 +42,90 @@
             <p>Feature importance analysis results are not available. Please run the end-to-end analysis with paper metrics enabled.</p>
           </div>
 
-          <div v-else class="paper-content">
-            <!-- 方法表现对比 -->
-            <div class="method-performance">
-              <div class="performance-header">
-                <h6>Generated Features in Top-{{ paperMetrics?.top_k || 7 }} Analysis</h6>
+          <div v-else class="paper-content modern-paper">
+            <!-- 顶部摘要 -->
+            <div class="top-summary">
+              <div class="summary-item">
+                <span class="summary-label">Original Features:</span>
+                <span class="summary-value">{{ paperMetrics?.original_feature_count || 0 }}</span>
               </div>
+              <div class="summary-separator">|</div>
+              <div class="summary-item">
+                <span class="summary-label">New Features:</span>
+                <span class="summary-value new">{{ paperMetrics?.generated_feature_count || 0 }}</span>
+              </div>
+              <div class="summary-separator">|</div>
+              <div class="summary-item">
+                <span class="summary-label">Total Features:</span>
+                <span class="summary-value total">{{ paperMetrics?.total_feature_count || 0 }}</span>
+              </div>
+            </div>
 
-              <div class="performance-grid">
-                <div
-                  v-for="method in ['shap', 'ig', 'rfe', 'fi']"
-                  :key="method"
-                  class="performance-card"
-                  :class="{ 'best-performer': bestPerformingMethod?.method.toLowerCase() === method }"
-                >
-                  <div class="method-header">
-                    <span class="method-name">{{ method.toUpperCase() }}</span>
-                    <span class="method-percentage">
-                      {{ getMethodTopKPerformance(method)?.percentage.toFixed(1) || 0 }}%
-                    </span>
+            <!-- 方法卡片 -->
+            <div class="method-grid modern">
+              <div
+                v-for="card in methodCards"
+                :key="card.key"
+                class="modern-method-card"
+              >
+                <div class="card-header-row">
+                  <div class="method-top">
+                    <span class="method-name">{{ card.label }}</span>
                   </div>
-
-                  <div class="progress-container">
-                    <div class="progress-bar">
+                  <div class="method-main">
+                    <span class="method-percentage">{{ formatPercentage(card.percentage) }}</span>
+                    <span class="method-count">{{ card.generated }}/{{ topKValue }}</span>
+                  </div>
+                  <div class="method-progress modern">
+                    <div class="progress-track">
                       <div
-                        class="progress-fill generated"
-                        :style="{ width: `${getMethodTopKPerformance(method)?.percentage || 0}%` }"
+                        class="progress-fill modern"
+                        :style="{ width: `${Math.min(Math.max(card.percentage || 0, 0), 100)}%` }"
                       ></div>
                     </div>
-                    <div class="progress-labels">
-                      <span class="generated-count">
-                        {{ getMethodTopKPerformance(method)?.generated_count || 0 }}
-                      </span>
-                      <span class="total-count">
-                        / {{ paperMetrics?.top_k || 7 }}
-                      </span>
-                    </div>
                   </div>
+                  <div class="method-subtext">
+                    Generated Features in Top-{{ topKValue }}
+                  </div>
+                </div>
 
-                  <!-- Top特征列表 -->
-                  <div class="top-features-list">
-                    <div class="list-header">Top Features:</div>
-                    <div
-                      v-for="(feature, index) in getMethodTopKPerformance(method)?.top_features_analysis.slice(0, 3)"
-                      :key="feature.feature"
-                      class="feature-item"
-                      :class="{ 'generated-feature': feature.is_generated }"
+                <div class="top-feature-list modern">
+                  <div
+                    v-for="feature in card.features.slice(0, topKValue)"
+                    :key="feature.feature"
+                    class="feature-row"
+                  >
+                    <span class="feature-name">{{ feature.feature }}</span>
+                    <span
+                      class="feature-badge"
+                      :class="feature.is_generated ? 'badge-new' : 'badge-original'"
                     >
-                      <span class="feature-rank">{{ feature.rank }}.</span>
-                      <span class="feature-name">{{ feature.feature }}</span>
-                      <span class="feature-badge">
-                        {{ feature.is_generated ? 'New' : 'Original' }}
-                      </span>
-                    </div>
+                      {{ feature.is_generated ? 'NEW' : 'Original' }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="mini-chart-row">
+                  <div class="mini-bars">
+                    <div
+                      class="mini-bar new"
+                      :style="{ height: getMiniBarHeight(card.generated, card.total) }"
+                    ></div>
+                    <div
+                      class="mini-bar original"
+                      :style="{ height: getMiniBarHeight(card.original, card.total) }"
+                    ></div>
+                  </div>
+                  <div class="mini-legend">
+                    <span class="legend-dot new"></span>
+                    <span class="legend-text">NEW</span>
+                    <span class="legend-dot original"></span>
+                    <span class="legend-text">Original</span>
                   </div>
                 </div>
               </div>
-
-              <!-- 简单的特征数量概览 -->
-              <div class="simple-overview-internal">
-                <div class="overview-item">
-                  <span class="overview-label">Original Features:</span>
-                  <span class="overview-value original">{{ paperMetrics?.original_feature_count || 0 }}</span>
-                </div>
-                <div class="overview-item">
-                  <span class="overview-label">New Features:</span>
-                  <span class="overview-value generated">{{ paperMetrics?.generated_feature_count || 0 }}</span>
-                </div>
-                <div class="overview-item">
-                  <span class="overview-label">Total Features:</span>
-                  <span class="overview-value total">{{ paperMetrics?.total_feature_count || 0 }}</span>
-                </div>
-              </div>
             </div>
-
-            </div>
+          </div>
         </div>
 
         <!-- 条形图视图 -->
@@ -270,6 +279,42 @@ const bestPerformingMethod = computed(() => {
     return best
   }, null)
 })
+
+const topKValue = computed(() => paperMetrics.value?.top_k || 7)
+
+const methodOrder: ImportanceMethod[] = ['shap', 'ig', 'rfe', 'fi']
+
+const methodCards = computed(() => {
+  return methodOrder.map(method => {
+    const analysis = getMethodTopKPerformance(method as keyof PaperMetrics['top_k_analysis'])
+    const total = analysis?.total_count || topKValue.value
+    const generated = analysis?.generated_count || 0
+    const original = Math.max(total - generated, 0)
+    const features = analysis?.top_features_analysis || []
+
+    return {
+      key: method,
+      label: method.toUpperCase(),
+      percentage: analysis?.percentage ?? 0,
+      generated,
+      original,
+      total,
+      features
+    }
+  })
+})
+
+const formatPercentage = (value?: number | null) => {
+  const num = typeof value === 'number' && isFinite(value) ? value : 0
+  return `${num.toFixed(1)}%`
+}
+
+const getMiniBarHeight = (count: number, total: number) => {
+  const safeTotal = total > 0 ? total : topKValue.value || 1
+  const ratio = Math.max(count / safeTotal, 0)
+  const minHeight = 12
+  return `${Math.max(ratio * 100, minHeight)}%`
+}
 
 const setSelectedMethod = (method: ImportanceTabKey) => {
   selectedMethod.value = method
@@ -647,7 +692,7 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding: 16px;
+  padding: 0px 12px 0px 12px;
 }
 
 .bar-chart-container {
@@ -903,7 +948,7 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 .paper-metrics-container {
   height: 100%;
   overflow-y: auto;
-  padding: 16px;
+  padding: 0 12px 20px 12px;
 }
 
 .no-data-message {
@@ -936,7 +981,240 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 .paper-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 14px;
+}
+
+.modern-paper {
+  gap: 10px;
+}
+
+.top-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-light);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.summary-label {
+  color: var(--text-secondary);
+}
+
+.summary-value {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.summary-value.new {
+  color: #28a745;
+}
+
+.summary-value.total {
+  color: #2a7de1;
+}
+
+.summary-separator {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.method-grid.modern {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.modern-method-card {
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 8px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: none;
+}
+
+.card-header-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.method-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.method-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.method-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.method-percentage {
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 800;
+  color: #000;
+}
+
+.method-count {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.method-progress.modern .progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-fill.modern {
+  height: 100%;
+  background: linear-gradient(90deg, #2a7de1, #5aa9ff);
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+.method-subtext {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.top-feature-list.modern {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.feature-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+}
+
+.feature-row .feature-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feature-badge {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: rgba(108, 117, 125, 0.15);
+  color: #6c757d;
+}
+
+.badge-new {
+  background: rgba(40, 167, 69, 0.15);
+  color: #28a745;
+}
+
+.badge-original {
+  background: rgba(108, 117, 125, 0.15);
+  color: #6c757d;
+}
+
+.mini-chart-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.mini-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 34px;
+}
+
+.mini-bar {
+  width: 10px;
+  border-radius: 3px 3px 0 0;
+  background: var(--border-color);
+}
+
+.mini-bar.new {
+  background: #28a745;
+}
+
+.mini-bar.original {
+  background: #9ca3af;
+}
+
+.mini-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-dot.new {
+  background: #28a745;
+}
+
+.legend-dot.original {
+  background: #9ca3af;
+}
+
+@media (max-width: 1400px) {
+  .method-grid.modern {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .method-grid.modern {
+    grid-template-columns: 1fr;
+  }
 }
 
 
@@ -1002,6 +1280,14 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   font-size: 14px;
   font-weight: 600;
   color: var(--primary-color);
+}
+
+/* Override for modern Top-7 cards */
+.modern-method-card .method-percentage {
+  font-size: 26px;
+  line-height: 1.05;
+  font-weight: 600;
+  color: #000;
 }
 
 .progress-container {
