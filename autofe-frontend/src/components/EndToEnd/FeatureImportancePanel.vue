@@ -105,22 +105,21 @@
                   </div>
                 </div>
 
-                <div class="mini-chart-row">
-                  <div class="mini-bars">
+                <div class="top7-bar-chart">
+                  <div class="top7-bars">
                     <div
-                      class="mini-bar new"
-                      :style="{ height: getMiniBarHeight(card.generated, card.total) }"
-                    ></div>
-                    <div
-                      class="mini-bar original"
-                      :style="{ height: getMiniBarHeight(card.original, card.total) }"
+                      v-for="feature in card.features.slice(0, topKValue)"
+                      :key="feature.feature"
+                      class="top7-bar"
+                      :class="feature.is_generated ? 'bar-new' : 'bar-original'"
+                      :style="{ height: getTopBarHeight(feature.importance, card.maxImportance) }"
+                      :title="`${feature.feature}: ${(feature.importance ?? 0).toFixed(3)}`"
                     ></div>
                   </div>
-                  <div class="mini-legend">
-                    <span class="legend-dot new"></span>
-                    <span class="legend-text">NEW</span>
-                    <span class="legend-dot original"></span>
-                    <span class="legend-text">Original</span>
+                  <div class="top7-legend">
+                    <span class="legend-text new">NEW</span>
+                    <span class="legend-text">vs</span>
+                    <span class="legend-text original">Original</span>
                   </div>
                 </div>
               </div>
@@ -290,7 +289,11 @@ const methodCards = computed(() => {
     const total = analysis?.total_count || topKValue.value
     const generated = analysis?.generated_count || 0
     const original = Math.max(total - generated, 0)
-    const features = analysis?.top_features_analysis || []
+    const features = (analysis?.top_features_analysis || []).map(f => ({
+      ...f,
+      importance: typeof f.importance === 'number' && isFinite(f.importance) ? f.importance : 0
+    }))
+    const maxImportance = features.reduce((max, f) => Math.max(max, f.importance || 0), 0)
 
     return {
       key: method,
@@ -299,7 +302,8 @@ const methodCards = computed(() => {
       generated,
       original,
       total,
-      features
+      features,
+      maxImportance: maxImportance || 1
     }
   })
 })
@@ -314,6 +318,13 @@ const getMiniBarHeight = (count: number, total: number) => {
   const ratio = Math.max(count / safeTotal, 0)
   const minHeight = 12
   return `${Math.max(ratio * 100, minHeight)}%`
+}
+
+const getTopBarHeight = (importance: number | undefined, maxImportance: number | undefined) => {
+  const safeMax = maxImportance && maxImportance > 0 ? maxImportance : 1
+  const value = typeof importance === 'number' && isFinite(importance) ? importance : 0
+  const minHeight = 12
+  return `${Math.max((value / safeMax) * 100, minHeight)}%`
 }
 
 const setSelectedMethod = (method: ImportanceTabKey) => {
@@ -1102,8 +1113,10 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .method-subtext {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: #000;
   line-height: 1.2;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .top-feature-list.modern {
@@ -1144,8 +1157,9 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .badge-new {
-  background: rgba(40, 167, 69, 0.15);
-  color: #28a745;
+  background: rgba(40, 167, 69, 0.2);
+  color: #1e9b43 !important;
+  font-weight: 800;
 }
 
 .badge-original {
@@ -1153,56 +1167,51 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   color: #6c757d;
 }
 
-.mini-chart-row {
+.top7-bar-chart {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.mini-bars {
-  display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: 6px;
-  height: 34px;
+  margin-top: 2px;
+  align-items: center;
 }
 
-.mini-bar {
-  width: 10px;
-  border-radius: 3px 3px 0 0;
-  background: var(--border-color);
+.top7-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 30px;
 }
 
-.mini-bar.new {
+.top7-bar {
+  width: 12px;
+  border-radius: 2px 2px 0 0;
+  background: #d1d5db;
+}
+
+.top7-bar.bar-new {
   background: #28a745;
 }
 
-.mini-bar.original {
+.top7-bar.bar-original {
   background: #9ca3af;
 }
 
-.mini-legend {
+.top7-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: #000;
 }
 
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
+.legend-text.new {
+  color: #28a745;
+  font-weight: 700;
 }
 
-.legend-dot.new {
-  background: #28a745;
-}
-
-.legend-dot.original {
-  background: #9ca3af;
+.legend-text.original {
+  color: #000;
+  font-weight: 600;
 }
 
 @media (max-width: 1400px) {
