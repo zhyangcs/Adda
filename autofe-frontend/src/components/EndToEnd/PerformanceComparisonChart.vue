@@ -178,7 +178,7 @@ const createChart = () => {
     .attr('height', height)
 
   // 为右上角图例预留顶部空间
-  const margin = { top: 42, right: 36, bottom: 64, left: 76 }
+  const margin = { top: 60, right: 36, bottom: 25, left: 76 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 

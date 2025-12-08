@@ -177,7 +177,7 @@ const createChart = () => {
     .attr('height', height)
 
   // 调整边距：给顶部留出空间放图例，避免与柱体重叠
-  const margin = { top: 44, right: 32, bottom: 72, left: 96 }
+  const margin = { top: 60, right: 32, bottom: 25, left: 96 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
