@@ -3,13 +3,14 @@ Mock Backend Configuration
 模拟ADDA后端的配置文件
 """
 
-# Flask配置
+# Flask配置（与真实后端网络配置保持一致）
 DEBUG = True
-HOST = 'localhost'
+# 监听 0.0.0.0，便于通过本机 IP 访问（例如 10.82.1.203:5000）
+HOST = '0.0.0.0'
 PORT = 5000
 
-# CORS配置
-CORS_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"]
+# CORS配置：mock 环境仅单独运行，放宽为全部允许，方便前端从任意 Origin 调试
+CORS_ORIGINS = ["*"]
 
 # 数据集配置
 DATASETS = {

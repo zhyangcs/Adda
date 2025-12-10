@@ -827,6 +827,121 @@ ORDER BY id;'''
             ]
         }
 
+        # 论文分析指标（与真实后端结构对齐，供前端展示）
+        paper_metrics = {
+            'success': True,
+            'original_feature_count': 13,
+            'generated_feature_count': 8,
+            'total_feature_count': 21,
+            'top_k': 7,
+            'top_k_analysis': {
+                'shap': {
+                    'percentage': 57.1,
+                    'generated_count': 4,
+                    # 前端期望 top_features_analysis 数组用于 .slice(0,3)
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.24, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.18, 'is_generated': True},
+                        {'rank': 3, 'feature': 'heart_rate_reserve', 'importance': 0.15, 'is_generated': True},
+                        {'rank': 4, 'feature': 'risk_score', 'importance': 0.12, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.10, 'is_generated': True},
+                        {'rank': 6, 'feature': 'oldpeak_age_ratio', 'importance': 0.08, 'is_generated': True},
+                        {'rank': 7, 'feature': 'cp_severity', 'importance': 0.07, 'is_generated': True},
+                    ],
+                },
+                'ig': {
+                    'percentage': 42.9,
+                    'generated_count': 3,
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.31, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.22, 'is_generated': True},
+                        {'rank': 3, 'feature': 'risk_score', 'importance': 0.18, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.12, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.09, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.05, 'is_generated': True},
+                        {'rank': 7, 'feature': 'oldpeak_age_ratio', 'importance': 0.03, 'is_generated': True},
+                    ],
+                },
+                'rfe': {
+                    'percentage': 57.1,
+                    'generated_count': 4,
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.28, 'is_generated': True},
+                        {'rank': 2, 'feature': 'risk_score', 'importance': 0.20, 'is_generated': True},
+                        {'rank': 3, 'feature': 'chol_risk_ratio', 'importance': 0.16, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.14, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.11, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.06, 'is_generated': True},
+                        {'rank': 7, 'feature': 'oldpeak_age_ratio', 'importance': 0.05, 'is_generated': True},
+                    ],
+                },
+                'fi': {
+                    'percentage': 57.1,
+                    'generated_count': 4,
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.26, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.19, 'is_generated': True},
+                        {'rank': 3, 'feature': 'risk_score', 'importance': 0.17, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.13, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.10, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.08, 'is_generated': True},
+                        {'rank': 7, 'feature': 'ca_age_interaction', 'importance': 0.04, 'is_generated': True},
+                    ],
+                }
+            },
+            'metrics': {
+                'shap': {
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.24, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.18, 'is_generated': True},
+                        {'rank': 3, 'feature': 'heart_rate_reserve', 'importance': 0.15, 'is_generated': True},
+                        {'rank': 4, 'feature': 'risk_score', 'importance': 0.12, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.10, 'is_generated': True},
+                        {'rank': 6, 'feature': 'oldpeak_age_ratio', 'importance': 0.08, 'is_generated': True},
+                        {'rank': 7, 'feature': 'cp_severity', 'importance': 0.07, 'is_generated': True},
+                    ]
+                },
+                'ig': {
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.31, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.22, 'is_generated': True},
+                        {'rank': 3, 'feature': 'risk_score', 'importance': 0.18, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.12, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.09, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.05, 'is_generated': True},
+                        {'rank': 7, 'feature': 'oldpeak_age_ratio', 'importance': 0.03, 'is_generated': True},
+                    ]
+                },
+                'rfe': {
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.28, 'is_generated': True},
+                        {'rank': 2, 'feature': 'risk_score', 'importance': 0.20, 'is_generated': True},
+                        {'rank': 3, 'feature': 'chol_risk_ratio', 'importance': 0.16, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.14, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.11, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.06, 'is_generated': True},
+                        {'rank': 7, 'feature': 'oldpeak_age_ratio', 'importance': 0.05, 'is_generated': True},
+                    ]
+                },
+                'fi': {
+                    'top_features_analysis': [
+                        {'rank': 1, 'feature': 'age_group', 'importance': 0.26, 'is_generated': True},
+                        {'rank': 2, 'feature': 'chol_risk_ratio', 'importance': 0.19, 'is_generated': True},
+                        {'rank': 3, 'feature': 'risk_score', 'importance': 0.17, 'is_generated': True},
+                        {'rank': 4, 'feature': 'heart_rate_reserve', 'importance': 0.13, 'is_generated': True},
+                        {'rank': 5, 'feature': 'bp_category', 'importance': 0.10, 'is_generated': True},
+                        {'rank': 6, 'feature': 'cp_severity', 'importance': 0.08, 'is_generated': True},
+                        {'rank': 7, 'feature': 'ca_age_interaction', 'importance': 0.04, 'is_generated': True},
+                    ]
+                }
+            },
+            'all_features': {
+                'original': ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'],
+                'generated': ['age_group', 'chol_risk_ratio', 'heart_rate_reserve', 'risk_score', 'bp_category', 'oldpeak_age_ratio', 'cp_severity', 'ca_age_interaction']
+            }
+        }
+        importance_data['paperMetrics'] = paper_metrics
+
         return {
             'status': 'success',
             'data': {

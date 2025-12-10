@@ -20,8 +20,8 @@ from data.mock_data import mock_generator
 # 创建Flask应用
 app = Flask(__name__)
 
-# 配置CORS
-CORS(app, origins=CORS_ORIGINS, supports_credentials=True)
+# 配置CORS（与真实后端保持一致：全局允许，支持凭据）
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # 全局变量存储当前任务状态
 current_task_id = None
@@ -230,9 +230,29 @@ def auto_step():
             task_description, dataset, model_type, max_search_depth
         )
 
-        # 添加端到端页面展示数据
+        # 添加端到端页面展示数据（与真实后端返回结构保持一致）
         e2e_data = mock_generator.get_all_e2e_data()
-        result['e2e_data'] = e2e_data['data']
+        importance_data = e2e_data.get('data', {}).get('importanceData', {})
+
+        response_data = {
+            'status': 'success',
+            'message': result.get('message', 'End-to-end execution completed'),
+            'data': {
+                # 前端需要的可视化数据块
+                **(e2e_data.get('data', {})),
+                # 显式包含 shap/ig/rfe/fi/paperMetrics，避免被覆盖或缺失
+                'importanceData': importance_data,
+                # 其他与真实后端对齐的字段
+                'status': result.get('status', 'success'),
+                'tree': result.get('tree'),
+                'finished': result.get('finished', True),
+                'search_depth': result.get('search_depth'),
+                'performance_metrics': result.get('performance_metrics'),
+                'sql_code': result.get('sql_code'),
+                'best_features': result.get('best_features'),
+                'training_result': result.get('training_result')
+            }
+        }
 
         # 添加通知
         mock_generator.add_notification(
@@ -240,7 +260,7 @@ def auto_step():
             'success'
         )
 
-        return jsonify(result)
+        return jsonify(response_data)
 
     except Exception as e:
         return jsonify({
