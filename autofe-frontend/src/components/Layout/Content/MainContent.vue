@@ -6,167 +6,142 @@
   >
     <!-- 使用Splitpanes实现左右分区布局 -->
     <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
-      <!-- 左侧面板：Agent流程图（上方） + Node Information（下方） -->
+      <!-- 左侧面板：Agent流程图 + Node Information（上方）与 Feature Generation（下方） -->
       <pane :size="leftPaneSize" min="15" max="70">
         <div class="left-panel">
-          <!-- 上方：Agent协作流程图 -->
-          <div class="agent-flow-section">
-            <div class="info-card">
-              <div class="info-header">
-                <h6 class="info-title">
-                  <Users :size="18" class="me-2" />
-                  Agent Thinking Process
-                  <button
-                    class="btn btn-sm btn-info ms-2"
-                    @click="testAgentStatus"
-                    style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
-                  >
-                    Test Queue
-                  </button>
-                  <button
-                    class="btn btn-sm btn-warning ms-1"
-                    @click="testWebSocketMessage"
-                    style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
-                  >
-                    Test WS
-                  </button>
-                </h6>
-              </div>
-              <div class="info-content agent-process-content">
-                <div class="agent-flow-diagram">
-                  <!-- 环形布局的Agent协作图 -->
-                  <div class="flow-container">
-                    <!-- Agent图标正方形布局 -->
-                    <div class="agents-container">
-                      <!-- System Agent (左上角) -->
-                      <div
-                        class="agent-node system-agent"
-                        :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
-                        @click="setActiveAgent('system')"
-                      >
-                        <div class="agent-icon">
-                          <Monitor :size="28" />
-                        </div>
-                        <div class="agent-label">System</div>
-                        <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
-
-                        <!-- System Agent思考气泡 -->
-                        <div
-                          v-if="getVisibleThinking('system')"
-                          class="thinking-bubble left-bubble"
-                          :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
-                        >
-                          <pre>{{ getCurrentThinkingMessage('system') }}</pre>
-                        </div>
-                      </div>
-
-                      <!-- Main Agent (右上角) -->
-                      <div
-                        class="agent-node main-agent"
-                        :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
-                        @click="setActiveAgent('main')"
-                      >
-                        <div class="agent-icon">
-                          <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
-                        </div>
-                        <div class="agent-label">Main Agent</div>
-                        <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
-
-                        <!-- Main Agent思考气泡 -->
-                        <div
-                          v-if="getVisibleThinking('main')"
-                          class="thinking-bubble right-bubble"
-                          :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
-                        >
-                          <pre>{{ getCurrentThinkingMessage('main') }}</pre>
-                        </div>
-                      </div>
-
-                      <!-- Optimization Agent (右下角) -->
-                      <div
-                        class="agent-node opt-agent"
-                        :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
-                        @click="setActiveAgent('optimization')"
-                      >
-                        <div class="agent-icon">
-                          <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
-                        </div>
-                        <div class="agent-label">Opt Agent</div>
-                        <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
-
-                        <!-- Optimization Agent思考气泡 -->
-                        <div
-                          v-if="getVisibleThinking('optimization')"
-                          class="thinking-bubble right-bubble"
-                          :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
-                        >
-                          <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
-                        </div>
-                      </div>
-
-                      <!-- Node Validation Process (左下角) -->
-                      <div
-                        class="agent-node validation-agent"
-                        :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
-                        @click="setActiveAgent('validation')"
-                      >
-                        <div class="agent-icon">
-                          <Cog :size="28" />
-                        </div>
-                        <div class="agent-label">Node Validation</div>
-                        <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
-
-                        <!-- Node Validation Agent思考气泡 -->
-                        <div
-                          v-if="getVisibleThinking('validation')"
-                          class="thinking-bubble left-bubble"
-                          :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
-                        >
-                          <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
-                        </div>
-                      </div>
-
-                      <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
-                      <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
-                      <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
-                      <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
-                      <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
-                    </div>
-                  </div>
+          <div class="top-sections">
+            <!-- 上方：Agent协作流程图 -->
+            <div class="agent-flow-section">
+              <div class="info-card">
+                <div class="info-header">
+                  <h6 class="info-title">
+                    <Users :size="18" class="me-2" />
+                    Agent Thinking Process
+                    <!--
+                    <button
+                      class="btn btn-sm btn-info ms-2"
+                      @click="testAgentStatus"
+                      style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                    >
+                      Test Queue
+                    </button>
+                    <button
+                      class="btn btn-sm btn-warning ms-1"
+                      @click="testWebSocketMessage"
+                      style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                    >
+                      Test WS
+                    </button>
+                    -->
+                  </h6>
                 </div>
-                <div class="agent-chat-panel">
-                  <div class="chat-panel-body" ref="chatListRef">
-                    <div v-if="!chatMessages.length" class="chat-empty-state">
-                      Agent thinking updates will appear here in real time.
-                    </div>
-                    <div v-else>
-                      <div
-                        v-for="message in chatMessages"
-                        :key="message.id"
-                        class="chat-message"
-                        :class="`agent-${message.agent}`"
-                      >
-                        <div class="chat-avatar" :class="`agent-${message.agent}`">
-                          {{ agentDisplayConfig[message.agent].initial }}
-                        </div>
-                        <div class="chat-bubble">
-                          <div class="chat-meta">
-                            <span class="chat-author">{{ agentDisplayConfig[message.agent].label }}</span>
-                            <span class="chat-time">{{ formatChatTime(message.timestamp) }}</span>
+                <div class="info-content agent-process-content">
+                  <div class="agent-flow-diagram">
+                    <!-- 环形布局的Agent协作图 -->
+                    <div class="flow-container">
+                      <!-- Agent图标正方形布局 -->
+                      <div class="agents-container">
+                        <!-- System Agent (左上角) -->
+                        <div
+                          class="agent-node system-agent"
+                          :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
+                          @click="setActiveAgent('system')"
+                        >
+                          <div class="agent-icon">
+                            <Monitor :size="28" />
                           </div>
-                          <p class="chat-text">{{ message.content }}</p>
+                          <div class="agent-label">System</div>
+                          <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
+
+                          <!-- System Agent思考气泡 -->
+                          <div
+                            v-if="getVisibleThinking('system')"
+                            class="thinking-bubble left-bubble"
+                            :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
+                          >
+                            <pre>{{ getCurrentThinkingMessage('system') }}</pre>
+                          </div>
                         </div>
+
+                        <!-- Main Agent (右上角) -->
+                        <div
+                          class="agent-node main-agent"
+                          :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
+                          @click="setActiveAgent('main')"
+                        >
+                          <div class="agent-icon">
+                            <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+                          </div>
+                          <div class="agent-label">Main Agent</div>
+                          <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
+
+                          <!-- Main Agent思考气泡 -->
+                          <div
+                            v-if="getVisibleThinking('main')"
+                            class="thinking-bubble right-bubble"
+                            :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
+                          >
+                            <pre>{{ getCurrentThinkingMessage('main') }}</pre>
+                          </div>
+                        </div>
+
+                        <!-- Optimization Agent (右下角) -->
+                        <div
+                          class="agent-node opt-agent"
+                          :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
+                          @click="setActiveAgent('optimization')"
+                        >
+                          <div class="agent-icon">
+                            <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                          </div>
+                          <div class="agent-label">Opt Agent</div>
+                          <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
+
+                          <!-- Optimization Agent思考气泡 -->
+                          <div
+                            v-if="getVisibleThinking('optimization')"
+                            class="thinking-bubble right-bubble"
+                            :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
+                          >
+                            <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
+                          </div>
+                        </div>
+
+                        <!-- Node Validation Process (左下角) -->
+                        <div
+                          class="agent-node validation-agent"
+                          :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
+                          @click="setActiveAgent('validation')"
+                        >
+                          <div class="agent-icon">
+                            <Cog :size="28" />
+                          </div>
+                          <div class="agent-label">Node Validation</div>
+                          <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+
+                          <!-- Node Validation Agent思考气泡 -->
+                          <div
+                            v-if="getVisibleThinking('validation')"
+                            class="thinking-bubble left-bubble"
+                            :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
+                          >
+                            <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
+                          </div>
+                        </div>
+
+                        <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
+                        <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
+                        <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
+                        <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
+                        <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- 下方：左右分列的Node Information和Feature Generation -->
-          <div class="lower-section">
-            <!-- 左边：Node Information -->
+            <!-- 上方：Node Information -->
             <div class="node-info-section">
               <div class="info-card">
                 <div class="info-header">
@@ -205,8 +180,10 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- 右边：Feature Generation -->
+          <!-- 下方：Feature Generation -->
+          <div class="feature-generation-section">
             <div class="feature-tree-section">
               <FeatureTreePanel />
             </div>
@@ -215,13 +192,48 @@
       </pane>
 
 
-      <!-- 右侧面板暂时隐藏（移除 SQL Code 与 Feature Performance） -->
       <pane
         v-if="showRightPanel"
         :size="rightPaneSize"
         min="20"
         max="60"
-      ></pane>
+      >
+        <div class="right-panel-content">
+          <div class="chat-card info-card">
+            <div class="info-header">
+              <h6 class="info-title">Agent Thinking Feed</h6>
+            </div>
+            <div class="info-content chat-panel-content">
+              <div class="agent-chat-panel">
+                <div class="chat-panel-body" ref="chatListRef">
+                  <div v-if="!chatMessages.length" class="chat-empty-state">
+                    Agent thinking updates will appear here in real time.
+                  </div>
+                  <div v-else>
+                    <div
+                      v-for="message in chatMessages"
+                      :key="message.id"
+                      class="chat-message"
+                      :class="`agent-${message.agent}`"
+                    >
+                      <div class="chat-avatar" :class="`agent-${message.agent}`">
+                        {{ agentDisplayConfig[message.agent].initial }}
+                      </div>
+                      <div class="chat-bubble">
+                        <div class="chat-meta">
+                          <span class="chat-author">{{ agentDisplayConfig[message.agent].label }}</span>
+                          <span class="chat-time">{{ formatChatTime(message.timestamp) }}</span>
+                        </div>
+                        <p class="chat-text">{{ message.content }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </pane>
 
       <div v-if="showRightPanel && rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
         <div class="expand-button">
@@ -266,8 +278,8 @@ const connectionActiveValidation = ref(false)
 const connectionActiveSystem = ref(false)
 const displayMode = ref<DisplayMode>('paper')
 
-// Agent-driven 页面暂不展示右侧 SQL/Performance 面板
-const showRightPanel = false
+// Right panel hosts the chat feed
+const showRightPanel = true
 
 // Splitpanes 相关状态
 const leftPaneSize = ref(75) // 左侧面板默认占75%
@@ -858,16 +870,22 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 0;
+  gap: 0.85rem;
   padding-right: 0.6rem;
 }
 
+.top-sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 0.85rem;
+  min-height: 0;
+}
+
 .agent-flow-section {
-  flex: 1;
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 0.3rem;
+  padding-bottom: 0.1rem;
 }
 
 .agent-flow-section .info-card {
@@ -875,24 +893,14 @@ onUnmounted(() => {
 }
 
 .agent-process-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: 0.85rem;
+  display: flex;
   height: 100%;
   padding: calc(var(--spacing-md) * 1.05);
 }
 
-.agent-process-content > .agent-flow-diagram,
-.agent-process-content > .agent-chat-panel {
-  min-width: 0;
-}
-
 .agent-process-content > .agent-flow-diagram {
   min-height: 430px;
-}
-
-.agent-process-content > .agent-chat-panel {
-  min-height: 430px;
+  width: 100%;
 }
 
 .agent-chat-panel {
@@ -905,6 +913,14 @@ onUnmounted(() => {
   box-shadow: none;
   height: 100%;
   overflow: hidden; /* 保持内部滚动，不让整体跟随拉长 */
+}
+
+.chat-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
 .chat-panel-header {
@@ -1053,26 +1069,30 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
-  .agent-process-content > .agent-flow-diagram,
-  .agent-process-content > .agent-chat-panel {
+  .agent-process-content > .agent-flow-diagram {
     min-height: 300px;
+  }
+
+  .top-sections {
+    grid-template-columns: 1fr;
   }
 }
 
-/* 下方左右分列布局 */
-.lower-section {
-  display: flex;
-  gap: 1.5rem;
+/* 下方：Feature Generation 布局 */
+.feature-generation-section {
   flex: 1;
   min-height: 200px;
-  padding-top: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-top: 0.1rem;
 }
 
 .node-info-section {
-  flex: 1;
   min-width: 200px;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .feature-tree-section {
@@ -1088,9 +1108,15 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 0.5rem;
   background-color: transparent;
   padding-left: 0.5rem;
+}
+
+.chat-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .sql-code-section {
@@ -1266,6 +1292,13 @@ onUnmounted(() => {
   flex: 1;
   padding: calc(var(--spacing-md) * 0.95);
   overflow-y: auto;
+}
+
+.info-content.chat-panel-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* Agent Flow Diagram - 移除背景和边框，让组件自身样式生效 */
