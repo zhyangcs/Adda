@@ -28,12 +28,26 @@
         </button>
       </div>
     </div>
-    <div class="nav-right"></div>
+    <div class="nav-right">
+      <div v-if="isAgentPage" class="action-group">
+        <button class="action-btn primary" type="button" @click="cycleAgentRunState">
+          {{ agentRunLabel }}
+        </button>
+        <button class="action-btn danger" type="button">
+          Stop
+        </button>
+      </div>
+      <div v-else class="action-group">
+        <button class="action-btn primary" type="button">
+          Run
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -65,6 +79,26 @@ watch(() => route.path, (path) => {
   else if (path === '/in-database-feature-computation') workspaceStore.setExecutionMode('in-db')
   else if (path === '/performance') workspaceStore.setExecutionMode('performance')
 }, { immediate: true })
+
+const isAgentPage = computed(() => currentRoute.value === 'agent-feature-generation')
+
+type AgentRunState = 'run' | 'pause' | 'resume'
+const agentRunState = ref<AgentRunState>('run')
+const agentRunLabel = computed(() => {
+  if (agentRunState.value === 'run') return 'Run'
+  if (agentRunState.value === 'pause') return 'Pause'
+  return 'Resume'
+})
+
+function cycleAgentRunState() {
+  if (agentRunState.value === 'run') {
+    agentRunState.value = 'pause'
+  } else if (agentRunState.value === 'pause') {
+    agentRunState.value = 'resume'
+  } else {
+    agentRunState.value = 'run'
+  }
+}
 </script>
 
 <style scoped>
@@ -111,6 +145,47 @@ watch(() => route.path, (path) => {
   gap: 0.75rem;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.action-group {
+  display: inline-flex;
+  gap: 0.35rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.35rem 0.45rem;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.action-btn {
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 64px;
+}
+
+.action-btn.primary {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.action-btn.subtle {
+  background: #f1f5f9;
+  color: #334155;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.action-btn.danger {
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
 }
 
 .workflow-switch {

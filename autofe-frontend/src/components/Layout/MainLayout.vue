@@ -9,9 +9,6 @@
 
       <!-- 中间栏：Agent思考过程与特征生成 -->
       <div class="center-content">
-        <!-- 执行控制栏 -->
-        <ExecutionControlBar />
-
         <!-- 路由视图内容 -->
         <div class="content-wrapper">
           <router-view />
@@ -27,7 +24,6 @@
 <script setup lang="ts">
 import AppSidebar from './Sidebar/AppSidebar.vue'
 import TopNavigation from '../Navigation/TopNavigation.vue'
-import ExecutionControlBar from './ExecutionControlBar.vue'
 import RightSidebar from './Sidebar/RightSidebar.vue'
 </script>
 
