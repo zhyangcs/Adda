@@ -5,7 +5,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // 三栏布局状态
   const leftColumnVisible = ref(true)
   const rightColumnVisible = ref(true)
-  const executionMode = ref<'end-to-end' | 'step-by-step'>('end-to-end')
+  const executionMode = ref<'agent' | 'in-db' | 'performance'>('agent')
 
   // 布局配置
   const leftColumnWidth = ref(330) // px
@@ -40,7 +40,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     rightColumnVisible.value = !rightColumnVisible.value
   }
 
-  function setExecutionMode(mode: 'end-to-end' | 'step-by-step') {
+  function setExecutionMode(mode: 'agent' | 'in-db' | 'performance') {
     executionMode.value = mode
   }
 
@@ -104,7 +104,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function resetWorkspace() {
     leftColumnVisible.value = true
     rightColumnVisible.value = true
-    executionMode.value = 'end-to-end'
+    executionMode.value = 'agent'
     activeAgent.value = 'main'
     workingAgents.value = []
     featureTreeScale.value = 1

@@ -107,8 +107,7 @@
         <div class="alert alert-info d-flex align-items-start mt-4" role="alert">
           <Play :size="18" class="me-2 flex-shrink-0" />
           <div class="small text-start">
-            Click <strong>Start</strong> (end-to-end) or <strong>Next Step</strong> (step-by-step) in the control bar.
-            The system will automatically validate your configuration before running.
+            Use the control bar: <strong>Next Step</strong> for agent-driven feature generation, or <strong>Start</strong> on the Performance page for the full pipeline. The system validates your configuration before running.
           </div>
         </div>
 
@@ -163,7 +162,7 @@ import { useTaskStore } from '@/stores/task'
 
 const taskStore = useTaskStore()
 const route = useRoute()
-const isEndToEnd = computed(() => route.path.includes('end-to-end'))
+const isEndToEnd = computed(() => route.path.includes('performance'))
 
 const comparisonOptions = [
   { value: 'AutoFeat', label: 'AutoFeat' },

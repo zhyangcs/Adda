@@ -222,7 +222,16 @@ function getTaskStatusColor() {
 }
 
 function getExecutionModeText() {
-  return workspaceStore.executionMode === 'end-to-end' ? 'End-to-End' : 'Step-by-Step'
+  switch (workspaceStore.executionMode) {
+    case 'agent':
+      return 'Agent-driven Feature Generation'
+    case 'in-db':
+      return 'In-Database Feature Computation'
+    case 'performance':
+      return 'Performance'
+    default:
+      return 'Agent-driven Feature Generation'
+  }
 }
 
 // 监听通知变化，自动跳转到最新页

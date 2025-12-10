@@ -21,8 +21,8 @@
             <ChevronLeft :size="16" />
           </button>
 
-          <!-- 端到端模式按钮 -->
-          <div v-if="isEndToEndPage" class="button-group">
+          <!-- Performance 页面按钮（沿用原 End-to-End 自动流程） -->
+          <div v-if="isPerformancePage" class="button-group">
             <button
               class="btn btn-success btn-sm"
               @click="handleStart"
@@ -40,19 +40,10 @@
               <Square :size="16" class="me-1" />
               End&Clear
             </button>
-
-            <button
-              class="btn btn-primary btn-sm"
-              @click="handleDownload"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <Download :size="16" class="me-1" />
-              Download Model
-            </button>
           </div>
 
-          <!-- 逐步执行模式按钮 -->
-          <div v-else class="button-group">
+          <!-- Agent-driven 页面按钮（沿用原 Next Step 接口） -->
+          <div v-else-if="isAgentPage" class="button-group">
             <button
               class="btn btn-success btn-sm"
               @click="handleNextStep"
@@ -66,30 +57,17 @@
             </button>
 
             <button
-              class="btn btn-info btn-sm"
-              @click="handleTestPerformance"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <BarChart :size="16" class="me-1" />
-              Test Performance
-            </button>
-
-            <button
-              class="btn btn-primary btn-sm"
-              @click="handleGenerateModel"
-              :disabled="!featureTreeStore.hasSelection"
-            >
-              <Download :size="16" class="me-1" />
-              Generate & Download Model
-            </button>
-
-            <button
               class="btn btn-outline-secondary btn-sm"
               @click="handleShowThinking"
             >
               <Brain :size="16" class="me-1" />
               Show Agent Thinking
             </button>
+          </div>
+
+          <!-- In-DB 页面暂留空 -->
+          <div v-else class="button-group">
+            <span class="text-muted">Controls will appear here once the in-database flow is ready.</span>
           </div>
         </div>
       </div>
@@ -101,7 +79,7 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Play, Square, Download, SkipForward, BarChart, Brain, ChevronRight, ChevronLeft
+  Play, Square, SkipForward, Brain, ChevronLeft
 } from 'lucide-vue-next'
 import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
@@ -125,13 +103,13 @@ const toggleCollapse = (state?: boolean) => {
 }
 
 // 根据路由判断当前页面模式
-const isEndToEndPage = computed(() => route.path === '/end-to-end')
-const isStepByStepPage = computed(() => route.path === '/step-by-step')
+const isPerformancePage = computed(() => route.path === '/performance')
+const isAgentPage = computed(() => route.path === '/agent-feature-generation')
 
 // 执行按钮事件处理函数
 async function handleStart() {
-  // 如果是端到端页面，传入配置进行初始化
-  const success = await taskStore.autoStep(isEndToEndPage.value)
+  // Performance 页面使用自动流程
+  const success = await taskStore.autoStep(isPerformancePage.value)
   if (success) {
     await featureTreeStore.loadTreeData()
   }
@@ -165,36 +143,6 @@ async function handleNextStep() {
     // 清除loading状态
     isNextStepLoading.value = false
   }
-}
-
-async function handleTestPerformance() {
-  if (featureTreeStore.selectedNodeIds.length === 0) {
-    taskStore.addNotification('Please select at least one feature to test performance', 'info')
-    return
-  }
-
-  // 发射全局事件，让MainContent组件接收
-  window.dispatchEvent(new CustomEvent('test-performance', {
-    detail: { features: featureTreeStore.selectedNodeIds }
-  }))
-}
-
-async function handleGenerateModel() {
-  if (featureTreeStore.selectedNodeIds.length === 0) {
-    taskStore.addNotification('Please select at least one feature to generate model', 'info')
-    return
-  }
-
-  await taskStore.generateModel(featureTreeStore.selectedNodeIds)
-}
-
-async function handleDownload() {
-  if (featureTreeStore.selectedNodeIds.length === 0) {
-    taskStore.addNotification('Please select at least one feature to download', 'info')
-    return
-  }
-
-  await taskStore.downloadModel(featureTreeStore.selectedNodeIds)
 }
 
 function handleShowThinking() {

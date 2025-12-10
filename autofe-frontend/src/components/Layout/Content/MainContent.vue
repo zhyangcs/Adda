@@ -215,31 +215,15 @@
       </pane>
 
 
-      <!-- 右侧面板：SQL Code组件（上方） + Feature Performance组件（下方） -->
-      <pane :size="rightPaneSize" min="20" max="60" v-if="!rightPanelCollapsed">
-        <div class="right-panel-content">
-          <!-- 上方：SQL Code组件 -->
-          <div class="sql-code-section">
-            <SQLCode :sql-code="sqlCode" />
-          </div>
+      <!-- 右侧面板暂时隐藏（移除 SQL Code 与 Feature Performance） -->
+      <pane
+        v-if="showRightPanel"
+        :size="rightPaneSize"
+        min="20"
+        max="60"
+      ></pane>
 
-  
-          <!-- 下方：Feature Performance组件 -->
-          <div class="feature-performance-section">
-            <FeaturePerformance
-              :performance-data="performanceData"
-              :time-data="timeData"
-              :shap-data="shapData"
-              :is-loading="isLoadingPerformance"
-              @generate-features="handleGenerateFeatures"
-              @refresh-data="handleRefreshData"
-            />
-          </div>
-        </div>
-      </pane>
-
-      <!-- 折叠按钮（当右侧面板隐藏时显示） -->
-      <div v-if="rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
+      <div v-if="showRightPanel && rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
         <div class="expand-button">
           <span class="expand-arrow">‹</span>
           <span class="expand-tooltip">Expand Panel (Ctrl+→)</span>
@@ -257,8 +241,6 @@ import { useTaskStore } from '@/stores/task'
 import { useFeatureTreeStore } from '@/stores/featureTree'
 import { useAgentStore } from '@/stores/agent'
 import type { AgentType, AgentState } from '@/types/websocket'
-import SQLCode from '@/components/Features/SQLCode.vue'
-import FeaturePerformance from '@/components/Features/FeaturePerformance.vue'
 import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 
 const taskStore = useTaskStore()
@@ -284,12 +266,8 @@ const connectionActiveValidation = ref(false)
 const connectionActiveSystem = ref(false)
 const displayMode = ref<DisplayMode>('paper')
 
-// 右侧面板数据
-const sqlCode = ref('')
-const performanceData = ref<any>(null)
-const timeData = ref<any>(null)
-const shapData = ref<any>(null)
-const isLoadingPerformance = ref(false)
+// Agent-driven 页面暂不展示右侧 SQL/Performance 面板
+const showRightPanel = false
 
 // Splitpanes 相关状态
 const leftPaneSize = ref(75) // 左侧面板默认占75%
@@ -765,10 +743,6 @@ onMounted(() => {
 
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeyDown)
-
-  // 添加性能测试事件监听器
-  window.addEventListener('test-performance', handleTestPerformanceEvent as EventListener)
-
   // 添加splitter点击事件监听器
   nextTick(() => {
     const splitters = document.querySelectorAll('.splitpanes__splitter')
@@ -799,7 +773,6 @@ onMounted(() => {
 onUnmounted(() => {
   // 移除事件监听器
   window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('test-performance', handleTestPerformanceEvent as EventListener)
 
   // 清理所有定时器
   disappearingTimers.value.forEach(timer => {
@@ -808,117 +781,6 @@ onUnmounted(() => {
   disappearingTimers.value.clear()
 })
 
-// 处理性能测试事件
-function handleTestPerformanceEvent(event: CustomEvent) {
-  const { features } = event.detail
-
-  // 确保右侧面板展开
-  if (rightPanelCollapsed.value) {
-    toggleRightPanel()
-  }
-
-  // 调用性能测试函数，传递选中的节点ID
-  testPerformance(features)
-}
-
-// 右侧面板组件事件处理
-async function handleGenerateFeatures() {
-  // 处理测试性能请求，使用当前选中的节点ID
-  await testPerformance(featureTreeStore.selectedNodeIds)
-}
-
-async function testPerformance(selectedNodeIds?: string[]) {
-  if (isLoadingPerformance.value) {
-    taskStore.addNotification('Performance test already in progress...', 'info')
-    return
-  }
-
-  // 确定要使用的节点ID
-  const nodeIds = selectedNodeIds || featureTreeStore.selectedNodeIds
-
-  if (!nodeIds || nodeIds.length === 0) {
-    taskStore.addNotification('Please select at least one feature to test performance', 'info')
-    return
-  }
-
-  isLoadingPerformance.value = true
-  taskStore.addNotification('Testing performance...', 'info')
-
-  try {
-    const response = await fetch('/test-performance/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        selectedNodeIds: nodeIds,
-        modelType: taskStore.config.mlModel || 'RF',
-        useInDbMl: true
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const data = await response.json()
-
-    if (data.status === 'success') {
-      // 更新SQL代码（显示all_sql）
-      if (data.sql_code && data.sql_code.all_sql) {
-        sqlCode.value = data.sql_code.all_sql
-      }
-
-      // 更新性能数据
-      if (data.performance_info) {
-        const perf = data.performance_info
-
-        // 转换性能数据格式
-        performanceData.value = {
-          accuracy: perf.accuracy || 0,
-          precision: perf.precision || 0,
-          recall: perf.recall || 0,
-          f1Score: perf.f1_score || perf.f1Score || 0,
-          auc: perf.auc || 0
-        }
-
-        // 转换时间数据（如果存在）
-        timeData.value = {
-          total: perf.total_time || perf.time_usage || 0,
-          generation: perf.generation_time || 0,
-          evaluation: perf.evaluation_time || 0,
-          selection: perf.selection_time || 0
-        }
-
-        // 转换SHAP数据（如果存在）
-        if (perf.shap_values && perf.shap_values.length > 0) {
-          shapData.value = {
-            meanShap: perf.mean_shap || 0,
-            features: perf.shap_values.map((shap: any, index: number) => ({
-              name: shap.feature_name || `feature_${index}`,
-              value: shap.shap_value || shap.value || 0,
-              percentage: Math.max(1, (shap.importance || shap.percentage || 1))
-            })).sort((a: any, b: any) => b.value - a.value).slice(0, 5)
-          }
-        }
-      }
-
-      taskStore.addNotification('Performance test completed successfully!', 'success')
-    } else {
-      throw new Error(data.message || 'Performance test failed')
-    }
-  } catch (error) {
-    console.error('Error testing performance:', error)
-    taskStore.addNotification(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'fail')
-  } finally {
-    isLoadingPerformance.value = false
-  }
-}
-
-function handleRefreshData() {
-  // 处理刷新数据请求，重新调用测试性能API
-  testPerformance()
-}
 </script>
 
 <style scoped>
