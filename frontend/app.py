@@ -1,9 +1,14 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
+import ast
+import glob
+import inspect
 import json
 import os
 import io
 import pandas as pd
+import numpy as np
+from enum import Enum
 
 from adda_connector import AddaConnector
 
@@ -15,6 +20,13 @@ if project_root not in sys.path:
 
 from src.llm.llm_dag_util import LLMDagConstructor
 from src.env import test_save_path
+from src.pg.add_pandas_transformer import AddPandasTransformer
+from src.pg.add_parent_transformer import AddParentTransformer
+from src.pg.check_transformer import CheckTransformer
+from src.pg.func_utils import split_code_for_comment, self_copy, get_python_code
+from src.pg.df_wrapper import DataFrameWrapper
+from src.pg.op_type import OpTypeEnum, FillnaType, FillnaTypeEnum
+from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
 
 # 导入完整论文指标计算器
 # from frontend.paper_metrics_complete import calculate_complete_paper_metrics
@@ -36,6 +48,170 @@ adda = AddaConnector()
 
 # 存储临时通知信息
 notifications = []
+
+
+def _normalize_dataset_name(dataset: str) -> str:
+    if not dataset:
+        return ""
+    return str(dataset).strip().lower()
+
+
+def _resolve_pipeline_file(dataset: str, ml_model: str, pipeline_hint: str = None):
+    """
+    Locate the pipeline file under test/store based on dataset and model type.
+    """
+    dataset_key = _normalize_dataset_name(dataset)
+    ml_model_key = (ml_model or "RF").strip()
+    store_dir = f"{dataset_key}_{ml_model_key}_Full"
+
+    candidate_dir = os.path.join(test_save_path, store_dir)
+    if not os.path.isdir(candidate_dir):
+        pattern = os.path.join(test_save_path, f"{dataset_key}*{ml_model_key}*")
+        matches = [p for p in glob.glob(pattern) if os.path.isdir(p)]
+        if not matches:
+            raise FileNotFoundError(f"未找到对应的pipeline目录: {store_dir}")
+        candidate_dir = matches[0]
+
+    pycode_dir = os.path.join(candidate_dir, "pycodes")
+    if not os.path.isdir(pycode_dir):
+        raise FileNotFoundError(f"未找到pycodes目录: {pycode_dir}")
+
+    pipelines = [
+        p for p in glob.glob(os.path.join(pycode_dir, "pipeline_*.py"))
+        if not p.endswith("_old.py")
+    ]
+    if not pipelines:
+        raise FileNotFoundError(f"在 {pycode_dir} 下未找到pipeline文件")
+
+    pipeline_path = None
+    if pipeline_hint:
+        for p in pipelines:
+            if pipeline_hint in os.path.basename(p):
+                pipeline_path = p
+                break
+    if pipeline_path is None:
+        pipelines = sorted(pipelines, key=os.path.getmtime, reverse=True)
+        pipeline_path = pipelines[0]
+
+    return pipeline_path, candidate_dir
+
+
+def _build_dummy_df_from_code(code_text: str, df_name: str = "df"):
+    try:
+        transformer = AddPandasTransformer(df_name)
+        transformer.visit(ast.parse(code_text))
+        attrs = transformer.get_attrs()
+    except Exception:
+        attrs = []
+    if not attrs:
+        attrs = ["id"]
+
+    data = {}
+    for idx, col in enumerate(attrs):
+        data[col] = pd.Series(np.arange(1, 6) + idx)
+    return pd.DataFrame(data), attrs
+
+
+def _extract_columns_from_ast(tree: ast.AST, df_name: str = "df"):
+    reads, writes = set(), set()
+
+    def _get_col(slice_node):
+        if isinstance(slice_node, ast.Constant):
+            return slice_node.value
+        if hasattr(slice_node, "value") and isinstance(slice_node.value, ast.Constant):
+            return slice_node.value.value
+        if hasattr(slice_node, "elts"):
+            vals = []
+            for ele in slice_node.elts:
+                if isinstance(ele, ast.Constant):
+                    vals.append(ele.value)
+                elif hasattr(ele, "value") and isinstance(ele.value, ast.Constant):
+                    vals.append(ele.value.value)
+            return vals
+        return None
+
+    class _ColVisitor(ast.NodeVisitor):
+        def visit_Subscript(self, node):
+            if isinstance(getattr(node, "value", None), ast.Name) and node.value.id == df_name:
+                col = _get_col(getattr(node, "slice", None))
+                if col is not None:
+                    target_set = writes if isinstance(node.ctx, ast.Store) else reads
+                    if isinstance(col, list):
+                        target_set.update(map(str, col))
+                    else:
+                        target_set.add(str(col))
+            self.generic_visit(node)
+
+    _ColVisitor().visit(tree)
+    return sorted(reads), sorted(writes)
+
+
+def _serialize_op_parameters(op_obj):
+    params = {}
+    for key, val in op_obj.parameters.items():
+        if isinstance(val, Enum):
+            params[key] = val.name
+        elif isinstance(val, FillnaType):
+            params[key] = val.fill_type.name if isinstance(val.fill_type, FillnaTypeEnum) else str(val.fill_type)
+        elif isinstance(val, list):
+            new_list = []
+            for item in val:
+                if isinstance(item, Enum):
+                    new_list.append(item.name)
+                elif isinstance(item, FillnaType):
+                    new_list.append(item.fill_type.name if isinstance(item.fill_type, FillnaTypeEnum) else str(item.fill_type))
+                else:
+                    new_list.append(item)
+            params[key] = new_list
+        else:
+            params[key] = val
+    return params
+
+
+def _build_sql_snippet(op_type, read_cols, write_cols):
+    op_name = op_type.name if isinstance(op_type, OpTypeEnum) else str(op_type)
+    src_col = read_cols[0] if read_cols else ""
+    dst_col = write_cols[0] if write_cols else src_col
+
+    if op_name == "NORMALIZE":
+        return f"SELECT ({src_col} - AVG({src_col}) OVER ()) / STDDEV({src_col}) OVER () AS {dst_col} FROM prev_table"
+    if op_name == "NUMERIZE":
+        return f"SELECT CASE WHEN {src_col} = <cat> THEN 0 ELSE 1 END AS {dst_col}, * FROM prev_table -- label encode"
+    if op_name == "GET_DUMMIES":
+        return f"SELECT one_hot({src_col}) AS {dst_col}_* FROM prev_table"
+    if op_name == "DISCRETIZE":
+        return f"-- discretize {src_col} into bins -> {dst_col}"
+    if op_name == "FILLNA":
+        return f"SELECT COALESCE({src_col}, <fill_value>) AS {dst_col}, * FROM prev_table"
+    if op_name in ("UNARY", "BINARY", "DROP"):
+        return "Generated via pandas_to_sql wrapper"
+    if op_name == "UNSUPPORT":
+        return "Requires UDF conversion (py2sql fallback)"
+    return f"-- {op_name} conversion"
+
+
+def _ast_to_dict(node: ast.AST, depth: int = 0, max_depth: int = 6):
+    if depth > max_depth:
+        return {"type": type(node).__name__, "truncated": True}
+
+    children = [_ast_to_dict(child, depth + 1, max_depth) for child in ast.iter_child_nodes(node)]
+    data = {"type": type(node).__name__}
+
+    if isinstance(node, ast.Assign):
+        data["targets"] = [ast.unparse(t) for t in node.targets]
+        data["value"] = ast.unparse(node.value)
+    elif isinstance(node, ast.Call):
+        data["func"] = ast.unparse(node.func)
+    elif isinstance(node, ast.Name):
+        data["id"] = node.id
+    elif isinstance(node, ast.Attribute):
+        data["attr"] = node.attr
+    elif isinstance(node, ast.Constant):
+        data["value"] = node.value
+
+    if children:
+        data["children"] = children
+    return data
 
 @app.route('/')
 def index():
@@ -180,6 +356,90 @@ def test_performance():
             "message": f"性能测试失败: {str(e)}",
             "error_details": str(e)
         })
+
+@app.route('/py2sql-ast/', methods=['POST'])
+def py2sql_ast():
+    """
+    将存储的pipeline Python代码转换为AST并返回py2sql映射信息
+    """
+    try:
+        payload = request.get_json(force=True) or {}
+    except Exception:
+        payload = {}
+
+    dataset = payload.get('dataset') or payload.get('taskName') or payload.get('task_name') or ""
+    ml_model = payload.get('mlModel') or payload.get('ml_model_type') or payload.get('modelType') or "RF"
+    pipeline_hint = payload.get('pipelineId') or payload.get('pipelineName')
+
+    try:
+        pipeline_path, store_dir = _resolve_pipeline_file(dataset, ml_model, pipeline_hint)
+    except Exception as e:
+        return jsonify({"status": "fail", "message": str(e)}), 404
+
+    try:
+        code_lines = get_python_code(pipeline_path)
+        pre_code, code_blocks, node_ids, _ = split_code_for_comment(code_lines, "# task desc: ", store_dir, "df")
+        full_code = "".join(code_lines)
+
+        dummy_df, attrs = _build_dummy_df_from_code(full_code, "df")
+        base_scope = {
+            "pd": pd,
+            "np": np,
+            "inspect": inspect,
+            "DataFrameWrapper": DataFrameWrapper,
+            "LabelEncoder": LabelEncoder,
+            "StandardScaler": StandardScaler,
+            "MinMaxScaler": MinMaxScaler,
+            "RobustScaler": RobustScaler,
+            "df": dummy_df.copy()
+        }
+
+        analysis = []
+        script_scope = self_copy(base_scope)
+        for code, node_id in zip(code_blocks, node_ids):
+            tree = ast.parse(code)
+            AddParentTransformer().visit(tree)
+
+            checker = CheckTransformer(self_copy(script_scope))
+            checker.visit(tree)
+            op_type = checker.op_type.op_type
+
+            read_cols, write_cols = _extract_columns_from_ast(tree, "df")
+            sql_snippet = _build_sql_snippet(op_type, read_cols, write_cols)
+
+            block_info = {
+                "nodeId": node_id,
+                "opType": op_type.name if isinstance(op_type, OpTypeEnum) else str(op_type),
+                "opParameters": _serialize_op_parameters(checker.op_type),
+                "readColumns": read_cols,
+                "writeColumns": write_cols,
+                "code": code,
+                "ast": _ast_to_dict(tree),
+                "sqlSnippet": sql_snippet
+            }
+
+            try:
+                exec(code, script_scope)
+            except Exception as exec_err:
+                block_info["executionError"] = str(exec_err)
+
+            analysis.append(block_info)
+
+        response = {
+            "status": "success",
+            "message": "parsed successfully",
+            "data": {
+                "dataset": dataset,
+                "mlModel": ml_model,
+                "pipelinePath": pipeline_path,
+                "columns": attrs,
+                "preCode": pre_code,
+                "blocks": analysis
+            }
+        }
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"status": "fail", "message": f"解析pipeline失败: {str(e)}"}), 500
 
 @app.route('/gen-model/', methods=['POST'])
 def gen_model():

@@ -105,3 +105,41 @@ export interface Notification {
   notice_type: 'success' | 'fail' | 'info'
   timestamp: Date
 }
+
+export interface Py2SqlAstNode {
+  type: string
+  id?: string
+  attr?: string
+  value?: any
+  func?: string
+  truncated?: boolean
+  targets?: string[]
+  children?: Py2SqlAstNode[]
+}
+
+export interface Py2SqlAstBlock {
+  nodeId?: number | null
+  opType: string
+  opParameters?: Record<string, any>
+  readColumns: string[]
+  writeColumns: string[]
+  sqlSnippet?: string
+  code: string
+  ast: Py2SqlAstNode
+  executionError?: string
+}
+
+export interface Py2SqlAstData {
+  dataset: string
+  mlModel: string
+  pipelinePath: string
+  columns: string[]
+  preCode?: string
+  blocks: Py2SqlAstBlock[]
+}
+
+export interface Py2SqlAstResponse {
+  status: 'success' | 'fail'
+  message?: string
+  data?: Py2SqlAstData
+}

@@ -50,12 +50,15 @@ import RightSidebar from './Sidebar/RightSidebar.vue'
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
   background-color: #f8fafc;
 }
 
 .content-wrapper {
   flex: 1;
-  overflow: hidden;
+  /* allow routed content (e.g. InDatabaseContent) to scroll vertically */
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }

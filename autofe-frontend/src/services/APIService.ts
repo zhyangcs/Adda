@@ -3,7 +3,8 @@ import type {
   TaskResponse,
   FeatureTreeResponse,
   PerformanceResponse,
-  Notification
+  Notification,
+  Py2SqlAstResponse
 } from '@/types'
 
 class APIService {
@@ -185,6 +186,10 @@ class APIService {
     } else {
       return this.post('/auto-step/')
     }
+  }
+
+  async getPy2SqlAst(payload: { dataset: string, mlModel: string, pipelineId?: string }): Promise<Py2SqlAstResponse> {
+    return this.post('/py2sql-ast/', payload, 2 * 60 * 1000)
   }
 }
 
