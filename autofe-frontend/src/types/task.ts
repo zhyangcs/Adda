@@ -135,6 +135,17 @@ export interface Py2SqlAstData {
   pipelinePath: string
   columns: string[]
   preCode?: string
+  curStatesPath?: string | null
+  storeDir?: string | null
+  pipelineSource?: 'pipes' | 'scan'
+  pipelineFromPipes?: boolean
+  curStatesLoaded?: boolean
+  sqlGenerationMeta?: Record<string, any>
+  finalSql?: string
+  finalSqlPath?: string
+  finalSqlFound?: boolean
+  finalSqlGenerated?: boolean
+  finalSqlError?: string
   blocks: Py2SqlAstBlock[]
 }
 

@@ -46,6 +46,29 @@
         <div><strong>Detected Columns:</strong> {{ astData.columns.join(', ') || 'N/A' }}</div>
       </div>
 
+      <div
+        v-if="astData.finalSql || astData.finalSqlPath"
+        class="sql-card"
+      >
+        <div class="sql-card-header">
+          <div class="title">
+            最终生成的 SQL
+            <span v-if="astData.finalSqlGenerated" class="badge success">实时生成</span>
+            <span v-else-if="astData.finalSqlFound" class="badge info">已存在</span>
+          </div>
+          <div class="sql-actions">
+            <button class="ghost-btn" :disabled="!astData.finalSql" @click="copyFinalSql">复制SQL</button>
+            <button class="ghost-btn" :disabled="!astData.finalSqlPath" @click="copyFinalSqlPath">复制路径</button>
+          </div>
+        </div>
+        <div class="sql-path" v-if="astData.finalSqlPath">
+          <strong>路径:</strong> {{ astData.finalSqlPath }}
+        </div>
+        <pre class="sql-view" v-if="astData.finalSql">{{ astData.finalSql }}</pre>
+        <div v-else class="muted-text">未获取到SQL内容，但路径已提供。</div>
+        <div v-if="astData.finalSqlError" class="warning">SQL生成警告：{{ astData.finalSqlError }}</div>
+      </div>
+
       <div class="blocks">
         <div
           v-for="(block, idx) in astData.blocks"
@@ -263,6 +286,22 @@ async function loadAst() {
     loading.value = false
   }
 }
+
+function copyText(text?: string) {
+  if (!text) return
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(text)
+    taskStore.addNotification('已复制到剪贴板', 'success')
+  }
+}
+
+function copyFinalSql() {
+  copyText(astData.value?.finalSql)
+}
+
+function copyFinalSqlPath() {
+  copyText(astData.value?.finalSqlPath)
+}
 </script>
 
 <style scoped>
@@ -363,6 +402,77 @@ async function loadAst() {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
+}
+
+.sql-card {
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sql-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sql-card .title {
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sql-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ghost-btn {
+  border: 1px solid #d7dde7;
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #0f172a;
+}
+
+.ghost-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.badge.success {
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.badge.info {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.sql-path {
+  font-size: 13px;
+  color: #475569;
+  word-break: break-all;
+}
+
+.sql-view {
+  background: #0b1224;
+  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .blocks {
