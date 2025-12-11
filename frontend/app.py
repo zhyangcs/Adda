@@ -5,22 +5,27 @@ import glob
 import inspect
 import json
 import os
+import sys
 import io
 import pickle
 import pandas as pd
 import numpy as np
+import tempfile
+import shutil
 from enum import Enum
+# 确保可以导入 src.* 模块
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from src.env import test_save_path, dataset_path
+from src.pg.python_polish import PythonPolisher
+from src.llm.tests.test_util import task_config
 
 from adda_connector import AddaConnector
 
 # 导入LLMDagConstructor以支持端到端初始化
-import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 from src.llm.llm_dag_util import LLMDagConstructor
-from src.env import test_save_path
 from src.pg.add_pandas_transformer import AddPandasTransformer
 from src.pg.add_parent_transformer import AddParentTransformer
 from src.pg.check_transformer import CheckTransformer
@@ -181,11 +186,19 @@ def _load_sql_code(store_dir: str):
     """
     尝试读取已生成的SQL文件（若存在）。
     """
+    # 优先寻找标准生成路径
     sql_files = sorted(
         glob.glob(os.path.join(store_dir, "pipe_valid_*", "spsql.sql")),
         key=os.path.getmtime,
         reverse=True,
     )
+    # 兼容 generate_sql_simple 产生的任意 *.sql
+    if not sql_files:
+        sql_files = sorted(
+            glob.glob(os.path.join(store_dir, "**", "*.sql"), recursive=True),
+            key=os.path.getmtime,
+            reverse=True,
+        )
     if sql_files:
         try:
             with open(sql_files[0], "r") as f:
@@ -193,6 +206,99 @@ def _load_sql_code(store_dir: str):
         except Exception as e:
             print(f"Failed to read sql file {sql_files[0]}: {e}")
     return None, None
+
+
+def _generate_sql_from_ctor(dataset_key: str, ml_model_key: str, pipe_ctor, store_dir: str):
+    """
+    基于cur_states中的pipes实时生成SQL，返回(sql_code, sql_path, meta)或(error)。
+    使用临时目录，生成后清理，避免污染持久目录。
+    """
+    result = {"sql_code": None, "sql_path": None, "meta": {}, "error": None}
+    temp_dir = None
+    try:
+        task_name, target_col, task_type = task_config(dataset_key)
+        csv_path = os.path.join(dataset_path, task_name, "train_new.csv")
+        if not os.path.isfile(csv_path):
+            raise FileNotFoundError(f"找不到数据集: {csv_path}")
+
+        df = pd.read_csv(csv_path)
+        col_num = df.shape[1]
+        row_num = df.shape[0]
+
+        db_tb_name = f"{task_name}_src_tb"
+        # 使用临时目录避免写入正式store
+        temp_dir = tempfile.mkdtemp(prefix="py2sql_tmp_")
+        dir_path = temp_dir
+
+        # 解析并修正pipes中的code_path，过滤无效pipe
+        resolved_pipes = []
+        for p in getattr(pipe_ctor, "pipes", []) or []:
+            code_path = getattr(p, "code_path", None)
+            fixed_path = _resolve_code_path(code_path, store_dir, dataset_key, ml_model_key)
+            if not fixed_path:
+                continue
+            try:
+                import copy as _copy
+                new_pipe = _copy.copy(p)
+                new_pipe.code_path = fixed_path
+                resolved_pipes.append(new_pipe)
+            except Exception:
+                # 如果无法复制，则直接使用原对象并覆盖路径
+                setattr(p, "code_path", fixed_path)
+                resolved_pipes.append(p)
+
+        if not resolved_pipes:
+            raise Exception("没有有效的特征管道可用于代码优化。所有管道都无效或不存在。")
+
+        polisher = PythonPolisher(
+            db_tb_name,
+            target_col,
+            "df",
+            resolved_pipes,
+            dir_path,
+            2,  # extra_step predict
+            col_num,
+            pipe_ctor,
+            id_col="id",
+            total_num=row_num,
+            do_optimize=2,
+            task_type=task_type,
+            use_py_train_pred=True,
+            model_type=ml_model_key,
+        )
+
+        print(f"[py2sql-ast] generating SQL via PythonPolisher; dir={dir_path}, task={task_name}, model={ml_model_key}")
+        polisher.polish_code()
+        # 仅生成SQL，不执行DB验证/训练
+        polisher.generate_sql_simple(do_opt=True)
+
+        sql_code, sql_path = _load_sql_code(dir_path)
+        result["sql_code"] = sql_code
+        result["sql_path"] = sql_path
+        result["meta"] = {
+            "task_name": task_name,
+            "target_col": target_col,
+            "task_type": task_type,
+            "col_num": col_num,
+            "row_num": row_num,
+            "dir_path": dir_path,
+            "temp_dir_cleaned": False,
+        }
+        if sql_code:
+            print(f"[py2sql-ast] sql generated at {sql_path}")
+        else:
+            print("[py2sql-ast] sql generation finished but no sql file found")
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"[py2sql-ast] sql generation failed: {e}")
+    finally:
+        if temp_dir and os.path.isdir(temp_dir):
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                result["meta"]["temp_dir_cleaned"] = True
+            except Exception:
+                result["meta"]["temp_dir_cleaned"] = False
+    return result
 
 
 def _build_dummy_df_from_code(code_text: str, df_name: str = "df"):
@@ -570,13 +676,26 @@ def py2sql_ast():
 
         # 附加已生成的SQL（若存在），以便前端展示真实py2sql结果
         sql_code, sql_path = _load_sql_code(store_dir or "")
+        sql_generated = False
+        if not sql_code and pipeline_from_pipes and pipe_ctor:
+            gen_res = _generate_sql_from_ctor(dataset_key, ml_model_key, pipe_ctor, store_dir)
+            sql_code = gen_res.get("sql_code")
+            sql_path = gen_res.get("sql_path")
+            response["data"]["sqlGenerationMeta"] = gen_res.get("meta", {})
+            if gen_res.get("error"):
+                response["data"]["finalSqlError"] = gen_res["error"]
+            else:
+                sql_generated = bool(sql_code)
+
         if sql_code:
             response["data"]["finalSql"] = sql_code
             response["data"]["finalSqlPath"] = sql_path
             response["data"]["finalSqlFound"] = True
+            response["data"]["finalSqlGenerated"] = sql_generated
             print(f"[py2sql-ast] final SQL found at {sql_path}")
         else:
             response["data"]["finalSqlFound"] = False
+            response["data"]["finalSqlGenerated"] = False
 
         return jsonify(response)
     except Exception as e:
