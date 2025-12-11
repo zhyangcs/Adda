@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import io
+import pickle
 import pandas as pd
 import numpy as np
 from enum import Enum
@@ -94,6 +95,104 @@ def _resolve_pipeline_file(dataset: str, ml_model: str, pipeline_hint: str = Non
         pipeline_path = pipelines[0]
 
     return pipeline_path, candidate_dir
+
+
+def _candidate_store_dirs(dataset: str, ml_model: str):
+    """
+    Return possible store dirs in priority order.
+    """
+    dataset_key = _normalize_dataset_name(dataset)
+    ml_model_key = (ml_model or "RF").strip()
+    candidates = [
+        os.path.join(test_save_path, f"{dataset_key}_{ml_model_key}_Full"),
+        os.path.join(test_save_path, dataset_key),
+    ]
+    pattern = os.path.join(test_save_path, f"{dataset_key}*{ml_model_key}*")
+    for p in glob.glob(pattern):
+        if os.path.isdir(p):
+            candidates.append(p)
+    # 去重并保持顺序
+    seen = set()
+    ordered = []
+    for c in candidates:
+        if c not in seen:
+            ordered.append(c)
+            seen.add(c)
+    return ordered
+
+
+def _load_pipe_ctor(store_dir: str):
+    """
+    尝试从指定目录加载cur_states.pkl。
+    """
+    cur_states_path = os.path.join(store_dir, "cur_states.pkl")
+    if os.path.isfile(cur_states_path):
+        try:
+            with open(cur_states_path, "rb") as f:
+                return pickle.load(f), cur_states_path
+        except Exception as e:
+            print(f"Failed to load cur_states from {cur_states_path}: {e}")
+    return None, None
+
+
+def _resolve_code_path(code_path: str, store_dir: str, dataset_key: str, ml_model_key: str):
+    """
+    兜底修复在重命名目录后失效的code_path。
+    """
+    if code_path and os.path.isfile(code_path):
+        return code_path
+    basename = os.path.basename(code_path) if code_path else None
+    candidates = []
+    if basename:
+        candidates.extend([
+            os.path.join(store_dir, "pycodes", basename),
+            os.path.join(test_save_path, f"{dataset_key}_{ml_model_key}_Full", "pycodes", basename),
+            os.path.join(test_save_path, dataset_key, "pycodes", basename),
+        ])
+    for cand in candidates:
+        if os.path.isfile(cand):
+            return cand
+    return None
+
+
+def _select_pipeline_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, dataset_key: str, ml_model_key: str):
+    """
+    基于cur_states中的pipes选择实际使用的pipeline脚本。
+    优先根据pipeline_hint匹配，其次取第一个有效pipe。
+    """
+    if not pipe_ctor or not hasattr(pipe_ctor, "pipes"):
+        return None
+    valid_paths = []
+    for p in pipe_ctor.pipes or []:
+        code_path = getattr(p, "code_path", None)
+        code_path = _resolve_code_path(code_path, store_dir, dataset_key, ml_model_key)
+        if code_path:
+            valid_paths.append(code_path)
+    if not valid_paths:
+        return None
+    if pipeline_hint:
+        for path in valid_paths:
+            if pipeline_hint in os.path.basename(path):
+                return path
+    return valid_paths[0]
+
+
+def _load_sql_code(store_dir: str):
+    """
+    尝试读取已生成的SQL文件（若存在）。
+    """
+    sql_files = sorted(
+        glob.glob(os.path.join(store_dir, "pipe_valid_*", "spsql.sql")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    if sql_files:
+        try:
+            with open(sql_files[0], "r") as f:
+                return f.read(), sql_files[0]
+        except Exception as e:
+            print(f"Failed to read sql file {sql_files[0]}: {e}")
+    return None, None
 
 
 def _build_dummy_df_from_code(code_text: str, df_name: str = "df"):
@@ -370,11 +469,37 @@ def py2sql_ast():
     dataset = payload.get('dataset') or payload.get('taskName') or payload.get('task_name') or ""
     ml_model = payload.get('mlModel') or payload.get('ml_model_type') or payload.get('modelType') or "RF"
     pipeline_hint = payload.get('pipelineId') or payload.get('pipelineName')
+    dataset_key = _normalize_dataset_name(dataset)
+    ml_model_key = (ml_model or "RF").strip()
 
-    try:
-        pipeline_path, store_dir = _resolve_pipeline_file(dataset, ml_model, pipeline_hint)
-    except Exception as e:
-        return jsonify({"status": "fail", "message": str(e)}), 404
+    # 先尝试使用cur_states.pkl中的pipes，以真实运行状态为准
+    store_dir = None
+    pipeline_path = None
+    cur_states_path = None
+    pipe_ctor = None
+    pipeline_source = "scan"  # 默认回退扫描
+    pipeline_from_pipes = False
+    ctor_loaded = False
+    for cand_dir in _candidate_store_dirs(dataset, ml_model):
+        pipe_ctor, cur_states_path = _load_pipe_ctor(cand_dir)
+        if pipe_ctor:
+            ctor_loaded = True
+            store_dir = cand_dir
+            pipeline_path = _select_pipeline_from_ctor(pipe_ctor, pipeline_hint, cand_dir, dataset_key, ml_model_key)
+            if pipeline_path:
+                pipeline_source = "pipes"
+                pipeline_from_pipes = True
+                print(f"[py2sql-ast] using pipes from cur_states: {cur_states_path}, pipeline: {pipeline_path}")
+                break
+
+    # 若未找到可用pipe，回退到原先的文件扫描逻辑
+    if not pipeline_path:
+        try:
+            pipeline_path, store_dir = _resolve_pipeline_file(dataset, ml_model, pipeline_hint)
+            pipeline_source = "scan"
+            print(f"[py2sql-ast] fallback scan pipeline: {pipeline_path}")
+        except Exception as e:
+            return jsonify({"status": "fail", "message": str(e)}), 404
 
     try:
         code_lines = get_python_code(pipeline_path)
@@ -432,11 +557,27 @@ def py2sql_ast():
                 "dataset": dataset,
                 "mlModel": ml_model,
                 "pipelinePath": pipeline_path,
+                "curStatesPath": cur_states_path,
+                "storeDir": store_dir,
+                "pipelineSource": pipeline_source,
+                "pipelineFromPipes": pipeline_from_pipes,
+                "curStatesLoaded": ctor_loaded,
                 "columns": attrs,
                 "preCode": pre_code,
                 "blocks": analysis
             }
         }
+
+        # 附加已生成的SQL（若存在），以便前端展示真实py2sql结果
+        sql_code, sql_path = _load_sql_code(store_dir or "")
+        if sql_code:
+            response["data"]["finalSql"] = sql_code
+            response["data"]["finalSqlPath"] = sql_path
+            response["data"]["finalSqlFound"] = True
+            print(f"[py2sql-ast] final SQL found at {sql_path}")
+        else:
+            response["data"]["finalSqlFound"] = False
+
         return jsonify(response)
     except Exception as e:
         return jsonify({"status": "fail", "message": f"解析pipeline失败: {str(e)}"}), 500
