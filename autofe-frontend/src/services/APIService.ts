@@ -191,6 +191,33 @@ class APIService {
   async getPy2SqlAst(payload: { dataset: string, mlModel: string, pipelineId?: string }): Promise<Py2SqlAstResponse> {
     return this.post('/py2sql-ast/', payload, 2 * 60 * 1000)
   }
+
+  // 可暂停/恢复的特征搜索（demo LLMDagConstructor）
+  async featureSearchStart(payload: { dataset: string; modelType: string; depth?: number; forceNew?: boolean; resume?: boolean }) {
+    return this.post('/feature-search/start/', payload, 15 * 60 * 1000)
+  }
+
+  async featureSearchPause() {
+    return this.post('/feature-search/pause/')
+  }
+
+  async featureSearchResume() {
+    return this.post('/feature-search/resume/')
+  }
+
+  async featureSearchStop() {
+    return this.post('/feature-search/stop/')
+  }
+
+  async featureSearchStatus() {
+    const response = await fetch(`${this.baseURL}/feature-search/status/`, {
+      method: 'GET'
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    return response.json()
+  }
 }
 
 export const apiService = new APIService()

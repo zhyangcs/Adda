@@ -30,10 +30,10 @@
     </div>
     <div class="nav-right">
       <div v-if="isAgentPage" class="action-group">
-        <button class="action-btn primary" type="button" @click="cycleAgentRunState">
+        <button class="action-btn primary" type="button" @click="handleAgentRunAction">
           {{ agentRunLabel }}
         </button>
-        <button class="action-btn danger" type="button">
+        <button class="action-btn danger" type="button" @click="handleAgentStop" :disabled="agentRunState === 'run' && agentSearchStatus === 'idle'">
           Stop
         </button>
       </div>
@@ -47,13 +47,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useTaskStore } from '@/stores/task'
+import { storeToRefs } from 'pinia'
 
 const route = useRoute()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
+const taskStore = useTaskStore()
+const { agentSearchStatus } = storeToRefs(taskStore)
 
 const currentRoute = computed(() => {
   const path = route.path
@@ -83,22 +87,35 @@ watch(() => route.path, (path) => {
 const isAgentPage = computed(() => currentRoute.value === 'agent-feature-generation')
 
 type AgentRunState = 'run' | 'pause' | 'resume'
-const agentRunState = ref<AgentRunState>('run')
+const agentRunState = computed<AgentRunState>(() => {
+  if (agentSearchStatus.value === 'running') return 'pause'
+  if (agentSearchStatus.value === 'paused') return 'resume'
+  return 'run'
+})
+
 const agentRunLabel = computed(() => {
   if (agentRunState.value === 'run') return 'Run'
   if (agentRunState.value === 'pause') return 'Pause'
   return 'Resume'
 })
 
-function cycleAgentRunState() {
+async function handleAgentRunAction() {
   if (agentRunState.value === 'run') {
-    agentRunState.value = 'pause'
+    await taskStore.startFeatureSearch()
   } else if (agentRunState.value === 'pause') {
-    agentRunState.value = 'resume'
+    await taskStore.pauseFeatureSearch()
   } else {
-    agentRunState.value = 'run'
+    await taskStore.resumeFeatureSearch()
   }
 }
+
+async function handleAgentStop() {
+  await taskStore.stopFeatureSearch()
+}
+
+onMounted(() => {
+  taskStore.refreshFeatureSearchStatus()
+})
 </script>
 
 <style scoped>
@@ -263,3 +280,4 @@ function cycleAgentRunState() {
   }
 }
 </style>
+

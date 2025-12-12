@@ -51,6 +51,13 @@ export const useAgentStore = defineStore('agent', () => {
     reconnectAttempts: 0
   })
 
+  // ===== 时间与常量 =====
+  const toMs = (ts?: number) => {
+    if (!ts) return Date.now()
+    return ts < 1e12 ? ts * 1000 : ts
+  }
+  const STALE_THRESHOLD_MS = 30_000
+
   // ===== 计算属性 =====
 
   // 获取所有Agent的当前状态
@@ -237,7 +244,9 @@ export const useAgentStore = defineStore('agent', () => {
       }
 
       // 更新状态映射
-      agentStates.value.set(agent, agentState)
+      const next = new Map(agentStates.value)
+      next.set(agent, agentState)
+      agentStates.value = next
       console.log(`[STATE UPDATE] IMMEDIATE update for ${agent}: ${status}`)
     } else {
       // 其他状态延迟更新
@@ -254,7 +263,9 @@ export const useAgentStore = defineStore('agent', () => {
         }
 
         // 更新状态映射
-        agentStates.value.set(agent, agentState)
+        const next = new Map(agentStates.value)
+        next.set(agent, agentState)
+        agentStates.value = next
         console.log(`[STATE UPDATE] DELAYED update for ${agent}: ${status} (delayed: ${delay}ms)`)
 
         stateUpdateTimeouts.delete(agent)
@@ -322,7 +333,9 @@ export const useAgentStore = defineStore('agent', () => {
         category: undefined,
         timestamp: message.timestamp
       }
-      currentAgentThinking.value.set(message.agent as AgentType, currentThinking)
+      const nextThinking = new Map(currentAgentThinking.value)
+      nextThinking.set(message.agent as AgentType, currentThinking)
+      currentAgentThinking.value = nextThinking
     }
 
     // 设置3秒后显示下一条消息
@@ -330,7 +343,9 @@ export const useAgentStore = defineStore('agent', () => {
       // 清除当前显示的消息
       if (currentMessageId.value === message.id) {
         if (message.type === 'thinking') {
-          currentAgentThinking.value.delete(message.agent as AgentType)
+          const nextThinking = new Map(currentAgentThinking.value)
+          nextThinking.delete(message.agent as AgentType)
+          currentAgentThinking.value = nextThinking
         }
         currentMessageId.value = null
 
@@ -350,20 +365,30 @@ export const useAgentStore = defineStore('agent', () => {
     }
     messageQueue.value = []
     currentMessageId.value = null
-    currentAgentThinking.value.clear()
+    currentAgentThinking.value = new Map()
   }
 
   // 更新Agent思考 - 重写为队列模式
   const updateAgentThinking = (thinkingMessage: AgentThinkingMessage) => {
     const { agent, thinking, category, timestamp } = thinkingMessage
 
+    const tsMs = toMs(timestamp)
+    const arrivalDelay = Date.now() - tsMs
+    // 打印到前端调试，观察延迟/丢弃
     console.log('🎯 Agent thinking received:', {
       agent,
       thinking: thinking?.substring(0, 100) + '...',
       category,
       timestamp,
-      fullMessage: thinkingMessage
+      fullMessage: thinkingMessage,
+      delay_ms: arrivalDelay
     })
+
+    // 超时丢弃
+    if (arrivalDelay > STALE_THRESHOLD_MS) {
+      console.warn(`[THINKING] Drop stale thinking (${arrivalDelay}ms delay) for ${agent}`)
+      return
+    }
 
     // 验证必要字段
     if (!agent || !thinking) {
@@ -414,13 +439,21 @@ export const useAgentStore = defineStore('agent', () => {
   // 清除Agent状态缓存
   const clearAgentCache = (agent?: AgentType) => {
     if (agent) {
-      agentStates.value.delete(agent)
-      agentThinkingHistory.value.delete(agent)
-      currentAgentThinking.value.delete(agent)
+      const nextStates = new Map(agentStates.value)
+      nextStates.delete(agent)
+      agentStates.value = nextStates
+
+      const nextHistory = new Map(agentThinkingHistory.value)
+      nextHistory.delete(agent)
+      agentThinkingHistory.value = nextHistory
+
+      const nextThinking = new Map(currentAgentThinking.value)
+      nextThinking.delete(agent)
+      currentAgentThinking.value = nextThinking
     } else {
-      agentStates.value.clear()
-      agentThinkingHistory.value.clear()
-      currentAgentThinking.value.clear()
+      agentStates.value = new Map()
+      agentThinkingHistory.value = new Map()
+      currentAgentThinking.value = new Map()
     }
   }
 
@@ -438,12 +471,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   // 初始化WebSocket连接和事件监听
   const initializeWebSocket = () => {
-    // 确保连接已建立
-    webSocketService.connect()
-
-    // 设置WebSocket回调
+    // 先绑定回调，避免连接初始缓存事件丢失
     const callbacks = setupWebSocketCallbacks()
     webSocketService.setCallbacks(callbacks)
+
+    // 再建立连接
+    webSocketService.connect()
 
     // 订阅所有Agent状态（若此时尚未连接，onConnect回调会再次订阅）
     subscribeToAllAgents()

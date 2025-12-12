@@ -39,9 +39,12 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
 
       if (response.status === 'success') {
         treeData.value = response.json
+        console.log('[TREE LOAD] success root:', response.json?.root_id, 'nodes:', response.json?.node_info?.length || 0, 'edges:', response.json?.parent_child_relations?.length || 0)
         selectedNode.value = null
         // 更新选中状态
         updateSelectionFromTree()
+      } else {
+        console.warn('[TREE LOAD] failed status:', response.status, 'msg:', (response as any)?.message)
       }
     } catch (error) {
       console.error('加载树数据失败:', error)

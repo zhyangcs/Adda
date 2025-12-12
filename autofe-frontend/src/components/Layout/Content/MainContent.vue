@@ -54,13 +54,7 @@
                           <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
 
                           <!-- System Agent思考气泡 -->
-                          <div
-                            v-if="getVisibleThinking('system')"
-                            class="thinking-bubble left-bubble"
-                            :class="{ 'bubble-disappearing': isBubbleDisappearing('system') }"
-                          >
-                            <pre>{{ getCurrentThinkingMessage('system') }}</pre>
-                          </div>
+                          <!-- Bubble disabled -->
                         </div>
 
                         <!-- Main Agent (右上角) -->
@@ -76,13 +70,7 @@
                           <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
 
                           <!-- Main Agent思考气泡 -->
-                          <div
-                            v-if="getVisibleThinking('main')"
-                            class="thinking-bubble right-bubble"
-                            :class="{ 'bubble-disappearing': isBubbleDisappearing('main') }"
-                          >
-                            <pre>{{ getCurrentThinkingMessage('main') }}</pre>
-                          </div>
+                          <!-- Bubble disabled -->
                         </div>
 
                         <!-- Optimization Agent (右下角) -->
@@ -98,13 +86,7 @@
                           <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
 
                           <!-- Optimization Agent思考气泡 -->
-                          <div
-                            v-if="getVisibleThinking('optimization')"
-                            class="thinking-bubble right-bubble"
-                            :class="{ 'bubble-disappearing': isBubbleDisappearing('optimization') }"
-                          >
-                            <pre>{{ getCurrentThinkingMessage('optimization') }}</pre>
-                          </div>
+                          <!-- Bubble disabled -->
                         </div>
 
                         <!-- Node Validation Process (左下角) -->
@@ -120,13 +102,7 @@
                           <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
 
                           <!-- Node Validation Agent思考气泡 -->
-                          <div
-                            v-if="getVisibleThinking('validation')"
-                            class="thinking-bubble left-bubble"
-                            :class="{ 'bubble-disappearing': isBubbleDisappearing('validation') }"
-                          >
-                            <pre>{{ getCurrentThinkingMessage('validation') }}</pre>
-                          </div>
+                          <!-- Bubble disabled -->
                         </div>
 
                         <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
@@ -276,6 +252,7 @@ const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
 const connectionActiveSystem = ref(false)
+const treeReloadTimer = ref<number | null>(null)
 const displayMode = ref<DisplayMode>('paper')
 
 // Right panel hosts the chat feed
@@ -504,32 +481,15 @@ function getAgentThinking(agent: AgentKey): string {
 
 // 添加消息到队列 - 优化为允许同agent消息快速替换
 function addThinkingMessageToQueue(agent: AgentKey, content: string) {
-  console.log(`Adding ${agent} message to queue:`, content.substring(0, 50) + '...')
-
+  // 队列关闭，直接写入聊天列表
+  console.log(`Appending ${agent} message:`, content.substring(0, 50) + '...')
   const messageId = `${agent}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  const message: QueuedMessage = {
+  appendChatMessage({
     id: messageId,
     content,
     agent,
-    timestamp: Date.now(),
-    status: 'pending'
-  }
-
-  // 检查是否替换当前同agent的消息
-  const currentMessage = currentDisplayedMessage.value.get(agent)
-  if (currentMessage && currentMessage.status === 'displaying') {
-    // 立即替换当前显示的消息（适用于连续更新）
-    console.log(`Replacing current message for ${agent}`)
-    hideMessage(currentMessage)
-  }
-
-  globalMessageQueue.value.push(message)
-  appendChatMessage(message)
-
-  // 如果队列没有在处理，开始处理
-  if (!isProcessingGlobalQueue.value) {
-    processGlobalMessageQueue()
-  }
+    timestamp: Date.now()
+  })
 }
 
 function appendChatMessage(message: QueuedMessage) {
@@ -582,7 +542,7 @@ watch(currentAgentThinking, (thinkingMap) => {
       }
     }
   })
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 watch(() => chatMessages.value.length, () => {
   nextTick(() => {
@@ -665,6 +625,19 @@ function simulateAgentWork() {
   }
 }
 
+// 轻量防抖：Agent状态变化时触发特征树刷新
+function scheduleTreeReload() {
+  if (treeReloadTimer.value) return
+  treeReloadTimer.value = window.setTimeout(async () => {
+    treeReloadTimer.value = null
+    try {
+      await featureTreeStore.loadTreeData()
+    } catch (err) {
+      console.error('Failed to reload feature tree:', err)
+    }
+  }, 800)
+}
+
 // 监听任务状态变化
 watch(() => taskStore.status, (newStatus) => {
   if (newStatus === 'running') {
@@ -717,6 +690,12 @@ watch(allAgentStates, (states) => {
   connectionActiveReverse.value = hasOptAgent
   connectionActiveValidation.value = hasValidationAgent
   connectionActiveSystem.value = hasSystemAgent
+
+  // 主Agent工作/完成时触发特征树刷新（防抖）
+  const mainAgentState = stateList.find((s: AgentState) => s.agent === 'mainagent')
+  if (mainAgentState && (mainAgentState.status === 'working' || mainAgentState.status === 'completed')) {
+    scheduleTreeReload()
+  }
 }, { deep: true })
 
 // 键盘快捷键处理
@@ -749,9 +728,6 @@ onMounted(() => {
       rightPaneSize.value = 0
     }
   }
-
-  // 初始化WebSocket连接
-  agentStore.initializeWebSocket()
 
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeyDown)
@@ -791,6 +767,11 @@ onUnmounted(() => {
     clearTimeout(timer)
   })
   disappearingTimers.value.clear()
+
+  if (treeReloadTimer.value) {
+    clearTimeout(treeReloadTimer.value)
+    treeReloadTimer.value = null
+  }
 })
 
 </script>

@@ -13,36 +13,55 @@ class WebSocketService {
   private socket: Socket | null = null
   private callbacks: WebSocketCallbacks = {}
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 5
+  // 尽量无限重连，避免后端稍晚启动导致必须刷新
+  private maxReconnectAttempts = Number.MAX_SAFE_INTEGER
   private reconnectDelay = 1000
   private isConnected = false
-  private defaultUrl =
-    (typeof import.meta !== 'undefined' &&
-      (import.meta.env?.VITE_WS_URL || import.meta.env?.VITE_API_BASE_URL)) ||
-    'http://10.82.1.203:5000'
+  // 多候选地址轮询，避免因为端口或代理差异导致首连失败
+  private candidateUrls: string[] = this.buildCandidateUrls()
+  private currentUrlIndex = 0
+  // 控制自动刷新，避免首批消息漏渲染后需要手动刷新
+  private lastAutoReloadAt = (typeof sessionStorage !== 'undefined' && Number(sessionStorage.getItem('ws-auto-reload-ts'))) || 0
+
+  private buildCandidateUrls(): string[] {
+    // 指定直连后端 WS 地址，避免经过 Vite 代理
+    return ['http://10.82.1.203:5000']
+  }
 
   constructor() {
-    this.connect()
+    // 延迟到调用方明确初始化再连接，避免在回调未注册时丢失缓存事件
   }
 
   /**
    * 建立WebSocket连接
    */
   connect(url?: string): void {
-    if (this.socket?.connected) {
-      console.log('WebSocket already connected')
+    // 避免重复创建连接：已连接或正在连接则直接返回
+    if (this.socket) {
+      if (this.socket.connected) {
+        console.log('WebSocket already connected')
+        return
+      }
+      if ((this.socket as any).connecting) {
+        console.log('WebSocket is connecting, skip duplicate connect')
+        return
+      }
+      // 如果已有实例但断开，尝试重连而不是重新 new
+      console.log('WebSocket instance exists, calling connect()')
+      this.socket.connect()
       return
     }
 
-    const resolvedUrl = (url ?? this.defaultUrl)?.trim()
+    const resolvedUrl =
+      (url ?? this.candidateUrls[this.currentUrlIndex] ?? '')?.trim()
     const options = {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 3000,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Number.MAX_SAFE_INTEGER,
       timeout: 60000, // 增加到60秒
-      transports: ['websocket', 'polling'] // 优先使用websocket
-    } as const
+      transports: ['websocket', 'polling'] as string[] // 优先使用websocket
+    }
 
     if (resolvedUrl) {
       console.log(`Connecting to WebSocket server at: ${resolvedUrl}`)
@@ -81,12 +100,35 @@ class WebSocketService {
       console.error('WebSocket connection error:', error)
       this.callbacks.onError?.(error)
 
-      // 重连逻辑
+      // 轮询下一个候选地址，避免卡在不可达地址
+      let switched = false
+      if (this.candidateUrls.length > 1) {
+        this.currentUrlIndex = (this.currentUrlIndex + 1) % this.candidateUrls.length
+        const nextUrl = this.candidateUrls[this.currentUrlIndex]
+        console.warn(`Switching WS endpoint to: ${nextUrl}`)
+        switched = true
+      }
+
+      // 若已切换 URL，则销毁旧 socket 并用新 URL 重建，避免继续对不可达地址无限重连
+      if (switched) {
+        this.socket?.removeAllListeners()
+        this.socket?.disconnect()
+        this.socket = null
+        this.connect(this.candidateUrls[this.currentUrlIndex])
+        return
+      }
+
+      // 重连逻辑（继续使用 socket.io 自带重连）
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         setTimeout(() => {
           this.reconnectAttempts++
           console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-          this.socket?.connect()
+          // 如果已有 socket 实例，直接调用 connect；否则重新创建
+          if (this.socket) {
+            this.socket.connect()
+          } else {
+            this.connect()
+          }
         }, this.reconnectDelay * this.reconnectAttempts)
       }
     })
@@ -94,6 +136,7 @@ class WebSocketService {
     // Agent状态更新
     this.socket.on('agent_status_update', (status: AgentStatusMessage) => {
       console.log('Agent status update:', status)
+      this.maybeAutoReloadOnFirstStatus()
       this.callbacks.onAgentStatusUpdate?.(status)
     })
 
@@ -206,6 +249,15 @@ class WebSocketService {
       url: (typeof window !== 'undefined' ? window.location.origin : ''),
       reconnectAttempts: this.reconnectAttempts
     }
+  }
+
+  /**
+   * 首次收到状态时自动刷新页面，避免初始渲染错过推送
+   * 刷新频率限定 10 秒内只触发一次，防止循环刷新
+   */
+  private maybeAutoReloadOnFirstStatus() {
+    // 暂时关闭首条状态自动刷新，避免丢失消息导致必须手动刷新
+    return
   }
 }
 

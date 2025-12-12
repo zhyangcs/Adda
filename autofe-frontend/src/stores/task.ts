@@ -19,6 +19,8 @@ export const useTaskStore = defineStore('task', () => {
   const error = ref<string | null>(null)
   const notifications = ref<Notification[]>([])
   const autoStepData = ref<AutoStepData | null>(null)
+  const agentSearchStatus = ref<'idle' | 'running' | 'paused' | 'finished' | 'stopped' | 'error'>('idle')
+  const agentSearchInfo = ref<any>(null)
 
   // 计算属性
   const canStartTask = computed(() =>
@@ -210,6 +212,100 @@ export const useTaskStore = defineStore('task', () => {
     notifications.value = []
   }
 
+  // ==== 可暂停/恢复的特征搜索控制 ====
+  const datasetMap: Record<string, string> = {
+    '1': 'Titanic',
+    '2': 'Heart',
+    '3': 'Bank',
+    '4': 'Diabetes',
+    '5': 'Bike',
+    '6': 'House'
+  }
+
+  const modelMap: Record<string, string> = {
+    '1': 'Openai-gpt4-turbo',
+    '2': 'Openai-gpt4o',
+    '3': 'Openai-gpt4o-mini',
+    '4': 'Deepseek-v3'
+  }
+
+  async function startFeatureSearch(depth: number = 1, forceNew = false, resume = false) {
+    try {
+      const dataset = datasetMap[config.value.dataset] || config.value.dataset || 'Heart'
+      const modelType = config.value.mlModel || 'RF'
+      agentSearchStatus.value = 'running'
+      const res = await apiService.featureSearchStart({
+        dataset,
+        modelType,
+        depth,
+        forceNew,
+        resume
+      })
+      agentSearchInfo.value = res.data || null
+      agentSearchStatus.value = res.data?.status || 'running'
+      addNotification(`Feature search started (depth=${depth}, model=${modelType})`, 'info')
+      return true
+    } catch (error: any) {
+      agentSearchStatus.value = 'error'
+      addNotification(`Failed to start feature search: ${error?.message || error}`, 'fail')
+      return false
+    }
+  }
+
+  async function pauseFeatureSearch() {
+    try {
+      const res = await apiService.featureSearchPause()
+      agentSearchInfo.value = res.data || null
+      agentSearchStatus.value = res.data?.status || 'paused'
+      addNotification('Feature search paused', 'info')
+      return true
+    } catch (error: any) {
+      agentSearchStatus.value = 'error'
+      addNotification(`Failed to pause: ${error?.message || error}`, 'fail')
+      return false
+    }
+  }
+
+  async function resumeFeatureSearch() {
+    try {
+      const res = await apiService.featureSearchResume()
+      agentSearchInfo.value = res.data || null
+      agentSearchStatus.value = res.data?.status || 'running'
+      addNotification('Feature search resumed', 'info')
+      return true
+    } catch (error: any) {
+      agentSearchStatus.value = 'error'
+      addNotification(`Failed to resume: ${error?.message || error}`, 'fail')
+      return false
+    }
+  }
+
+  async function stopFeatureSearch() {
+    try {
+      const res = await apiService.featureSearchStop()
+      agentSearchInfo.value = res.data || null
+      agentSearchStatus.value = res.data?.status || 'stopped'
+      addNotification('Feature search stopped', 'warning')
+      return true
+    } catch (error: any) {
+      agentSearchStatus.value = 'error'
+      addNotification(`Failed to stop: ${error?.message || error}`, 'fail')
+      return false
+    }
+  }
+
+  async function refreshFeatureSearchStatus() {
+    try {
+      const res = await apiService.featureSearchStatus()
+      agentSearchInfo.value = res.data || null
+      if (res.data?.status) {
+        agentSearchStatus.value = res.data.status
+      }
+    } catch (error) {
+      console.error('Failed to refresh feature search status:', error)
+    }
+  }
+
   return {
     // 状态
     config,
@@ -219,6 +315,8 @@ export const useTaskStore = defineStore('task', () => {
     error,
     notifications,
     autoStepData,
+    agentSearchStatus,
+    agentSearchInfo,
 
     // 计算属性
     canStartTask,
@@ -234,6 +332,11 @@ export const useTaskStore = defineStore('task', () => {
     checkTaskStatus,
     addNotification,
     clearNotifications,
+    startFeatureSearch,
+    pauseFeatureSearch,
+    resumeFeatureSearch,
+    stopFeatureSearch,
+    refreshFeatureSearchStatus,
     ensureInitialized
   }
 })
