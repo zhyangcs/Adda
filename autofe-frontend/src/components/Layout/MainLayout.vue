@@ -14,9 +14,6 @@
           <router-view />
         </div>
       </div>
-
-      <!-- 右侧栏：执行日志与系统状态 (可折叠) -->
-      <RightSidebar />
     </div>
   </div>
 </template>
@@ -24,7 +21,6 @@
 <script setup lang="ts">
 import AppSidebar from './Sidebar/AppSidebar.vue'
 import TopNavigation from '../Navigation/TopNavigation.vue'
-import RightSidebar from './Sidebar/RightSidebar.vue'
 </script>
 
 <style scoped>
