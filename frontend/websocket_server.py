@@ -101,7 +101,7 @@ class WebSocketServer:
             status = status_data.get('status', 'unknown')
             work_type = status_data.get('work_type', 'N/A')
 
-            print(f"[WS DEBUG] Received agent status: {agent} = {status} ({work_type})")
+            print(f"\033[91m[WS SERVER STATUS] recv agent={agent} status={status} work_type={work_type}\033[0m")
             logger.info(f"WebSocket received agent status: {agent} = {status} ({work_type})")
 
             with self.lock:
@@ -119,11 +119,11 @@ class WebSocketServer:
 
                 # 检查连接数
                 client_count = len(self.connected_clients)
-                print(f"[WS DEBUG] Broadcasting to {client_count} connected clients")
+                print(f"\033[91m[WS SERVER STATUS] broadcasting to {client_count} clients agent={agent}\033[0m")
 
                 # 广播状态更新
                 self.socketio.emit('agent_status_update', status_data)
-                print(f"[WS DEBUG] Broadcasted agent status: {agent} = {status}")
+                print(f"\033[91m[WS SERVER STATUS] broadcasted agent={agent} status={status}\033[0m")
                 logger.info(f"WebSocket broadcasted agent status: {agent} = {status}")
 
         except Exception as e:
@@ -146,6 +146,7 @@ class WebSocketServer:
                 if len(self.thinking_cache[agent]) > 50:
                     self.thinking_cache[agent] = self.thinking_cache[agent][-50:]
 
+                print(f"\033[91m[WS SERVER THINK] broadcasting agent={agent} len={len(thinking_data.get('thinking',''))}\033[0m")
                 # 广播思考过程
                 self.socketio.emit('agent_thinking', thinking_data)
 
@@ -162,7 +163,11 @@ class WebSocketServer:
                     continue
                 # 只补发最近几条，避免刷屏
                 for message in messages[-limit_per_agent:]:
-                    self.socketio.emit('agent_thinking', message)
+                    # 复制并刷新时间戳，避免前端因“过期”丢弃
+                    msg = message.copy()
+                    msg['timestamp'] = time.time()
+                    print(f"\033[91m[WS SERVER THINK] replay cached agent={agent} len={len(message.get('thinking',''))}\033[0m")
+                    self.socketio.emit('agent_thinking', msg)
                     logger.info(f"Sent cached thinking for agent: {agent}")
         except Exception as e:
             logger.error(f"Error sending cached thinking: {e}")
@@ -188,7 +193,8 @@ class WebSocketServer:
             for agent, statuses in self.status_cache.items():
                 if statuses:
                     # 发送该Agent的最新状态
-                    latest_status = statuses[-1]
+                    latest_status = statuses[-1].copy()
+                    latest_status['timestamp'] = time.time()
                     self.socketio.emit('agent_status_update', latest_status)
                     logger.info(f"Sent cached status for agent: {agent}")
 

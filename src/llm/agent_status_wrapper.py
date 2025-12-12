@@ -35,7 +35,7 @@ def unregister_websocket_handler(websocket_server):
 def _send_to_all_websockets(message_type: str, data: Dict[str, Any]):
     """向所有注册的WebSocket服务器发送消息"""
     global _websocket_handlers
-    print(f"[DEBUG] WebSocket handlers count: {len(_websocket_handlers)}")
+    print(f"\033[91m[WS DISPATCH] handlers={len(_websocket_handlers)} type={message_type}\033[0m")
 
     if len(_websocket_handlers) == 0:
         print("[WARNING] No WebSocket handlers registered!")
@@ -45,16 +45,16 @@ def _send_to_all_websockets(message_type: str, data: Dict[str, Any]):
     with _websocket_lock:
         for i, handler in enumerate(_websocket_handlers[:]):  # 创建副本避免迭代时修改
             try:
-                print(f"[DEBUG] Sending {message_type} to handler {i}")
+                print(f"\033[91m[WS DISPATCH] -> handler {i} type={message_type} payload_keys={list(data.keys())}\033[0m")
                 if message_type == 'agent_status':
                     handler.send_agent_status(data)
                 elif message_type == 'agent_thinking':
                     handler.send_agent_thinking(data)
                 elif message_type == 'system_notification':
                     handler.send_system_notification(data)
-                print(f"[DEBUG] Successfully sent {message_type} to handler {i}")
+                print(f"\033[91m[WS DISPATCH] <- handler {i} OK type={message_type}\033[0m")
             except Exception as e:
-                print(f"[ERROR] Failed to send {message_type} to handler {i}: {e}")
+                print(f"\033[91m[WS DISPATCH] FAILED handler {i} type={message_type} err={e}\033[0m")
                 logger.error(f"Error sending message to WebSocket handler: {e}")
                 # 移除无效的处理器
                 _websocket_handlers.remove(handler)
@@ -117,7 +117,7 @@ class AgentStatusWrapper:
 
             # 添加详细的调试日志
             logger.info(f"Sending agent status: {agent} - {status_data.get('status', 'unknown')} - {status_data.get('work_type', 'N/A')}")
-            print(f"[DEBUG] Agent Status: {agent} = {status_data.get('status', 'unknown')} ({status_data.get('work_type', 'N/A')})")
+            print(f"\033[91m[WS STATUS] agent={agent} status={status_data.get('status', 'unknown')} work_type={status_data.get('work_type', 'N/A')} ts={status_data['timestamp']}\033[0m")
 
             # 推送到WebSocket（通过全局消息系统）
             _send_to_all_websockets('agent_status', status_data)
@@ -136,7 +136,7 @@ class AgentStatusWrapper:
             thinking_data: 思考数据字典，包含agent、thinking等信息
         """
         try:
-            print(f"[DEBUG] send_agent_thinking called with: {thinking_data}")
+            print(f"\033[91m[WS THINK] recv call agent={thinking_data.get('agent')} preview={thinking_data.get('thinking','')[:60]}\033[0m")
 
             # 确保必要字段存在
             if 'agent' not in thinking_data:
@@ -162,16 +162,16 @@ class AgentStatusWrapper:
             agent = thinking_data['agent']
             self.current_thinking[agent] = thinking_data.copy()
 
-            print(f"[DEBUG] About to send thinking data for {agent}: {thinking_data['thinking'][:50]}...")
+            print(f"\033[91m[WS THINK] -> sending agent={agent} len={len(thinking_content)} ts={thinking_data['timestamp']}\033[0m")
 
             # 推送到WebSocket（通过全局消息系统）
             _send_to_all_websockets('agent_thinking', thinking_data)
 
-            print(f"[DEBUG] Successfully sent thinking data for {agent}")
+            print(f"\033[91m[WS THINK] <- sent agent={agent}\033[0m")
             logger.debug(f"Sent agent thinking: {agent}")
 
         except Exception as e:
-            print(f"[ERROR] Error sending agent thinking: {e}")
+            print(f"\033[91m[WS THINK] ERROR agent={thinking_data.get('agent')} err={e}\033[0m")
             logger.error(f"Error sending agent thinking: {e}")
 
     def start_agent_work(self, agent: str, work_type: str, details: Dict[str, Any] = None):

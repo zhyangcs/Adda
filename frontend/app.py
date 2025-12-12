@@ -12,6 +12,8 @@ import pandas as pd
 import numpy as np
 import tempfile
 import shutil
+import threading
+import time
 from enum import Enum
 # 确保可以导入 src.* 模块
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -26,6 +28,8 @@ from adda_connector import AddaConnector
 # 导入LLMDagConstructor以支持端到端初始化
 
 from src.llm.llm_dag_util import LLMDagConstructor
+# 运行控制接口使用 demo 版本，支持 pause/stop
+from src.llm.llm_dag_util_demo import LLMDagConstructor as DemoLLMDagConstructor
 from src.pg.add_pandas_transformer import AddPandasTransformer
 from src.pg.add_parent_transformer import AddParentTransformer
 from src.pg.check_transformer import CheckTransformer
@@ -40,6 +44,7 @@ from frontend.paper_metrics_simplified import calculate_simplified_paper_metrics
 
 # 导入WebSocket服务器
 from websocket_server import get_websocket_server
+from src.llm.agent_status_wrapper import agent_status_wrapper
 
 app = Flask(__name__)
 # 允许前端从不同端口访问
@@ -54,6 +59,251 @@ adda = AddaConnector()
 
 # 存储临时通知信息
 notifications = []
+
+
+class FeatureSearchManager:
+    """
+    控制基于LLMDagConstructor（demo版）的特征搜索，支持启动/暂停/恢复/停止。
+    运行采用单例模式，后台线程执行astar_k_step，状态持久化到pickle。
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.thread = None
+        self.ctor = None
+        self.status = "idle"
+        self.last_error = None
+        self.task_name = None
+        self.target_col = None
+        self.task_type = None
+        self.model_type = None
+        self.depth = None
+        self.resume_mode = False
+        self.pickle_path = None
+        self.backup_pickle_path = None
+
+    def _load_pickle(self, task_name: str):
+        """
+        优先从test_save_path下加载cur_states.pkl，失败则返回None。
+        """
+        paths = [
+            os.path.join(test_save_path, task_name, "cur_states.pkl"),
+            os.path.join(project_root, "src", "cur_states.pkl"),
+        ]
+        for p in paths:
+            if os.path.isfile(p):
+                try:
+                    with open(p, "rb") as f:
+                        return pickle.load(f)
+                except Exception as e:
+                    print(f"[feature-search] load pickle failed at {p}: {e}")
+        return None
+
+    def _persist_pickle(self):
+        """
+        将当前ctor持久化到默认路径，便于恢复/续跑。
+        """
+        if not self.ctor or not self.task_name:
+            return
+        save_dir = os.path.join(test_save_path, self.task_name)
+        os.makedirs(save_dir, exist_ok=True)
+        self.pickle_path = os.path.join(save_dir, "cur_states.pkl")
+        self.backup_pickle_path = os.path.join(project_root, "src", "cur_states.pkl")
+        try:
+            with open(self.pickle_path, "wb") as f:
+                pickle.dump(self.ctor, f)
+            os.makedirs(os.path.dirname(self.backup_pickle_path), exist_ok=True)
+            with open(self.backup_pickle_path, "wb") as f:
+                pickle.dump(self.ctor, f)
+            print(f"[feature-search] pickle saved to {self.pickle_path} and backup {self.backup_pickle_path}")
+        except Exception as e:
+            print(f"[feature-search] persist pickle failed: {e}")
+
+    def _after_finish(self):
+        """
+        搜索完成后的后处理：复制/重命名目录并通过WebSocket推送最新树。
+        """
+        if not self.task_name:
+            return
+        src_dir = os.path.join(test_save_path, self.task_name)
+        postfix = f"{self.model_type}_Full" if self.model_type else "Full"
+        dst_dir = f"{src_dir}_{postfix}"
+        try:
+            if os.path.exists(dst_dir):
+                shutil.rmtree(dst_dir)
+            if os.path.exists(src_dir):
+                shutil.copytree(src_dir, dst_dir)
+                print(f"[feature-search] copied search directory to {dst_dir}")
+        except Exception as e:
+            print(f"[feature-search] post copy failed: {e}")
+
+        # 推送一次树结构给前端（无法直接通过接口返回时使用）
+        try:
+            if adda and hasattr(adda, "_convert_dag_to_tree") and self.ctor:
+                adda.llm_dag_constructor = self.ctor
+                tree = adda._convert_dag_to_tree()
+                agent_status_wrapper.send_agent_status({
+                    "type": "agent_status",
+                    "agent": "system",
+                    "status": "completed",
+                    "work_type": "feature_search",
+                    "details": {
+                        "task": self.task_name,
+                        "depth": self.depth
+                    },
+                    "data": {
+                        "tree": tree,
+                        "finished": True
+                    }
+                })
+        except Exception as e:
+            print(f"[feature-search] send tree update failed: {e}")
+
+    def _run_search(self, step_num, data_agenda, desc, target_col, csv_path, tb_name, do_unfinished):
+        try:
+            self.status = "running"
+            self.last_error = None
+            agent_status_wrapper.send_system_notification(
+                f"特征搜索开始: task={self.task_name}, depth={step_num}, model={self.model_type}", "info"
+            )
+
+            # 主执行
+            self.ctor.astar_k_step(
+                step_num=step_num,
+                data_agenda=data_agenda,
+                data_desc=desc,
+                target_col=target_col,
+                tb_name=tb_name,
+                csv_path=csv_path,
+                do_unfinished=do_unfinished,
+                task_name=self.task_name,
+            )
+
+            # 标记完成
+            self.status = "finished"
+            self._persist_pickle()
+            self._after_finish()
+            agent_status_wrapper.send_system_notification(
+                f"特征搜索完成: task={self.task_name}, depth={step_num}, model={self.model_type}", "success"
+            )
+        except Exception as e:
+            self.status = "error"
+            self.last_error = str(e)
+            print(f"[feature-search] run_search error: {e}")
+            agent_status_wrapper.send_system_notification(
+                f"特征搜索失败: {str(e)}", "error"
+            )
+
+    def start(self, dataset: str, model_type: str, depth: int, force_new: bool = False, resume: bool = False):
+        with self.lock:
+            if self.status == "running":
+                return False, "已有搜索在运行"
+
+            task_name, target_col, task_type = task_config(dataset.lower())
+            from src.llm.tests.test_util import read_data_info
+            from src.pg.import_table import importTable_with_split
+            from src.pg.sql_utils import get_conn
+
+            data_agenda, desc, csv_path = read_data_info(task_name)
+
+            ctor = None
+            if resume and not force_new:
+                ctor = self._load_pickle(task_name)
+
+            if ctor is None:
+                # 初始化数据表
+                importTable_with_split(
+                    os.path.join(dataset_path, task_name, "train_new.csv"),
+                    f"{task_name}_src_tb",
+                    target_col,
+                    get_conn(),
+                    False,
+                    task_type
+                )
+                ctor = DemoLLMDagConstructor(
+                    task_type=task_type,
+                    eval_model_type=model_type,
+                    beam_limit=1,
+                    do_feature_selection=False,
+                    high_order_num=5,
+                    token_limit=128000
+                )
+
+            # 确保运行控制标志初始化
+            ctor.stop_flag = False
+            ctor.pause_flag = False
+
+            # 记录状态
+            self.ctor = ctor
+            self.task_name = task_name
+            self.target_col = target_col
+            self.task_type = task_type
+            self.model_type = model_type
+            self.depth = depth
+            self.resume_mode = resume
+            self.status = "running"
+            adda.llm_dag_constructor = ctor
+
+            # 后台线程执行
+            self.thread = threading.Thread(
+                target=self._run_search,
+                args=(depth, data_agenda, desc, target_col, csv_path, f"{task_name}_src_tb", resume),
+                daemon=True
+            )
+            self.thread.start()
+            return True, "特征搜索已启动"
+
+    def pause(self):
+        with self.lock:
+            if self.status != "running" or not self.ctor:
+                return False, "当前没有运行中的搜索"
+            self.ctor.pause_flag = True
+            self.status = "paused"
+            agent_status_wrapper.send_system_notification("特征搜索已暂停", "info")
+            return True, "已暂停"
+
+    def resume(self):
+        with self.lock:
+            if self.status != "paused" or not self.ctor:
+                return False, "当前不在暂停状态"
+            self.ctor.pause_flag = False
+            self.status = "running"
+            agent_status_wrapper.send_system_notification("特征搜索已恢复", "info")
+            return True, "已恢复"
+
+    def stop(self):
+        with self.lock:
+            if self.status not in ["running", "paused"] or not self.ctor:
+                return False, "当前没有可停止的搜索"
+            self.ctor.stop_flag = True
+            self.ctor.pause_flag = False
+            self.status = "stopping"
+
+        # 等待线程结束
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=10)
+
+        with self.lock:
+            self.status = "stopped"
+            self._persist_pickle()
+            agent_status_wrapper.send_system_notification("特征搜索已停止并保存状态", "warning")
+            return True, "已停止"
+
+    def status_info(self):
+        with self.lock:
+            return {
+                "status": self.status,
+                "task_name": self.task_name,
+                "model_type": self.model_type,
+                "depth": self.depth,
+                "resume_mode": self.resume_mode,
+                "thread_alive": self.thread.is_alive() if self.thread else False,
+                "last_error": self.last_error,
+                "pickle_path": self.pickle_path,
+            }
+
+
+feature_search_manager = FeatureSearchManager()
 
 
 def _normalize_dataset_name(dataset: str) -> str:
@@ -471,6 +721,60 @@ def next_step():
             return jsonify({"status": "fail", "message": message})
     except Exception as e:
         return jsonify({"status": "fail", "message": str(e)})
+
+
+@app.route('/feature-search/start/', methods=['POST'])
+def feature_search_start():
+    """
+    启动可暂停/恢复的特征搜索（使用demo版LLMDagConstructor）
+    请求参数(JSON):
+      - dataset: 数据集名称
+      - modelType: 评估模型类型，默认RF
+      - depth: 搜索深度，默认1
+      - forceNew: 是否强制新建（忽略已有pickle）
+      - resume: 是否从已有pickle恢复
+    """
+    try:
+        payload = request.get_json(force=True) or {}
+    except Exception:
+        payload = {}
+
+    dataset = payload.get("dataset", "heart")
+    model_type = payload.get("modelType", "RF")
+    depth = int(payload.get("depth", 1))
+    force_new = str(payload.get("forceNew", "false")).lower() in ["true", "1", "yes"]
+    resume = str(payload.get("resume", "false")).lower() in ["true", "1", "yes"]
+
+    ok, msg = feature_search_manager.start(dataset, model_type, depth, force_new, resume)
+    status = "success" if ok else "fail"
+    return jsonify({"status": status, "message": msg, "data": feature_search_manager.status_info()})
+
+
+@app.route('/feature-search/pause/', methods=['POST'])
+def feature_search_pause():
+    ok, msg = feature_search_manager.pause()
+    status = "success" if ok else "fail"
+    return jsonify({"status": status, "message": msg, "data": feature_search_manager.status_info()})
+
+
+@app.route('/feature-search/resume/', methods=['POST'])
+def feature_search_resume():
+    ok, msg = feature_search_manager.resume()
+    status = "success" if ok else "fail"
+    return jsonify({"status": status, "message": msg, "data": feature_search_manager.status_info()})
+
+
+@app.route('/feature-search/stop/', methods=['POST'])
+def feature_search_stop():
+    ok, msg = feature_search_manager.stop()
+    status = "success" if ok else "fail"
+    return jsonify({"status": status, "message": msg, "data": feature_search_manager.status_info()})
+
+
+@app.route('/feature-search/status/', methods=['GET'])
+def feature_search_status():
+    return jsonify({"status": "success", "data": feature_search_manager.status_info()})
+
 
 @app.route('/test-performance/', methods=['POST'])
 def test_performance():
