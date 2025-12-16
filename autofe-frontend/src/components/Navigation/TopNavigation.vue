@@ -4,44 +4,38 @@
       <h1 class="welcome-title">Welcome to Adda</h1>
     </div>
     <div class="nav-center">
-      <div class="workflow-switch">
-        <button
-          class="workflow-btn"
-          :class="{ active: currentRoute === 'agent-feature-generation' }"
-          @click="navigateTo('agent-feature-generation')"
-        >
-          Agent-driven Feature Generation
-        </button>
-        <button
-          class="workflow-btn"
-          :class="{ active: currentRoute === 'in-database-feature-computation' }"
-          @click="navigateTo('in-database-feature-computation')"
-        >
-          In-Database Feature Computation
-        </button>
-        <button
-          class="workflow-btn"
-          :class="{ active: currentRoute === 'performance' }"
-          @click="navigateTo('performance')"
-        >
-          Performance
-        </button>
-      </div>
+      <button
+        class="workflow-btn"
+        :class="{ active: currentRoute === 'agent-feature-generation' }"
+        @click="navigateTo('agent-feature-generation')"
+      >
+        Agent-driven Feature Generation
+      </button>
+      <button
+        class="workflow-btn"
+        :class="{ active: currentRoute === 'in-database-feature-computation' }"
+        @click="navigateTo('in-database-feature-computation')"
+      >
+        In-Database Feature Computation
+      </button>
+      <button
+        class="workflow-btn"
+        :class="{ active: currentRoute === 'performance' }"
+        @click="navigateTo('performance')"
+      >
+        Performance
+      </button>
     </div>
     <div class="nav-right">
-      <div v-if="isAgentPage" class="action-group">
-        <button class="action-btn primary" type="button" @click="handleAgentRunAction">
-          {{ agentRunLabel }}
-        </button>
-        <button class="action-btn danger" type="button" @click="handleAgentStop" :disabled="agentRunState === 'run' && agentSearchStatus === 'idle'">
-          Stop
-        </button>
-      </div>
-      <div v-else class="action-group">
-        <button class="action-btn primary" type="button">
-          Run
-        </button>
-      </div>
+      <button v-if="isAgentPage" class="action-btn primary" type="button" @click="handleAgentRunAction">
+        {{ agentRunLabel }}
+      </button>
+      <button v-if="isAgentPage" class="action-btn danger" type="button" @click="handleAgentStop" :disabled="agentRunState === 'run' && agentSearchStatus === 'idle'">
+        Stop
+      </button>
+      <button v-else class="action-btn primary" type="button">
+        Run
+      </button>
     </div>
   </div>
 </template>
@@ -122,11 +116,11 @@ onMounted(() => {
 .top-navigation {
   display: flex;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: 0.5rem 1.5rem 0.25rem;
   background-color: white;
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  height: 4rem;
+  height: 2.5rem;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -144,6 +138,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   justify-content: center;
+  gap: 0.35rem;
 }
 
 .welcome-title {
@@ -159,32 +154,22 @@ onMounted(() => {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.35rem;
   justify-content: flex-end;
   min-width: 0;
-}
-
-.action-group {
-  display: inline-flex;
-  gap: 0.35rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 0.35rem 0.45rem;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .action-btn {
   border: none;
   background: transparent;
-  padding: 0.45rem 0.9rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 5px;
+  font-size: 0.6rem;
   font-weight: 600;
   color: #1f2937;
   cursor: pointer;
   transition: all 0.15s ease;
-  min-width: 64px;
+  min-width: 40px;
 }
 
 .action-btn.primary {
@@ -200,59 +185,75 @@ onMounted(() => {
 }
 
 .action-btn.danger {
-  background: #ef4444;
-  color: #fff;
-  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
-}
-
-.workflow-switch {
-  display: inline-flex;
-  gap: 0.35rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 0.35rem;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  box-shadow: none;
 }
 
 .workflow-btn {
   border: none;
   background: transparent;
-  padding: 0.55rem 0.9rem;
-  border-radius: 8px;
+  padding: 0.25rem 0.9rem 0.25rem;
+  border-radius: 0;
   font-size: 0.9rem;
   font-weight: 600;
   color: #475569;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  text-decoration: none;
+  position: relative;
+}
+
+.workflow-btn::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 0px;
+  height: 2px;
+  background-color: #2563eb;
+  transition: all 0.15s ease;
+  transform: translateX(-50%);
 }
 
 .workflow-btn:hover {
-  background: #e5edfb;
+  background: transparent;
   color: #1d4ed8;
 }
 
+.workflow-btn:hover::after {
+  width: 100%;
+}
+
 .workflow-btn.active {
-  background: #2563eb;
-  color: white;
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+  background: transparent;
+  color: #2563eb;
+}
+
+.workflow-btn.active::after {
+  width: 100%;
 }
 
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .top-navigation {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 1rem;
+    height: 2.25rem;
   }
 
-  .workflow-switch {
+  .nav-center {
     gap: 0.25rem;
-    padding: 0.25rem;
   }
 
   .workflow-btn {
-    padding: 0.45rem 0.7rem;
+    padding: 0.2rem 0.7rem 0.2rem;
     font-size: 0.85rem;
+  }
+
+  .workflow-btn::after {
+    height: 1px;
   }
 }
 
@@ -264,14 +265,14 @@ onMounted(() => {
     gap: 0.5rem;
   }
 
+  .nav-center {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .nav-right {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .workflow-switch {
-    width: 100%;
-    flex-wrap: wrap;
   }
 
   .workflow-btn {
