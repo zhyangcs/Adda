@@ -370,7 +370,7 @@ onMounted(() => {
 
 .info-header {
   padding: 12px 16px;
-  border-bottom: 2px solid var(--accent-blue, #2a7de1);
+  border-bottom: none;
   background-color: transparent;
   border-radius: 12px 12px 0 0;
 }

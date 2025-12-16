@@ -84,18 +84,20 @@
             </div>
           </div>
 
-          <div class="code-view">
-            <div class="label">Python</div>
-            <pre>{{ currentBlock.code }}</pre>
-          </div>
-
           <div v-if="currentBlock.executionError" class="warning">
             Execution warning (dummy scope): {{ currentBlock.executionError }}
           </div>
 
-          <div class="tree-section">
-            <div class="label">AST</div>
-            <AstTreeD3 v-if="currentBlock.ast" :node="currentBlock.ast" :block-index="currentPage" />
+          <div class="code-ast-container">
+            <div class="code-view">
+              <div class="label">Python</div>
+              <pre>{{ currentBlock.code }}</pre>
+            </div>
+
+            <div class="tree-section">
+              <div class="label">AST</div>
+              <AstTreeD3 v-if="currentBlock.ast" :node="currentBlock.ast" :block-index="currentPage" />
+            </div>
           </div>
         </div>
       </div>
@@ -491,9 +493,27 @@ function resetPagination() {
   font-family: "JetBrains Mono", monospace;
 }
 
+.code-ast-container {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.code-ast-container .code-view,
+.code-ast-container .tree-section {
+  flex: 1;
+  margin-top: 0;
+}
+
 .code-view,
 .tree-section {
   margin-top: 10px;
+}
+
+.code-ast-container .code-view pre {
+  min-height: 220px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .label {
@@ -530,8 +550,8 @@ pre {
 
 .ast-tree {
   width: 100%;
-  min-height: 260px;
-  height: 280px;
+  min-height: 200px;
+  height: 220px;
 }
 
 .ast-tree :deep(svg) {

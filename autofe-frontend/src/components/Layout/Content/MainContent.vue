@@ -794,7 +794,6 @@ onUnmounted(() => {
   --spacing-md: 0.7rem;
   --spacing-lg: 1rem;
   --spacing-xl: 1.35rem;
-  --accent-blue: #2a7de1;
 }
 
 .main-content > .splitpanes {
@@ -909,7 +908,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding-bottom: 0.55rem;
-  border-bottom: 2px solid var(--accent-blue);
+  border-bottom: none;
 }
 
 .chat-panel-icon {
@@ -1233,7 +1232,7 @@ onUnmounted(() => {
 .section-header {
   margin-bottom: 0.75rem;
   padding-bottom: 0.45rem;
-  border-bottom: 2px solid var(--accent-blue);
+  border-bottom: none;
 }
 
 .section-title {
@@ -1257,7 +1256,7 @@ onUnmounted(() => {
 
 .info-header {
   padding: 0.55rem 0.85rem 0.5rem;
-  border-bottom: 2px solid var(--accent-blue);
+  border-bottom: none;
   background-color: #fff;
   border-radius: 8px 8px 0 0;
 }

@@ -505,7 +505,6 @@ onUnmounted(() => {
   --font-size-3xl: 2.7rem;
   --spacing-md: 0.65rem;
   --spacing-lg: 0.95rem;
-  --accent-blue: #2a7de1;
 }
 
 /* Scrollbar behavior - hidden by default, visible on interaction */
@@ -780,7 +779,7 @@ onUnmounted(() => {
 :deep(.section-header) {
   margin: 0;
   padding: 10px 14px;
-  border-bottom: 2px solid var(--accent-blue);
+  border-bottom: none;
   background: transparent;
   display: flex;
   align-items: center;
