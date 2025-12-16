@@ -33,7 +33,7 @@
       <button v-if="isAgentPage" class="action-btn danger" type="button" @click="handleAgentStop" :disabled="agentRunState === 'run' && agentSearchStatus === 'idle'">
         Stop
       </button>
-      <button v-else class="action-btn primary" type="button">
+      <button v-else class="action-btn primary" type="button" @click="handleRunAction">
         Run
       </button>
     </div>
@@ -105,6 +105,10 @@ async function handleAgentRunAction() {
 
 async function handleAgentStop() {
   await taskStore.stopFeatureSearch()
+}
+
+async function handleRunAction() {
+  workspaceStore.triggerExecution()
 }
 
 onMounted(() => {

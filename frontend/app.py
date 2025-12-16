@@ -33,7 +33,7 @@ from src.llm.llm_dag_util_demo import LLMDagConstructor as DemoLLMDagConstructor
 from src.pg.add_pandas_transformer import AddPandasTransformer
 from src.pg.add_parent_transformer import AddParentTransformer
 from src.pg.check_transformer import CheckTransformer
-from src.pg.func_utils import split_code_for_comment, self_copy, get_python_code
+from src.pg.func_utils import split_code_for_comment, self_copy, get_python_code, get_script_scope
 from src.pg.df_wrapper import DataFrameWrapper
 from src.pg.op_type import OpTypeEnum, FillnaType, FillnaTypeEnum
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
@@ -930,12 +930,24 @@ def py2sql_ast():
         }
 
         analysis = []
-        script_scope = self_copy(base_scope)
+        # 采用 PythonPolisher 的处理方式：创建包含预处理代码的完整上下文
+        check_script_scope = get_script_scope(pre_code)
         for code, node_id in zip(code_blocks, node_ids):
+            # 过滤除了有node编号的python code段外的其他python code，只处理节点特征代码
+            if node_id is None:
+                continue
+
+            # 先执行代码建立上下文变量，然后再进行静态分析
+            try:
+                exec(code, check_script_scope)
+                execution_error = None
+            except Exception as exec_err:
+                execution_error = str(exec_err)
+
             tree = ast.parse(code)
             AddParentTransformer().visit(tree)
 
-            checker = CheckTransformer(self_copy(script_scope))
+            checker = CheckTransformer(check_script_scope)
             checker.visit(tree)
             op_type = checker.op_type.op_type
 
@@ -953,10 +965,8 @@ def py2sql_ast():
                 "sqlSnippet": sql_snippet
             }
 
-            try:
-                exec(code, script_scope)
-            except Exception as exec_err:
-                block_info["executionError"] = str(exec_err)
+            if execution_error:
+                block_info["executionError"] = execution_error
 
             analysis.append(block_info)
 

@@ -5,46 +5,16 @@
         <h3>Python ➜ SQL AST Visualization</h3>
         <p>Locate stored pipeline code and visualize how py2sql matches operators to SQL.</p>
       </div>
-      <button class="primary-btn" :disabled="loading" @click="loadAst">
-        {{ loading ? 'Loading...' : 'Generate AST' }}
-      </button>
     </div>
 
-    <div class="controls-card">
-      <div class="field">
-        <label>Dataset</label>
-        <select v-model="selectedDataset">
-          <option v-for="opt in datasetOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Downstream ML Model</label>
-        <select v-model="selectedMlModel">
-          <option v-for="opt in mlModelOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Pipeline Hint (optional)</label>
-        <input v-model="pipelineId" type="text" placeholder="e.g. pipeline_2" />
-      </div>
-      <div class="status">
-        <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
-        <span v-else-if="loading" class="info-text">Parsing pipeline and building AST...</span>
-        <span v-else class="muted-text">Uses stored pycodes and py2sql logic to build the tree.</span>
-      </div>
-    </div>
 
     <div v-if="astData" class="results">
-      <div class="meta-card">
+      <!-- <div class="meta-card">
         <div><strong>Dataset:</strong> {{ astData.dataset }}</div>
         <div><strong>Model:</strong> {{ astData.mlModel }}</div>
         <div><strong>Pipeline:</strong> {{ astData.pipelinePath }}</div>
         <div><strong>Detected Columns:</strong> {{ astData.columns.join(', ') || 'N/A' }}</div>
-      </div>
+      </div> -->
 
       <div
         v-if="astData.finalSql || astData.finalSqlPath"
@@ -69,40 +39,63 @@
         <div v-if="astData.finalSqlError" class="warning">SQL生成警告：{{ astData.finalSqlError }}</div>
       </div>
 
+      <!-- 分页器 -->
+      <div v-if="totalPages > 1" class="pagination-container">
+        <button
+          class="pagination-btn"
+          :disabled="currentPage === 0"
+          @click="goToPrevPage"
+        >
+          上一页
+        </button>
+
+        <span class="pagination-info">
+          {{ currentPage + 1 }} / {{ totalPages }}
+        </span>
+
+        <button
+          class="pagination-btn"
+          :disabled="currentPage >= totalPages - 1"
+          @click="goToNextPage"
+        >
+          下一页
+        </button>
+      </div>
+
       <div class="blocks">
         <div
-          v-for="(block, idx) in astData.blocks"
-          :key="block.nodeId ?? idx"
+          v-if="currentBlock"
+          :key="currentBlock.nodeId ?? currentPage"
           class="block-card"
         >
           <div class="block-header">
             <div class="title">
-              Step {{ idx + 1 }} · Node {{ block.nodeId ?? 'N/A' }}
+              Step {{ currentPage + 1 }} · Node {{ currentBlock.nodeId ?? 'N/A' }}
             </div>
-            <span class="badge">{{ block.opType }}</span>
+            <span class="badge">{{ currentBlock.opType }}</span>
           </div>
 
           <div class="block-meta">
-            <div><strong>Read:</strong> {{ block.readColumns.join(', ') || 'N/A' }}</div>
-            <div><strong>Write:</strong> {{ block.writeColumns.join(', ') || 'N/A' }}</div>
+            <div><strong>Read:</strong> {{ currentBlock.readColumns.join(', ') || 'N/A' }}</div>
+            <div><strong>Write:</strong> {{ currentBlock.writeColumns.join(', ') || 'N/A' }}</div>
             <div class="sql-line">
               <strong>SQL:</strong>
-              <code>{{ block.sqlSnippet || 'N/A' }}</code>
+              <code>{{ currentBlock.sqlSnippet || 'N/A' }}</code>
             </div>
           </div>
 
           <div class="code-view">
             <div class="label">Python</div>
-            <pre>{{ block.code }}</pre>
+            <pre>{{ currentBlock.code }}</pre>
           </div>
 
-          <div v-if="block.executionError" class="warning">
-            Execution warning (dummy scope): {{ block.executionError }}
+          <div v-if="currentBlock.executionError" class="warning">
+            Execution warning (dummy scope): {{ currentBlock.executionError }}
           </div>
 
           <div class="tree-section">
             <div class="label">AST</div>
-            <AstTreeD3 v-if="block.ast" :node="block.ast" :block-index="idx" />
+            <AstTreeD3 v-if="currentBlock.ast" :node="currentBlock.ast" :block-index="currentPage" />
           </div>
         </div>
       </div>
@@ -123,27 +116,14 @@
 import { computed, defineComponent, onMounted, onUnmounted, watch, ref, h, type PropType } from 'vue'
 import { apiService } from '@/services/APIService'
 import { useTaskStore } from '@/stores/task'
+import { useWorkspaceStore } from '@/stores/workspace'
 import type { Py2SqlAstData, Py2SqlAstNode } from '@/types'
 import * as d3 from 'd3'
 
 const taskStore = useTaskStore()
+const workspaceStore = useWorkspaceStore()
 
-const datasetOptions = [
-  { label: 'Titanic', value: '1' },
-  { label: 'Heart', value: '2' },
-  { label: 'Bank', value: '3' },
-  { label: 'Diabetes', value: '4' },
-  { label: 'Bike', value: '5' },
-  { label: 'House', value: '6' }
-]
-
-const mlModelOptions = [
-  { label: 'Random Forest (RF)', value: 'RF' },
-  { label: 'XGBoost (XGB)', value: 'XGB' },
-  { label: 'LightGBM', value: 'LightGBM' },
-  { label: 'CART', value: 'CART' }
-]
-
+// Dataset name mapping for display
 const datasetNameMap: Record<string, string> = {
   '1': 'Titanic',
   '2': 'Heart',
@@ -153,15 +133,30 @@ const datasetNameMap: Record<string, string> = {
   '6': 'House'
 }
 
-const selectedDataset = ref(taskStore.config.dataset)
-const selectedMlModel = ref(taskStore.config.mlModel)
-const pipelineId = ref('')
+// 分页计算属性
+const totalPages = computed(() => {
+  if (!astData.value?.blocks) return 0
+  return Math.ceil(astData.value.blocks.length / itemsPerPage)
+})
+
+const currentBlock = computed(() => {
+  if (!astData.value?.blocks || currentPage.value >= totalPages.value) return null
+  return astData.value.blocks[currentPage.value]
+})
 
 const loading = ref(false)
 const errorMessage = ref('')
 const astData = ref<Py2SqlAstData | null>(null)
 
-const requestDataset = computed(() => datasetNameMap[selectedDataset.value] || selectedDataset.value)
+// 分页状态
+const currentPage = ref(0)
+const itemsPerPage = 1
+
+// 监听执行触发器
+watch(() => workspaceStore.executionTrigger, () => {
+  loadAst()
+})
+
 
 const AstTreeD3 = defineComponent({
   name: 'AstTreeD3',
@@ -271,12 +266,13 @@ async function loadAst() {
   errorMessage.value = ''
   try {
     const response = await apiService.getPy2SqlAst({
-      dataset: requestDataset.value,
-      mlModel: selectedMlModel.value,
-      pipelineId: pipelineId.value || undefined
+      dataset: datasetNameMap[taskStore.config.dataset] || taskStore.config.dataset,
+      mlModel: taskStore.config.mlModel,
+      pipelineId: undefined // Removed pipeline hint for now
     })
     if (response.status === 'success' && response.data) {
       astData.value = response.data
+      resetPagination()
     } else {
       errorMessage.value = response.message || 'Failed to load AST data'
     }
@@ -302,6 +298,25 @@ function copyFinalSql() {
 function copyFinalSqlPath() {
   copyText(astData.value?.finalSqlPath)
 }
+
+// 分页方法
+function goToPage(page: number) {
+  if (page >= 0 && page < totalPages.value) {
+    currentPage.value = page
+  }
+}
+
+function goToPrevPage() {
+  goToPage(currentPage.value - 1)
+}
+
+function goToNextPage() {
+  goToPage(currentPage.value + 1)
+}
+
+function resetPagination() {
+  currentPage.value = 0
+}
 </script>
 
 <style scoped>
@@ -315,7 +330,6 @@ function copyFinalSqlPath() {
 }
 
 .intro-card,
-.controls-card,
 .meta-card,
 .block-card,
 .placeholder-card {
@@ -332,52 +346,7 @@ function copyFinalSqlPath() {
   justify-content: space-between;
 }
 
-.primary-btn {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  cursor: pointer;
-  font-weight: 600;
-}
 
-.primary-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.controls-card {
-  padding: 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field label {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.field select,
-.field input {
-  border: 1px solid #d7dde7;
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-.status {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  min-height: 22px;
-}
 
 .error-text {
   color: #dc2626;
@@ -606,5 +575,49 @@ pre {
   margin: 0;
   padding-left: 18px;
   color: #475569;
+}
+
+/* 分页器样式 */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  margin-bottom: 12px;
+}
+
+.pagination-btn {
+  border: 1px solid #d7dde7;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: #0f172a;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.pagination-info {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 14px;
+  min-width: 60px;
+  text-align: center;
 }
 </style>

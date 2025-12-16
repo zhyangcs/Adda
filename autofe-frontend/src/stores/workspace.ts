@@ -31,6 +31,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const isAgentThinkingVisible = ref(false)
   const currentView = ref<'dashboard' | 'detailed'>('dashboard')
 
+  // 执行触发器
+  const executionTrigger = ref(0)
+
   // 方法
   function toggleLeftColumn() {
     leftColumnVisible.value = !leftColumnVisible.value
@@ -101,6 +104,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentView.value = view
   }
 
+  function triggerExecution() {
+    executionTrigger.value++
+  }
+
   function resetWorkspace() {
     leftColumnVisible.value = true
     rightColumnVisible.value = true
@@ -166,6 +173,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     notificationHistory,
     isAgentThinkingVisible,
     currentView,
+    executionTrigger,
 
     // 方法
     toggleLeftColumn,
@@ -183,6 +191,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setView,
     resetWorkspace,
     applyLayoutPreset,
-    layoutPresets
+    layoutPresets,
+    triggerExecution
   }
 })
