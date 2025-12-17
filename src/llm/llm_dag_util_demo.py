@@ -307,7 +307,7 @@ class LLMDagConstructor():
         nodes = topKSimilarNodes(cur_node, self.dag, src.env.topK_rag)
         example_prompt = nodes2example(nodes, self.dag)
 
-        # 添加System Agent状态推送
+        # [WebSocket推送] System Agent状态推送 - 示例生成
         if hasattr(self, 'status_wrapper'):
             self.status_wrapper.send_agent_status({
                 "type": "agent_status",
@@ -324,10 +324,10 @@ class LLMDagConstructor():
                 }
             })
 
-            # 增强的System Agent思考过程 - 使用详细格式化函数
-            if nodes:
-                try:
-                    # 计算相似度分数用于详细展示
+            # [WebSocket推送] System Agent思考过程 - RAG示例准备
+            try:
+                if nodes and len(nodes) > 0:
+                    # 有相似节点时，使用详细的格式化消息
                     similarity_scores = []
                     for similar_node in nodes:
                         # 简单的相似度计算（基于节点操作描述的相似性）
@@ -335,22 +335,32 @@ class LLMDagConstructor():
                         structural_sim = 0.7  # 占位符
                         similarity_scores.append(semantic_sim + structural_sim)
 
-                    technique_focus = f"{cur_node.operation_desc[:30]}..." if hasattr(cur_node, 'operation_desc') else "特征工程变换"
+                    technique_focus = cur_node.operation_desc if hasattr(cur_node, 'operation_desc') and cur_node.operation_desc else "特征工程变换"
                     self.status_wrapper.format_rag_thinking(
                         node_id=cur_node.node_id,
                         similar_nodes=nodes,
                         similarity_scores=similarity_scores,
                         technique_focus=technique_focus
                     )
-                except Exception as e:
-                    print(f"Warning: Error sending RAG thinking: {e}")
-                    # 发送一个简化的思考消息作为备选
+                else:
+                    # 没有相似节点时，发送基础的thinking消息
+                    print(f"[DEBUG] No similar nodes found, sending basic thinking message for node {cur_node.node_id}")
                     self.status_wrapper.send_agent_thinking({
                         "type": "agent_thinking",
                         "agent": "system",
-                        "thinking": f"正在为节点 {cur_node.node_id} 生成RAG示例。找到了 {len(nodes)} 个相似节点，将用于指导特征生成。"
+                        "thinking": f"正在为节点 {cur_node.node_id} 准备特征生成。没有找到相似节点，将从头开始探索特征空间。"
                     })
+            except Exception as e:
+                print(f"Warning: Error sending RAG thinking: {e}")
+                # 发送一个简化的思考消息作为备选
+                self.status_wrapper.send_agent_thinking({
+                    "type": "agent_thinking",
+                    "agent": "system",
+                    "thinking": f"正在为节点 {cur_node.node_id} 生成RAG示例。找到了 {len(nodes)} 个相似节点，将用于指导特征生成。"
+                })
 
+        print(termcolor.colored("="*60, "red"))
+        
         next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt)
 
         # 2. CodeAgent generate the code and fixing code
@@ -386,7 +396,7 @@ class LLMDagConstructor():
         #         print(termcolor.colored(f"Error: {e}", "red"))
         #         continue
         
-        # 【新增】Main Agent工作状态 - 开始处理
+        # [WebSocket推送] Main Agent工作状态 - 开始批量特征生成
         if hasattr(self, 'status_wrapper'):
             self.status_wrapper.send_agent_status({
                 "type": "agent_status",
@@ -403,7 +413,7 @@ class LLMDagConstructor():
                     "operation": f"处理 {cur_node.operation_desc}"
                 }
             })
-            # 简化的Main Agent开始消息 - 移除技术细节
+            # [WebSocket推送] Main Agent思考消息 - 批量特征生成开始
             self.status_wrapper.send_agent_thinking({
                 "type": "agent_thinking",
                 "agent": "mainagent",
@@ -442,7 +452,7 @@ class LLMDagConstructor():
                 failed_nodes.append(next_node)
                 print(termcolor.colored(f"Drop node for code", "red"))
 
-            # 实时推送Main Agent进度（逐节点）
+            # [WebSocket推送] Main Agent进度推送 - 逐节点处理状态
             if hasattr(self, "status_wrapper"):
                 progress = processed_count / max(total_nodes, 1)
                 self.status_wrapper.send_agent_status({
@@ -461,7 +471,7 @@ class LLMDagConstructor():
                         "success": bool(success and processed_node is not None)
                     }
                 })
-                # 每个节点完成后追加一次thinking消息，便于前端实时显示
+                # [WebSocket推送] Main Agent思考消息 - 节点处理结果
                 node_id_for_msg = getattr(processed_node or next_node, "node_id", None)
                 outcome = "succeeded" if success and processed_node is not None else "failed"
                 self.status_wrapper.send_agent_thinking({
@@ -470,7 +480,7 @@ class LLMDagConstructor():
                     "thinking": f"Node {node_id_for_msg} {outcome}. Progress {processed_count}/{total_nodes}."
                 })
 
-                # 如果节点复杂度较高，实时触发优化Agent提示
+                # [WebSocket推送] 优化Agent提示 - 代码复杂度检查
                 if success and processed_node is not None and hasattr(processed_node, "task_code") and processed_node.task_code:
                     try:
                         complexity = get_code_complexity(processed_node.task_code)
@@ -486,7 +496,7 @@ class LLMDagConstructor():
                                     "step_index": cur_step_idx
                                 }
                             })
-                            # 简短思考消息
+                            # [WebSocket推送] 优化Agent思考消息 - 复杂度分析
                             self.status_wrapper.send_agent_thinking({
                                 "type": "agent_thinking",
                                 "agent": "optimizationagent",
@@ -495,7 +505,7 @@ class LLMDagConstructor():
                     except Exception as e:
                         print(f"Warning: optimization complexity check failed: {e}")
 
-        # 【新增】Main Agent完成状态 - 批量处理完成
+        # [WebSocket推送] Main Agent完成状态 - 批量特征生成完成
         if hasattr(self, 'status_wrapper'):
             if successful_nodes:
                 self.status_wrapper.send_agent_status({
@@ -515,7 +525,7 @@ class LLMDagConstructor():
                         "node_ids": [node.node_id for node in successful_nodes]
                     }
                 })
-                # 使用增强的特征生成思考函数
+                # [WebSocket推送] Main Agent思考消息 - 特征生成总结
                 total_complexity = 0
                 execution_time = 0
 
@@ -666,10 +676,11 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
             next_node.utility = monte_carlo_like_heuristic_func(self.dag.out_degree(next_node)+1, total_node_num, next_node.final_score)
             heapq.heappush(self.cur_states, next_node)
         cur_node.utility = monte_carlo_like_heuristic_func(self.dag.out_degree(cur_node)+1, total_node_num, cur_node.final_score)
+
         self.pre_states = self.cur_states.copy()
         self.node_id = src.llm.llm_dag_node.global_node_id
 
-        # 【新增】后置分析各Agent活动并发送WebSocket状态
+        # [WebSocket推送] 后置Agent活动分析 - A*搜索步骤完成
         if hasattr(self, 'status_wrapper') and next_states:
             analyze_agents_activity_from_nodes(self.status_wrapper, next_states, cur_node, cur_feature_idx)
         
@@ -768,7 +779,7 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         print(termcolor.colored(f"the node{node.node_id} is evaluating : \n {node.task_code}, \n {node.out_cur_df.info()}", "yellow"))
         node.final_score, node.scores, node.attr_imp_order = self.get_scores(node.out_cur_df)
 
-        # 添加Node Validator状态推送
+        # [WebSocket推送] Node Validator状态推送 - 节点性能评估
         if hasattr(self, 'status_wrapper'):
             self.status_wrapper.send_agent_status({
                 "type": "agent_status",
@@ -788,7 +799,7 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                 }
             })
 
-            # 增强的Node Validator思考过程
+            # [WebSocket推送] Node Validator思考过程 - 性能验证分析
             try:
                 performance_metrics = {
                     "evaluation_score": node.final_score,

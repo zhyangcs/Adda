@@ -23,7 +23,9 @@ def register_websocket_handler(websocket_server):
     """注册WebSocket处理器"""
     global _websocket_handlers
     with _websocket_lock:
-        _websocket_handlers.append(websocket_server)
+        # 避免重复注册导致重复广播
+        if websocket_server not in _websocket_handlers:
+            _websocket_handlers.append(websocket_server)
 
 def unregister_websocket_handler(websocket_server):
     """注销WebSocket处理器"""
@@ -163,6 +165,7 @@ class AgentStatusWrapper:
             self.current_thinking[agent] = thinking_data.copy()
 
             print(f"\033[91m[WS THINK] -> sending agent={agent} len={len(thinking_content)} ts={thinking_data['timestamp']}\033[0m")
+            print(f"\033[91m[WS THINK] content preview: {thinking_content[:100]}\033[0m")
 
             # 推送到WebSocket（通过全局消息系统）
             _send_to_all_websockets('agent_thinking', thinking_data)
@@ -284,7 +287,7 @@ class AgentStatusWrapper:
             for i, node in enumerate(similar_nodes[:2]):
                 if hasattr(node, 'operation_desc') and hasattr(node, 'node_id'):
                     score = f" (similarity: {similarity_scores[i]:.2f})" if similarity_scores and i < len(similarity_scores) else ""
-                    examples.append(f"Node {node.node_id}{score}: '{node.operation_desc[:80]}...'")
+                    examples.append(f"Node {node.node_id}{score}: '{node.operation_desc}'")
 
         self.send_detailed_thinking("system", main_content, details, examples)
 
@@ -342,7 +345,7 @@ class AgentStatusWrapper:
         for i, node in enumerate(complex_nodes[:2]):
             if hasattr(node, 'node_id') and hasattr(node, 'operation_desc'):
                 complexity = getattr(node, 'code_complexity', 0)
-                examples.append(f"Node {node.node_id} (complexity:{complexity}): '{node.operation_desc[:60]}...'")
+                examples.append(f"Node {node.node_id} (complexity:{complexity}): '{node.operation_desc}'")
 
         self.send_detailed_thinking("optimizationagent", main_content, details, examples)
 
