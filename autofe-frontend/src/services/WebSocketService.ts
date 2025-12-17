@@ -17,16 +17,12 @@ class WebSocketService {
   private maxReconnectAttempts = Number.MAX_SAFE_INTEGER
   private reconnectDelay = 1000
   private isConnected = false
-  // 多候选地址轮询，避免因为端口或代理差异导致首连失败
-  private candidateUrls: string[] = this.buildCandidateUrls()
-  private currentUrlIndex = 0
   // 控制自动刷新，避免首批消息漏渲染后需要手动刷新
   private lastAutoReloadAt = (typeof sessionStorage !== 'undefined' && Number(sessionStorage.getItem('ws-auto-reload-ts'))) || 0
-
-  private buildCandidateUrls(): string[] {
-    // 指定直连后端 WS 地址，避免经过 Vite 代理
-    return ['http://10.82.1.203:5000']
-  }
+  // 明确的后端 WS 地址（可用 VITE_WS_URL 覆盖），默认直连 5000 端口
+  private readonly defaultWsUrl: string =
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) ||
+    'ws://10.82.1.203:5000'
 
   constructor() {
     // 延迟到调用方明确初始化再连接，避免在回调未注册时丢失缓存事件
@@ -52,10 +48,11 @@ class WebSocketService {
       return
     }
 
-    const resolvedUrl =
-      (url ?? this.candidateUrls[this.currentUrlIndex] ?? '')?.trim()
+    // 始终优先使用明确的后端地址，避免误连到前端 dev 端口
+    const resolvedUrl = (url ?? this.defaultWsUrl)?.trim()
+    // 关键：先绑定监听器再 connect，避免首屏错过 server 在 connect 阶段推送的缓存事件
     const options = {
-      autoConnect: true,
+      autoConnect: false,
       reconnection: true,
       reconnectionDelay: 3000,
       reconnectionAttempts: Number.MAX_SAFE_INTEGER,
@@ -71,7 +68,9 @@ class WebSocketService {
       this.socket = io(options)
     }
 
+    // 先注册监听器，再发起连接，避免 race
     this.setupEventListeners()
+    this.socket.connect()
   }
 
   /**
@@ -100,34 +99,15 @@ class WebSocketService {
       console.error('WebSocket connection error:', error)
       this.callbacks.onError?.(error)
 
-      // 轮询下一个候选地址，避免卡在不可达地址
-      let switched = false
-      if (this.candidateUrls.length > 1) {
-        this.currentUrlIndex = (this.currentUrlIndex + 1) % this.candidateUrls.length
-        const nextUrl = this.candidateUrls[this.currentUrlIndex]
-        console.warn(`Switching WS endpoint to: ${nextUrl}`)
-        switched = true
-      }
-
-      // 若已切换 URL，则销毁旧 socket 并用新 URL 重建，避免继续对不可达地址无限重连
-      if (switched) {
-        this.socket?.removeAllListeners()
-        this.socket?.disconnect()
-        this.socket = null
-        this.connect(this.candidateUrls[this.currentUrlIndex])
-        return
-      }
-
       // 重连逻辑（继续使用 socket.io 自带重连）
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         setTimeout(() => {
           this.reconnectAttempts++
           console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-          // 如果已有 socket 实例，直接调用 connect；否则重新创建
           if (this.socket) {
             this.socket.connect()
           } else {
-            this.connect()
+            this.connect(this.defaultWsUrl)
           }
         }, this.reconnectDelay * this.reconnectAttempts)
       }
@@ -149,12 +129,6 @@ class WebSocketService {
     // 通用事件监听，用于调试 - 添加在所有事件监听之后
     this.socket.onAny((eventName, ...args) => {
       console.log('[WS DEBUG] Received event:', eventName, args)
-
-      // 特别关注agent_thinking事件
-      if (eventName === 'agent_thinking') {
-        console.log('[WS DEBUG] 🎯 Agent thinking event received!', args[0])
-        this.callbacks.onAgentThinking?.(args[0])
-      }
     })
 
     // 系统通知

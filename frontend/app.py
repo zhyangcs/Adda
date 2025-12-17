@@ -2044,4 +2044,6 @@ def manual_test_websocket():
 
 if __name__ == '__main__':
     # 使用WebSocket服务器运行应用
+    # 注意：Flask-SocketIO 在 debug/reloader 下可能启动多个进程，导致“必须刷新才收到消息”
+    # run() 内部已强制 use_reloader=False，这里保留 debug 便于开发排查
     ws_server.run(host='0.0.0.0', port=5000, debug=True) 

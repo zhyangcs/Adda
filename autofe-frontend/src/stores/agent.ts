@@ -3,7 +3,7 @@
  * 使用Pinia管理Agent的实时状态和思考过程
  */
 import { defineStore } from 'pinia'
-import { ref, computed, readonly } from 'vue'
+import { ref, computed } from 'vue'
 import type {
   AgentStatusMessage,
   AgentThinkingMessage,
@@ -275,7 +275,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  // ===== 消息队列系统 =====
+  // ===== 消息处理（无队列，实时显示）=====
 
   interface QueuedMessage {
     id: string
@@ -285,86 +285,18 @@ export const useAgentStore = defineStore('agent', () => {
     type: 'thinking' | 'status'
   }
 
-  const messageQueue = ref<QueuedMessage[]>([])
-  const currentMessageId = ref<string | null>(null)
-  const messageDisplayTimeout = ref<number | null>(null)
-  const MESSAGE_DISPLAY_DURATION = 2500 // 2.5秒显示时间
-
-  // 添加消息到队列
+  // 直接转为 thinking 更新，避免任何延迟/队列
   const addMessageToQueue = (message: QueuedMessage) => {
-    // 避免重复的相同消息
-    const existingIndex = messageQueue.value.findIndex(
-      m => m.agent === message.agent && m.content === message.content
-    )
-
-    if (existingIndex >= 0) {
-      // 更新现有消息的时间戳
-      messageQueue.value[existingIndex] = message
-    } else {
-      // 添加新消息到队列末尾
-      messageQueue.value.push(message)
-    }
-
-    console.log(`Message added to queue: ${message.agent} - ${message.content.substring(0, 30)}...`)
-
-    // 如果当前没有显示消息，开始显示
-    if (!currentMessageId.value) {
-      processNextMessage()
-    }
+    updateAgentThinking({
+      agent: message.agent as AgentType,
+      thinking: message.content,
+      category: undefined,
+      timestamp: message.timestamp
+    })
   }
 
-  // 处理下一条消息
-  const processNextMessage = () => {
-    if (messageQueue.value.length === 0) {
-      currentMessageId.value = null
-      return
-    }
-
-    const message = messageQueue.value.shift()!
-    currentMessageId.value = message.id
-
-    console.log(`Displaying message: ${message.agent} - ${message.content.substring(0, 30)}...`)
-
-    if (message.type === 'thinking') {
-      // 更新思考内容
-      const currentThinking: AgentThinking = {
-        agent: message.agent as AgentType,
-        thinking: message.content,
-        category: undefined,
-        timestamp: message.timestamp
-      }
-      const nextThinking = new Map(currentAgentThinking.value)
-      nextThinking.set(message.agent as AgentType, currentThinking)
-      currentAgentThinking.value = nextThinking
-    }
-
-    // 设置3秒后显示下一条消息
-    messageDisplayTimeout.value = setTimeout(() => {
-      // 清除当前显示的消息
-      if (currentMessageId.value === message.id) {
-        if (message.type === 'thinking') {
-          const nextThinking = new Map(currentAgentThinking.value)
-          nextThinking.delete(message.agent as AgentType)
-          currentAgentThinking.value = nextThinking
-        }
-        currentMessageId.value = null
-
-        // 延迟200ms后处理下一条消息，避免闪烁
-        setTimeout(() => {
-          processNextMessage()
-        }, 200)
-      }
-    }, MESSAGE_DISPLAY_DURATION)
-  }
-
-  // 清空队列
+  // 兼容旧接口：清空时仅清理思考状态
   const clearMessageQueue = () => {
-    if (messageDisplayTimeout.value) {
-      clearTimeout(messageDisplayTimeout.value)
-      messageDisplayTimeout.value = null
-    }
-    messageQueue.value = []
-    currentMessageId.value = null
     currentAgentThinking.value = new Map()
   }
 
@@ -514,8 +446,6 @@ export const useAgentStore = defineStore('agent', () => {
     systemNotifications,
     isConnected,
     connectionInfo,
-    messageQueue: readonly(messageQueue),
-
     // 计算属性
     allAgentStates,
     workingAgents,

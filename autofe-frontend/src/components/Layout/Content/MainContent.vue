@@ -454,7 +454,7 @@ function getAgentThinking(agent: AgentKey): string {
 }
 
 // 添加消息到队列 - 优化为允许同agent消息快速替换
-function addThinkingMessageToQueue(agent: AgentKey, content: string) {
+function addThinkingMessageToQueue(agent: AgentKey, content: string, timestamp?: number) {
   // 队列关闭，直接写入聊天列表
   console.log(`Appending ${agent} message:`, content.substring(0, 50) + '...')
   const messageId = `${agent}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -462,7 +462,7 @@ function addThinkingMessageToQueue(agent: AgentKey, content: string) {
     id: messageId,
     content,
     agent,
-    timestamp: Date.now()
+    timestamp: (timestamp && timestamp < 1e12 ? timestamp * 1000 : timestamp) || Date.now()
   })
 }
 
@@ -480,12 +480,9 @@ function appendChatMessage(message: QueuedMessage) {
 }
 
 function formatChatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
-
-// 用于跟踪已处理的消息，避免重复添加
-const processedMessageIds = ref<Set<string>>(new Set())
-const MAX_PROCESSED_IDS = 500 // 最多保留500个ID记录
 
 // 监听agent store中的thinking消息变化
 watch(currentAgentThinking, (thinkingMap) => {
@@ -508,24 +505,7 @@ watch(currentAgentThinking, (thinkingMap) => {
 
     if (agent && thinking.thinking) {
       console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
-
-      // 使用 agent + timestamp + 内容哈希 作为唯一标识，避免重复添加
-      const messageKey = `${agent}-${thinking.timestamp}-${thinking.thinking.substring(0, 100)}`
-
-      if (!processedMessageIds.value.has(messageKey)) {
-        console.log(`Adding new thinking message for ${agent}`)
-        processedMessageIds.value.add(messageKey)
-
-        // 限制 processedMessageIds 大小，避免内存泄漏
-        if (processedMessageIds.value.size > MAX_PROCESSED_IDS) {
-          const idsArray = Array.from(processedMessageIds.value)
-          processedMessageIds.value = new Set(idsArray.slice(-MAX_PROCESSED_IDS / 2))
-        }
-
-        addThinkingMessageToQueue(agent, thinking.thinking)
-      } else {
-        console.log(`Skipping duplicate thinking message for ${agent}`)
-      }
+      addThinkingMessageToQueue(agent, thinking.thinking, thinking.timestamp)
     }
   })
 }, { deep: true, immediate: true })
