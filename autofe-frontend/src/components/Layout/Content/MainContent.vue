@@ -44,11 +44,10 @@
                         <!-- System Agent (左上角) -->
                         <div
                           class="agent-node system-agent"
-                          :class="{ active: activeAgent === 'system', working: workingAgents.includes('system') }"
-                          @click="setActiveAgent('system')"
+                          :class="{ working: workingAgents.includes('system') }"
                         >
                           <div class="agent-icon">
-                            <Monitor :size="28" />
+                            <img src="/demo_dataset.png" alt="System Agent" class="agent-image" />
                           </div>
                           <div class="agent-label">System</div>
                           <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
@@ -60,8 +59,7 @@
                         <!-- Main Agent (右上角) -->
                         <div
                           class="agent-node main-agent"
-                          :class="{ active: activeAgent === 'main', working: workingAgents.includes('main') }"
-                          @click="setActiveAgent('main')"
+                          :class="{ working: workingAgents.includes('main') }"
                         >
                           <div class="agent-icon">
                             <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
@@ -76,8 +74,7 @@
                         <!-- Optimization Agent (右下角) -->
                         <div
                           class="agent-node opt-agent"
-                          :class="{ active: activeAgent === 'optimization', working: workingAgents.includes('optimization') }"
-                          @click="setActiveAgent('optimization')"
+                          :class="{ working: workingAgents.includes('optimization') }"
                         >
                           <div class="agent-icon">
                             <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
@@ -92,11 +89,10 @@
                         <!-- Node Validation Process (左下角) -->
                         <div
                           class="agent-node validation-agent"
-                          :class="{ active: activeAgent === 'validation', working: workingAgents.includes('validation') }"
-                          @click="setActiveAgent('validation')"
+                          :class="{ working: workingAgents.includes('validation') }"
                         >
                           <div class="agent-icon">
-                            <Cog :size="28" />
+                            <img src="/demo_validation.jpg" alt="Node Validation" class="agent-image" />
                           </div>
                           <div class="agent-label">Node Validation</div>
                           <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
@@ -246,7 +242,6 @@ const agentDisplayConfig: Record<AgentKey, { label: string; initial: string }> =
   validation: { label: 'Node Validation', initial: 'NV' }
 }
 
-const activeAgent = ref<AgentKey>('main')
 const workingAgents = ref<AgentKey[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
@@ -315,29 +310,8 @@ function toggleRightPanel() {
   console.log('New sizes - left:', leftPaneSize.value, 'right:', rightPaneSize.value)
 }
 
-// Agent interaction
-function setActiveAgent(agent: AgentKey) {
-  activeAgent.value = agent
-  taskStore.addNotification(`Selected ${agent} agent`, 'info')
-}
 
 // WebSocket相关
-const currentThinkingText = computed(() => {
-  // 映射activeAgent到agent store中的agent类型
-  const agentTypeMap: Record<string, AgentType> = {
-    'system': 'system',
-    'main': 'mainagent',
-    'optimization': 'optimizationagent',
-    'validation': 'nodevalidator'
-  }
-
-  const agentType = agentTypeMap[activeAgent.value]
-  if (agentType) {
-    const thinking = agentStore.getLatestThinking(agentType)
-    return thinking
-  }
-  return ''
-})
 
 // 消息队列管理
 interface QueuedMessage {
@@ -509,6 +483,10 @@ function formatChatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// 用于跟踪已处理的消息，避免重复添加
+const processedMessageIds = ref<Set<string>>(new Set())
+const MAX_PROCESSED_IDS = 500 // 最多保留500个ID记录
+
 // 监听agent store中的thinking消息变化
 watch(currentAgentThinking, (thinkingMap) => {
   if (!(thinkingMap instanceof Map)) {
@@ -531,11 +509,19 @@ watch(currentAgentThinking, (thinkingMap) => {
     if (agent && thinking.thinking) {
       console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
 
-      // 检查是否是新的thinking消息（避免重复添加）
-      const currentMessage = currentDisplayedMessage.value.get(agent)
+      // 使用 agent + timestamp + 内容哈希 作为唯一标识，避免重复添加
+      const messageKey = `${agent}-${thinking.timestamp}-${thinking.thinking.substring(0, 100)}`
 
-      if (!currentMessage || currentMessage.content !== thinking.thinking) {
+      if (!processedMessageIds.value.has(messageKey)) {
         console.log(`Adding new thinking message for ${agent}`)
+        processedMessageIds.value.add(messageKey)
+
+        // 限制 processedMessageIds 大小，避免内存泄漏
+        if (processedMessageIds.value.size > MAX_PROCESSED_IDS) {
+          const idsArray = Array.from(processedMessageIds.value)
+          processedMessageIds.value = new Set(idsArray.slice(-MAX_PROCESSED_IDS / 2))
+        }
+
         addThinkingMessageToQueue(agent, thinking.thinking)
       } else {
         console.log(`Skipping duplicate thinking message for ${agent}`)
@@ -558,7 +544,7 @@ function testAgentStatus() {
   console.log('Test Agent Status clicked!')
 
   // 直接添加测试消息到队列
-  addThinkingMessageToQueue(activeAgent.value, `这是一个测试思考消息：${activeAgent.value} Agent正在分析数据集特征，准备生成新的特征组合...`)
+  addThinkingMessageToQueue('main', '这是一个测试思考消息：Main Agent正在分析数据集特征，准备生成新的特征组合...')
 
   // 添加多个测试消息
   setTimeout(() => {
@@ -573,7 +559,7 @@ function testAgentStatus() {
     addThinkingMessageToQueue('optimization', 'Optimization Agent 正在评估特征性能，准确率提升预期：15%...')
   }, 3000)
 
-  taskStore.addNotification(`Test ${activeAgent.value} Agent消息已添加到队列`, 'info')
+  taskStore.addNotification('Test Agent消息已添加到队列', 'info')
   console.log('Test message added to queue successfully')
 }
 
@@ -1344,8 +1330,8 @@ onUnmounted(() => {
 }
 
 .agent-icon {
-  width: 58px;
-  height: 58px;
+  width: 87px;
+  height: 87px;
   background-color: transparent;
   border-radius: 8px;
   display: flex;
@@ -1364,11 +1350,6 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-.agent-node.active .agent-icon {
-  background-color: #007bff;
-  color: white;
-  border-color: #0056b3;
-}
 
 .agent-node.working .agent-icon {
   background-color: #28a745;
@@ -1381,7 +1362,7 @@ onUnmounted(() => {
   font-size: var(--font-size-md);
   color: var(--text-primary);
   position: absolute;
-  bottom: -25px;
+  bottom: -15px;
   left: 50%;
   transform: translateX(-50%);
   text-align: center;

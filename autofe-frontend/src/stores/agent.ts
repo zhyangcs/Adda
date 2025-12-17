@@ -368,7 +368,7 @@ export const useAgentStore = defineStore('agent', () => {
     currentAgentThinking.value = new Map()
   }
 
-  // 更新Agent思考 - 重写为队列模式
+  // 更新Agent思考 - 优化为直接更新模式，避免队列延迟导致消息显示不及时
   const updateAgentThinking = (thinkingMessage: AgentThinkingMessage) => {
     const { agent, thinking, category, timestamp } = thinkingMessage
 
@@ -384,7 +384,7 @@ export const useAgentStore = defineStore('agent', () => {
       delay_ms: arrivalDelay
     })
 
-    // 超时丢弃
+    // 超时丢弃 - 仅丢弃严重过时的消息（超过30秒）
     if (arrivalDelay > STALE_THRESHOLD_MS) {
       console.warn(`[THINKING] Drop stale thinking (${arrivalDelay}ms delay) for ${agent}`)
       return
@@ -396,16 +396,31 @@ export const useAgentStore = defineStore('agent', () => {
       return
     }
 
-    const message: QueuedMessage = {
-      id: `${agent}-${timestamp}-${Math.random()}`,
+    // 直接更新 currentAgentThinking，不使用队列延迟
+    // 这样 MainContent.vue 中的 watch 能立即收到消息并显示
+    const currentThinking: AgentThinking = {
       agent,
-      content: thinking,
-      timestamp: timestamp || Date.now(),
-      type: 'thinking'
+      thinking,
+      category,
+      timestamp: timestamp || Date.now()
     }
 
-    console.log('📤 Adding thinking message to queue:', message)
-    addMessageToQueue(message)
+    const nextThinking = new Map(currentAgentThinking.value)
+    nextThinking.set(agent, currentThinking)
+    currentAgentThinking.value = nextThinking
+
+    console.log('📤 Agent thinking updated directly (no queue delay):', agent, thinking.substring(0, 50))
+
+    // 同时更新历史记录
+    const history = agentThinkingHistory.value.get(agent) || []
+    history.push(currentThinking)
+    // 限制历史记录数量
+    if (history.length > 100) {
+      history.shift()
+    }
+    const nextHistory = new Map(agentThinkingHistory.value)
+    nextHistory.set(agent, history)
+    agentThinkingHistory.value = nextHistory
   }
 
   // 添加系统通知

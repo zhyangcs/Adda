@@ -44,7 +44,7 @@ from frontend.paper_metrics_simplified import calculate_simplified_paper_metrics
 
 # 导入WebSocket服务器
 from websocket_server import get_websocket_server
-from src.llm.agent_status_wrapper import agent_status_wrapper
+from src.llm.agent_status_wrapper import agent_status_wrapper, register_websocket_handler
 
 app = Flask(__name__)
 # 允许前端从不同端口访问
@@ -53,6 +53,11 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 # 初始化WebSocket服务器
 ws_server = get_websocket_server()
 ws_server.init_app(app)
+
+# 关键：将 ws_server 注册到 agent_status_wrapper 的全局处理器列表中
+# 这样 agent_status_wrapper.send_agent_thinking() 等方法才能正确发送消息到前端
+register_websocket_handler(ws_server)
+print("[APP] WebSocket server registered to agent_status_wrapper")
 
 # 创建Adda系统连接器实例
 adda = AddaConnector()
