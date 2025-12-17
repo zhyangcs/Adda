@@ -113,51 +113,51 @@
               </div>
             </div>
 
-            <!-- 上方：Node Information -->
-            <div class="node-info-section">
-              <div class="info-card">
-                <div class="info-header">
-                  <h6 class="info-title">Node Information</h6>
-                </div>
-                <div class="info-content">
-                  <div v-if="featureTreeStore.selectedNode" class="node-details">
-                    <div class="node-detail">
-                      <span class="detail-label">Node ID:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
-                    </div>
-                    <div class="node-detail">
-                      <span class="detail-label">Feature Name:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
-                    </div>
-                    <div class="node-detail">
-                      <span class="detail-label">Task Code:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.task_code }}</span>
-                    </div>
-                    <div class="node-detail">
-                      <span class="detail-label">Operation:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
-                    </div>
-                    <div class="node-detail">
-                      <span class="detail-label">Description:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
-                    </div>
-                    <div class="node-detail">
-                      <span class="detail-label">Score:</span>
-                      <span class="detail-value">{{ featureTreeStore.selectedNode.score?.toFixed(4) }}</span>
-                    </div>
-                  </div>
-                  <div v-else class="no-node-info">
-                    Hover over a node to see details.
-                  </div>
-                </div>
+            <!-- 上方：Feature Generation -->
+            <div class="feature-generation-section">
+              <div class="feature-tree-section">
+                <FeatureTreePanel />
               </div>
             </div>
           </div>
 
-          <!-- 下方：Feature Generation -->
-          <div class="feature-generation-section">
-            <div class="feature-tree-section">
-              <FeatureTreePanel />
+          <!-- 下方：Node Information -->
+          <div class="node-info-section">
+            <div class="info-card">
+              <div class="info-header">
+                <h6 class="info-title">Node Information</h6>
+              </div>
+              <div class="info-content">
+                <div v-if="featureTreeStore.selectedNode" class="node-details">
+                  <div class="node-detail">
+                    <span class="detail-label">Node ID:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
+                  </div>
+                  <div class="node-detail">
+                    <span class="detail-label">Feature Name:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
+                  </div>
+                  <div class="node-detail">
+                    <span class="detail-label">Task Code:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.task_code }}</span>
+                  </div>
+                  <div class="node-detail">
+                    <span class="detail-label">Operation:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
+                  </div>
+                  <div class="node-detail">
+                    <span class="detail-label">Description:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
+                  </div>
+                  <div class="node-detail">
+                    <span class="detail-label">Score:</span>
+                    <span class="detail-value">{{ featureTreeStore.selectedNode.score?.toFixed(4) }}</span>
+                  </div>
+                </div>
+                <div v-else class="no-node-info">
+                  Hover over a node to see details.
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -349,6 +349,8 @@ agentTypes.forEach(agent => {
 // 全局消息队列 - 用于处理所有Agent的消息排队
 const globalMessageQueue = ref<QueuedMessage[]>([])
 const isProcessingGlobalQueue = ref(false)
+// 记录各Agent上一条thinking的时间戳，防止重复渲染
+const lastThinkingTimestamps = ref<Map<AgentKey, number>>(new Map())
 
 // 处理全局消息队列
 function processGlobalMessageQueue() {
@@ -504,8 +506,18 @@ watch(currentAgentThinking, (thinkingMap) => {
     const agent = agentTypeMap[agentType as string]
 
     if (agent && thinking.thinking) {
-      console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
-      addThinkingMessageToQueue(agent, thinking.thinking, thinking.timestamp)
+      const tsRaw = thinking.timestamp ?? Date.now()
+      const tsMs = tsRaw < 1e12 ? tsRaw * 1000 : tsRaw
+      const lastTs = lastThinkingTimestamps.value.get(agent)
+
+      // 避免同一条消息在新Agent到来时被重复渲染
+      if (!lastTs || Math.abs(tsMs - lastTs) > 1) {
+        lastThinkingTimestamps.value.set(agent, tsMs)
+        console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
+        addThinkingMessageToQueue(agent, thinking.thinking, tsMs)
+      } else {
+        console.log(`Skip duplicate thinking for ${agent} at ${tsMs}`)
+      }
     }
   })
 }, { deep: true, immediate: true })
@@ -743,43 +755,64 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ===========================================
+   主内容区域样式 - Main Content Styles
+   =========================================== */
+
+/* 主内容容器：设置整体布局、背景和自定义CSS变量 */
 .main-content {
+  /* 弹性布局，垂直排列，占满可用空间 */
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: 0.85rem 1rem;
+  /* 内边距：减少页面与组件之间的间隙 */
+  padding: 0.3rem 0.4rem;
+  /* 隐藏溢出内容 */
   overflow: hidden;
+  /* 背景色 */
   background-color: #f7f9fc;
+  /* 高度占满容器 */
   height: 100%;
+
+  /* 自定义字体大小变量 */
   --font-size-sm: 1rem;
   --font-size-md: 1.25rem;
   --font-size-lg: 1.5rem;
   --font-size-xl: 1.9rem;
   --font-size-2xl: 2.25rem;
   --font-size-3xl: 2.5rem;
+
+  /* 自定义间距变量 */
   --spacing-md: 0.7rem;
   --spacing-lg: 1rem;
   --spacing-xl: 1.35rem;
 }
 
+/* Splitpanes容器：确保分栏组件占满可用空间 */
 .main-content > .splitpanes {
   flex: 1;
   min-height: 0;
 }
 
-/* Scrollbar behavior - hidden until actively interacting */
+/* ===========================================
+   滚动条样式 - Scrollbar Styles
+   =========================================== */
+
+/* 默认隐藏滚动条，只在悬停时显示 - 提供更清洁的UI体验 */
 .main-content,
 .main-content * {
   scrollbar-width: none;
   scrollbar-color: transparent transparent;
 }
 
+/* Webkit浏览器滚动条完全隐藏 */
 .main-content *::-webkit-scrollbar {
   width: 0;
   height: 0;
   background: transparent;
 }
 
+/* 悬停时显示滚动条 */
 .main-content *:hover {
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
@@ -799,6 +832,10 @@ onUnmounted(() => {
   background: transparent;
 }
 
+/* ===========================================
+   打印样式 - Print Styles
+   =========================================== */
+
 @media print {
   .main-content {
     background-color: #fff;
@@ -811,56 +848,75 @@ onUnmounted(() => {
   }
 }
 
-/* 左侧面板布局 */
+/* ===========================================
+   左侧面板布局 - Left Panel Layout
+   =========================================== */
+
+/* 左侧面板容器：垂直布局，包含Agent流程图和功能树 */
 .left-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 0.85rem;
-  padding-right: 0.6rem;
+  /* 组件间垂直间距 */
+  gap: 0.6rem;
+  /* 右侧内边距：已调整为0以减少与右侧面板的间隙 */
+  padding-right: 0.0rem;
 }
 
+/* 上方区域网格布局：Agent流程图和功能树并排显示 */
 .top-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: 0.85rem;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: 0.6rem;
   min-height: 0;
 }
 
+/* Agent流程图区域：显示Agent协作流程的可视化图表 */
 .agent-flow-section {
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 0.1rem;
 }
 
+/* Agent流程图卡片：占满可用空间 */
 .agent-flow-section .info-card {
   flex: 1;
 }
 
+/* Agent流程图内容容器 */
 .agent-process-content {
   display: flex;
   height: 100%;
-  padding: calc(var(--spacing-md) * 1.05);
+  /* 内边距 */
+  padding: calc(var(--spacing-md) * 0.75);
 }
 
+/* Agent流程图容器：设置最小高度和宽度 */
 .agent-process-content > .agent-flow-diagram {
   min-height: 430px;
   width: 100%;
 }
 
+/* ===========================================
+   Agent聊天面板样式 - Agent Chat Panel Styles
+   =========================================== */
+
+/* Agent聊天面板容器：右侧显示Agent思考过程的面板 */
 .agent-chat-panel {
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: 8px;
   border: none;
   background: #fff;
+  /* 内边距 */
   padding: calc(var(--spacing-md) * 0.95);
   box-shadow: none;
   height: 100%;
-  overflow: hidden; /* 保持内部滚动，不让整体跟随拉长 */
+  /* 隐藏溢出，保持内部滚动 */
+  overflow: hidden;
 }
 
+/* 聊天面板内容区域：占满可用空间 */
 .chat-panel-content {
   flex: 1;
   display: flex;
@@ -869,14 +925,17 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* 聊天面板头部：包含图标和标题 */
 .chat-panel-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* 下边距 */
   padding-bottom: 0.55rem;
   border-bottom: none;
 }
 
+/* 聊天面板图标：显示Agent相关的图标 */
 .chat-panel-icon {
   width: 34px;
   height: 34px;
@@ -888,6 +947,7 @@ onUnmounted(() => {
   color: #2563eb;
 }
 
+/* 聊天面板标题：显示"Agent Thinking Feed" */
 .chat-panel-title {
   display: flex;
   flex-direction: column;
@@ -896,20 +956,24 @@ onUnmounted(() => {
   font-size: var(--font-size-lg);
 }
 
+/* 聊天面板副标题：显示次级信息 */
 .chat-panel-title small {
   font-weight: 400;
   color: #64748b;
   font-size: var(--font-size-sm);
 }
 
+/* 聊天面板主体：显示聊天消息列表 */
 .chat-panel-body {
   flex: 1;
   margin-top: 0;
   overflow-y: auto;
+  /* 右侧内边距，为滚动条留空间 */
   padding-right: 0.25rem;
   max-height: 100%;
 }
 
+/* 聊天空状态：当没有消息时显示的提示 */
 .chat-empty-state {
   text-align: center;
   color: #6c757d;
@@ -917,13 +981,16 @@ onUnmounted(() => {
   font-size: 0.85rem;
 }
 
+/* 聊天消息容器：单个消息的布局 */
 .chat-message {
   display: flex;
   gap: 0.75rem;
+  /* 消息间距 */
   margin-bottom: 0.75rem;
   align-items: flex-start;
 }
 
+/* 聊天头像：显示Agent的头像 */
 .chat-avatar {
   width: 44px;
   height: 44px;
@@ -938,15 +1005,17 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
 }
 
+/* 聊天气泡：显示Agent消息内容 */
 .chat-bubble {
   flex: 1;
   padding: 0.5rem 0.75rem;
-  border-radius: 12px;
+  border-radius: 8px;
   border: none;
   background-color: #fff;
   box-shadow: none;
 }
 
+/* 聊天消息元信息：显示作者和时间 */
 .chat-meta {
   display: flex;
   justify-content: space-between;
@@ -955,16 +1024,19 @@ onUnmounted(() => {
   color: #6c757d;
 }
 
+/* 聊天消息作者：显示Agent名称 */
 .chat-author {
   font-weight: 600;
   color: #1f2933;
 }
 
+/* 聊天消息时间：显示消息时间戳 */
 .chat-time {
   font-size: calc(var(--font-size-sm) * 0.85);
   color: #94a3b8;
 }
 
+/* 聊天消息文本：显示消息内容 */
 .chat-text {
   margin: 0;
   font-size: var(--font-size-md);
@@ -973,41 +1045,57 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
+/* ===========================================
+   不同Agent的消息样式 - Agent-specific Message Styles
+   =========================================== */
+
+/* System Agent消息气泡：蓝色主题 */
 .chat-message.agent-system .chat-bubble {
   background-color: #edf2ff;
   border-color: #dbe4ff;
 }
 
+/* Main Agent消息气泡：绿色主题 */
 .chat-message.agent-main .chat-bubble {
   background-color: #e6fcf5;
   border-color: #c3fae8;
 }
 
+/* Optimization Agent消息气泡：橙色主题 */
 .chat-message.agent-optimization .chat-bubble {
   background-color: #fff4e6;
   border-color: #ffe8cc;
 }
 
+/* Validation Agent消息气泡：紫色主题 */
 .chat-message.agent-validation .chat-bubble {
   background-color: #f3f0ff;
   border-color: #e5dbff;
 }
 
+/* System Agent头像：蓝色 */
 .chat-avatar.agent-system {
   background-color: #4c6ef5;
 }
 
+/* Main Agent头像：绿色 */
 .chat-avatar.agent-main {
   background-color: #12b886;
 }
 
+/* Optimization Agent头像：橙色 */
 .chat-avatar.agent-optimization {
   background-color: #f76707;
 }
 
+/* Validation Agent头像：紫色 */
 .chat-avatar.agent-validation {
   background-color: #845ef7;
 }
+
+/* ===========================================
+   响应式布局 - Responsive Layout
+   =========================================== */
 
 @media (max-width: 1280px) {
   .agent-process-content {
@@ -1024,23 +1112,28 @@ onUnmounted(() => {
   }
 }
 
-/* 下方：Feature Generation 布局 */
+/* ===========================================
+   功能树和节点信息布局 - Feature Tree & Node Info Layout
+   =========================================== */
+
+/* Feature Generation区域：包含功能树和节点信息 */
 .feature-generation-section {
   flex: 1;
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  padding-top: 0.1rem;
+  gap: 0.6rem;
 }
 
+/* 节点信息区域：显示选中节点的详细信息 */
 .node-info-section {
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 500px;
 }
 
+/* 功能树区域：显示特征工程的树状结构 */
 .feature-tree-section {
   flex: 1;
   min-width: 250px;
@@ -1048,36 +1141,46 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-/* 右侧面板布局 */
+/* ===========================================
+   右侧面板布局 - Right Panel Layout
+   =========================================== */
+
+/* 右侧面板内容容器：包含Agent Thinking Feed等组件 */
 .right-panel-content {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   background-color: transparent;
-  padding-left: 0.5rem;
+  /* 左侧内边距 */
+  padding-left: 0.35rem;
 }
 
+/* 聊天卡片：Agent Thinking Feed的主要容器 */
 .chat-card {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
+/* SQL代码区域：显示生成的SQL代码 */
 .sql-code-section {
   flex: 1;
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  /* 下边距 */
   padding-bottom: 0.375rem;
 }
 
+/* 特征性能区域：显示特征工程的性能指标 */
 .feature-performance-section {
   flex: 1;
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  /* 上边距 */
   padding-top: 0.375rem;
 }
 
@@ -1108,7 +1211,7 @@ onUnmounted(() => {
   background-color: transparent !important;
   border: none !important;
   position: relative;
-  width: 12px !important;
+  width: 4px !important;
   cursor: col-resize !important;
   transition: all 0.3s ease !important;
 }
@@ -1213,7 +1316,7 @@ onUnmounted(() => {
 .info-card {
   height: 100%;
   background-color: #fff;
-  border-radius: 8px;
+  border-radius: 6px;
   border: none;
   display: flex;
   flex-direction: column;
@@ -1221,10 +1324,10 @@ onUnmounted(() => {
 }
 
 .info-header {
-  padding: 0.55rem 0.85rem 0.5rem;
+  padding: 0.4rem 0.6rem 0.35rem;
   border-bottom: none;
   background-color: #fff;
-  border-radius: 8px 8px 0 0;
+  border-radius: 6px 6px 0 0;
 }
 
 .info-title {
@@ -1236,7 +1339,7 @@ onUnmounted(() => {
 
 .info-content {
   flex: 1;
-  padding: calc(var(--spacing-md) * 0.95);
+  padding: calc(var(--spacing-md) * 0.7);
   overflow-y: auto;
 }
 
@@ -1459,7 +1562,11 @@ onUnmounted(() => {
   }
 }
 
-/* 展开按钮容器样式 */
+/* ===========================================
+   展开按钮容器样式 - Expand Button Container Styles
+   =========================================== */
+
+/* 展开按钮容器：当右侧面板折叠时显示的展开按钮定位 */
 .expand-button-container {
   position: absolute;
   right: 0;
@@ -1469,40 +1576,48 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+/* 展开按钮：用于展开右侧面板的按钮样式 */
 .expand-button {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   background-color: #6c757d;
   color: white;
   border: none;
   border-radius: 4px 0 0 4px;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.7rem;
   box-shadow: none;
   transition: all 0.3s ease;
   white-space: nowrap;
 }
 
+/* 展开按钮悬停效果 */
 .expand-button:hover {
   background-color: #495057;
   transform: translateY(-50%) translateX(-4px);
   box-shadow: none;
 }
 
+/* 展开箭头：按钮中的箭头图标 */
 .expand-arrow {
   font-size: 20px;
   font-weight: bold;
   margin-right: 0.5rem;
 }
 
+/* 展开提示文本：按钮中的提示文字 */
 .expand-tooltip {
   font-size: 1rem;
   font-weight: 500;
 }
 
+/* ===========================================
+   Agent流程图箭头样式 - Agent Flow Diagram Arrow Styles
+   =========================================== */
+
 /* CSS箭头直接在agents-container内，无需额外容器 */
 
-/* 水平箭头基础样式 */
+/* 水平箭头基础样式：显示Agent之间的水平连接线 */
 .arrow-horizontal {
   position: absolute;
   top: 50%;
@@ -1513,6 +1628,7 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
+/* 水平箭头末端箭头符号 */
 .arrow-horizontal::after {
   content: '';
   position: absolute;
@@ -1526,7 +1642,7 @@ onUnmounted(() => {
   border-bottom: 6px solid transparent;
 }
 
-/* 垂直箭头基础样式 */
+/* 垂直箭头基础样式：显示Agent之间的垂直连接线 */
 .arrow-vertical {
   position: absolute;
   top: 50%;
@@ -1537,6 +1653,7 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
+/* 垂直箭头末端箭头符号 */
 .arrow-vertical::after {
   content: '';
   position: absolute;
@@ -1550,47 +1667,61 @@ onUnmounted(() => {
   border-right: 6px solid transparent;
 }
 
-/* 上横箭头位置 - 匹配新的节点位置 */
+/* ===========================================
+   箭头位置定位 - Arrow Position Styles
+   =========================================== */
+
+/* 上横箭头位置：连接System和Main Agent */
 .top-arrow {
   transform: translate(-50%, -50%) translateY(-110px);
 }
 
-/* 右纵箭头位置 - 匹配新的节点位置 */
+/* 右纵箭头位置：连接Main和Optimization Agent */
 .right-arrow {
   transform: translate(-50%, -50%) translateX(110px);
 }
 
-/* 下横箭头位置和方向 - 匹配新的节点位置 */
+/* 下横箭头位置和方向：连接Optimization和Validation Agent */
 .bottom-arrow {
   transform: translate(-50%, -50%) translateY(110px) rotate(180deg);
 }
 
-/* 左纵箭头位置和方向 - 匹配新的节点位置 */
+/* 左纵箭头位置和方向：连接Validation和System Agent */
 .left-arrow {
   transform: translate(-50%, -50%) translateX(-110px) rotate(180deg);
 }
 
-/* 激活状态样式 */
+/* ===========================================
+   箭头激活状态样式 - Arrow Active State Styles
+   =========================================== */
+
+/* 激活状态：当Agent正在工作时的高亮效果 */
 .arrow-horizontal.active,
 .arrow-vertical.active {
   background-color: #007bff;
 }
 
+/* 激活状态的箭头符号颜色 */
 .arrow-horizontal.active::after,
 .arrow-vertical.active::after {
   border-left-color: #007bff;
   border-top-color: #007bff;
 }
 
+/* 下箭头的激活状态特殊处理 */
 .bottom-arrow.active::after {
   border-left-color: #007bff;
 }
 
+/* 左箭头的激活状态特殊处理 */
 .left-arrow.active::after {
   border-top-color: #007bff;
 }
 
-/* 响应式设计 */
+/* ===========================================
+   响应式设计 - Responsive Design
+   =========================================== */
+
 @media (max-width: 1200px) {
   .upper-section {
     flex-direction: column;
@@ -1607,12 +1738,16 @@ onUnmounted(() => {
   }
 }
 
-/* Agent思考气泡样式 */
+/* ===========================================
+   Agent思考气泡样式 - Agent Thinking Bubble Styles
+   =========================================== */
+
+/* 思考气泡：Agent正在思考时显示的提示框 */
 .thinking-bubble {
   position: absolute;
   background: white;
   border: 2px solid #e3f2fd;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 14px 18px;
   box-shadow: none;
   color: #37474f;
@@ -1625,6 +1760,7 @@ onUnmounted(() => {
   animation: thinking-bubble-appear 0.3s ease-out;
 }
 
+/* 思考气泡中的预格式化文本样式 */
 .thinking-bubble pre {
   margin: 0;
   font-family: inherit;
@@ -1634,14 +1770,22 @@ onUnmounted(() => {
   color: inherit;
 }
 
-/* 左侧气泡 */
+/* ===========================================
+   气泡位置定位 - Bubble Position Styles
+   =========================================== */
+
+/* 左侧气泡：显示在Agent节点左侧的思考气泡 */
 .left-bubble {
   right: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%);
 }
 
-/* 上方节点（system和main agent）的气泡特殊处理 */
+/* ===========================================
+   不同位置节点的特殊气泡处理 - Special Bubble Handling for Different Positions
+   =========================================== */
+
+/* 上方节点（System和Main Agent）的气泡特殊定位 */
 .system-agent .left-bubble {
   top: -8px; /* 从图标顶部向上偏移8px，增加间距 */
   transform: translateY(0); /* 重置变换 */
@@ -1652,7 +1796,7 @@ onUnmounted(() => {
   transform: translateY(0); /* 重置变换 */
 }
 
-/* 下方节点（optimization和validation）的气泡特殊处理 */
+/* 下方节点（Optimization和Validation Agent）的气泡特殊定位 */
 .opt-agent .right-bubble {
   top: auto; /* 取消top定位 */
   bottom: -8px; /* 从图标底部向下偏移8px，增加间距 */
@@ -1665,6 +1809,11 @@ onUnmounted(() => {
   transform: translateY(0); /* 重置变换 */
 }
 
+/* ===========================================
+   气泡箭头样式 - Bubble Arrow Styles
+   =========================================== */
+
+/* 左侧气泡的箭头 - 内层白色箭头 */
 .left-bubble::before {
   content: '';
   position: absolute;
@@ -1679,6 +1828,7 @@ onUnmounted(() => {
   z-index: 101;
 }
 
+/* 左侧气泡的箭头 - 外层边框箭头 */
 .left-bubble::after {
   content: '';
   position: absolute;
@@ -1693,7 +1843,11 @@ onUnmounted(() => {
   z-index: 100;
 }
 
-/* 上方节点气泡箭头特殊处理 */
+/* ===========================================
+   上方节点气泡箭头特殊定位 - Top Node Bubble Arrow Special Positioning
+   =========================================== */
+
+/* System Agent左侧气泡箭头特殊定位 */
 .system-agent .left-bubble::before,
 .system-agent .left-bubble::after {
   top: 35px; /* 从气泡上边缘往下1/2图标高度（70px/2 = 35px） */
@@ -1701,6 +1855,7 @@ onUnmounted(() => {
   transform: translateY(-50%);
 }
 
+/* Main Agent右侧气泡箭头特殊定位 */
 .main-agent .right-bubble::before,
 .main-agent .right-bubble::after {
   top: 35px; /* 从气泡上边缘往下1/2图标高度（70px/2 = 35px） */
@@ -1708,7 +1863,11 @@ onUnmounted(() => {
   transform: translateY(-50%);
 }
 
-/* 下方节点气泡箭头特殊处理 */
+/* ===========================================
+   下方节点气泡箭头特殊定位 - Bottom Node Bubble Arrow Special Positioning
+   =========================================== */
+
+/* Optimization Agent右侧气泡箭头特殊定位 */
 .opt-agent .right-bubble::before,
 .opt-agent .right-bubble::after {
   top: auto;
@@ -1716,6 +1875,7 @@ onUnmounted(() => {
   transform: translateY(50%);
 }
 
+/* Validation Agent左侧气泡箭头特殊定位 */
 .validation-agent .left-bubble::before,
 .validation-agent .left-bubble::after {
   top: auto;
@@ -1723,13 +1883,18 @@ onUnmounted(() => {
   transform: translateY(50%);
 }
 
-/* 右侧气泡 */
+/* ===========================================
+   右侧气泡定位 - Right Bubble Positioning
+   =========================================== */
+
+/* 右侧气泡：显示在Agent节点右侧的思考气泡 */
 .right-bubble {
   left: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%);
 }
 
+/* 右侧气泡的箭头 - 内层白色箭头 */
 .right-bubble::before {
   content: '';
   position: absolute;
@@ -1744,6 +1909,7 @@ onUnmounted(() => {
   z-index: 101;
 }
 
+/* 右侧气泡的箭头 - 外层边框箭头 */
 .right-bubble::after {
   content: '';
   position: absolute;
@@ -1758,6 +1924,11 @@ onUnmounted(() => {
   z-index: 100;
 }
 
+/* ===========================================
+   气泡动画 - Bubble Animations
+   =========================================== */
+
+/* 标准气泡出现动画 */
 @keyframes thinking-bubble-appear {
   0% {
     opacity: 0;
@@ -1769,6 +1940,7 @@ onUnmounted(() => {
   }
 }
 
+/* 标准气泡消失动画 */
 @keyframes thinking-bubble-disappear {
   0% {
     opacity: 1;
@@ -1780,7 +1952,11 @@ onUnmounted(() => {
   }
 }
 
-/* 为特殊定位的气泡提供不同的动画 */
+/* ===========================================
+   特殊定位气泡的动画 - Special Positioned Bubble Animations
+   =========================================== */
+
+/* 顶部定位气泡出现动画 */
 @keyframes thinking-bubble-appear-top {
   0% {
     opacity: 0;
@@ -1792,6 +1968,7 @@ onUnmounted(() => {
   }
 }
 
+/* 顶部定位气泡消失动画 */
 @keyframes thinking-bubble-disappear-top {
   0% {
     opacity: 1;
@@ -1803,6 +1980,7 @@ onUnmounted(() => {
   }
 }
 
+/* 底部定位气泡出现动画 */
 @keyframes thinking-bubble-appear-bottom {
   0% {
     opacity: 0;
@@ -1814,6 +1992,7 @@ onUnmounted(() => {
   }
 }
 
+/* 底部定位气泡消失动画 */
 @keyframes thinking-bubble-disappear-bottom {
   0% {
     opacity: 1;
@@ -1825,16 +2004,25 @@ onUnmounted(() => {
   }
 }
 
+/* ===========================================
+   气泡消失状态 - Bubble Disappearing State
+   =========================================== */
+
+/* 气泡消失时的动画状态 */
 .bubble-disappearing {
   animation: thinking-bubble-disappear 0.2s ease-in forwards;
 }
 
-/* 所有节点使用标准的气泡动画 */
+/* 所有节点使用标准的气泡出现动画 */
 .thinking-bubble {
   animation: thinking-bubble-appear 0.3s ease-out;
 }
 
-/* Test按钮样式 */
+/* ===========================================
+   测试按钮样式 - Test Button Styles
+   =========================================== */
+
+/* 信息按钮样式：用于测试功能的按钮 */
 .btn-info {
   background-color: #17a2b8 !important;
   color: white !important;
@@ -1844,11 +2032,13 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
+/* 信息按钮悬停效果 */
 .btn-info:hover:not(:disabled) {
   background-color: #138496 !important;
   transform: translateY(-1px);
 }
 
+/* 信息按钮聚焦效果 */
 .btn-info:focus {
   outline: none;
   box-shadow: none;

@@ -2,8 +2,8 @@
   <div class="in-db-content">
     <div class="intro-card">
       <div>
-        <h3>Python ➜ SQL AST Visualization</h3>
-        <p>Locate stored pipeline code and visualize how py2sql matches operators to SQL.</p>
+        <h3>Python ➜ SQL Visualization</h3>
+        <!-- <p>Locate stored pipeline code and visualize how py2sql matches operators to SQL.</p> -->
       </div>
     </div>
 
@@ -39,29 +39,6 @@
         <div v-if="astData.finalSqlError" class="warning">SQL生成警告：{{ astData.finalSqlError }}</div>
       </div>
 
-      <!-- 分页器 -->
-      <div v-if="totalPages > 1" class="pagination-container">
-        <button
-          class="pagination-btn"
-          :disabled="currentPage === 0"
-          @click="goToPrevPage"
-        >
-          上一页
-        </button>
-
-        <span class="pagination-info">
-          {{ currentPage + 1 }} / {{ totalPages }}
-        </span>
-
-        <button
-          class="pagination-btn"
-          :disabled="currentPage >= totalPages - 1"
-          @click="goToNextPage"
-        >
-          下一页
-        </button>
-      </div>
-
       <div class="blocks">
         <div
           v-if="currentBlock"
@@ -89,28 +66,58 @@
           </div>
 
           <div class="code-ast-container">
-            <div class="code-view">
-              <div class="label">Python</div>
-              <pre>{{ currentBlock.code }}</pre>
-            </div>
-
             <div class="tree-section">
               <div class="label">AST</div>
               <AstTreeD3 v-if="currentBlock.ast" :node="currentBlock.ast" :block-index="currentPage" />
+            </div>
+
+            <div class="code-view monaco-card">
+              <div class="label">Python</div>
+              <div class="monaco-wrapper">
+                <VueMonacoEditor
+                  v-model:value="monacoCode"
+                  theme="vs-dark"
+                  language="python"
+                  :options="monacoOptions"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-else class="placeholder-card">
+          <!-- 分页器 -->
+          <div v-if="totalPages > 1" class="pagination-container">
+        <button
+          class="pagination-btn"
+          :disabled="currentPage === 0"
+          @click="goToPrevPage"
+        >
+          Previous
+        </button>
+
+        <span class="pagination-info">
+          {{ currentPage + 1 }} / {{ totalPages }}
+        </span>
+
+        <button
+          class="pagination-btn"
+          :disabled="currentPage >= totalPages - 1"
+          @click="goToNextPage"
+        >
+          Next
+        </button>
+      </div>
+
+    <!-- <div v-else class="placeholder-card">
       <h4>How it works</h4>
       <ul>
         <li>Pick dataset + downstream ML model to locate a test/store folder (e.g., heart_RF_Full).</li>
         <li>Backend loads pycodes/pipeline*.py, runs py2sql parsing (CheckTransformer, etc.), and returns AST.</li>
         <li>Each step lists read/write columns, op type, a SQL sketch, and the Python AST tree.</li>
       </ul>
-    </div>
+    </div> -->
   </div>
 </template>
 
@@ -121,6 +128,7 @@ import { useTaskStore } from '@/stores/task'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { Py2SqlAstData, Py2SqlAstNode } from '@/types'
 import * as d3 from 'd3'
+import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
 
 const taskStore = useTaskStore()
 const workspaceStore = useWorkspaceStore()
@@ -135,6 +143,25 @@ const datasetNameMap: Record<string, string> = {
   '6': 'House'
 }
 
+const loading = ref(false)
+const errorMessage = ref('')
+const astData = ref<Py2SqlAstData | null>(null)
+const monacoCode = ref('')
+const monacoOptions = {
+  readOnly: true,
+  minimap: { enabled: false },
+  wordWrap: 'on',
+  lineNumbers: 'on',
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  fontSize: 14,
+  fontFamily: 'JetBrains Mono, Consolas, monospace'
+}
+
+// 分页状态
+const currentPage = ref(0)
+const itemsPerPage = 1
+
 // 分页计算属性
 const totalPages = computed(() => {
   if (!astData.value?.blocks) return 0
@@ -146,13 +173,9 @@ const currentBlock = computed(() => {
   return astData.value.blocks[currentPage.value]
 })
 
-const loading = ref(false)
-const errorMessage = ref('')
-const astData = ref<Py2SqlAstData | null>(null)
-
-// 分页状态
-const currentPage = ref(0)
-const itemsPerPage = 1
+watch(currentBlock, (block) => {
+  monacoCode.value = block?.code || ''
+}, { immediate: true })
 
 // 监听执行触发器
 watch(() => workspaceStore.executionTrigger, () => {
@@ -201,7 +224,7 @@ const AstTreeD3 = defineComponent({
       })
       const margin = { top: 32, right: 16, bottom: 32, left: 16 }
       const width = (xMax - xMin) + nodeW + margin.left + margin.right
-      const height = Math.max((yMax - yMin) + nodeH + margin.top + margin.bottom, 260)
+      const height = Math.max((yMax - yMin) + nodeH + margin.top + margin.bottom, 500)
       const translateX = width / 2 - (xMin + xMax) / 2
       const translateY = margin.top - yMin
 
@@ -495,13 +518,16 @@ function resetPagination() {
 
 .code-ast-container {
   display: flex;
+  flex-direction: column;
   gap: 16px;
   margin-top: 10px;
 }
 
-.code-ast-container .code-view,
+.code-ast-container .code-view {
+  margin-top: 0;
+}
+
 .code-ast-container .tree-section {
-  flex: 1;
   margin-top: 0;
 }
 
@@ -510,10 +536,28 @@ function resetPagination() {
   margin-top: 10px;
 }
 
-.code-ast-container .code-view pre {
-  min-height: 220px;
-  max-height: 300px;
-  overflow-y: auto;
+.monaco-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.monaco-wrapper {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1224;
+  min-height: 280px;
+  height: 320px;
+  max-height: 380px;
+}
+
+.monaco-wrapper :deep(.monaco-editor),
+.monaco-wrapper :deep(.monaco-editor .overflow-guard) {
+  height: 100% !important;
+}
+
+.monaco-wrapper :deep(.monaco-editor) {
+  background: #0b1224;
 }
 
 .label {
@@ -522,15 +566,7 @@ function resetPagination() {
   margin-bottom: 4px;
 }
 
-pre {
-  background: #0b1224;
-  color: #e2e8f0;
-  padding: 12px;
-  border-radius: 10px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.5;
-}
+/* 原有的pre样式已移至code-content */
 
 .warning {
   margin-top: 6px;
@@ -550,8 +586,8 @@ pre {
 
 .ast-tree {
   width: 100%;
-  min-height: 200px;
-  height: 220px;
+  min-height: 400px;
+  height: 500px;
 }
 
 .ast-tree :deep(svg) {

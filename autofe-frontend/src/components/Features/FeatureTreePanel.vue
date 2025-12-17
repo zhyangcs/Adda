@@ -263,8 +263,8 @@ function renderD3Tree(data: any) {
     .attr("height", nodeHeight)
     .attr("x", -nodeWidth / 2)
     .attr("y", 0) // 从 y=0 开始
-    .attr("rx", 10) // 圆角略大
-    .attr("ry", 10)
+    .attr("rx", 6) // 圆角调整为更小
+    .attr("ry", 6)
     .style("filter", "url(#drop-shadow)")
     .attr("fill", (d: any) => d.data.selected ? "#ecfdf5" : "#ffffff") // 选中背景改为浅绿
     .attr("stroke", (d: any) => d.data.selected ? "#10b981" : "#cbd5e1") // 选中边框改为绿色
@@ -361,7 +361,7 @@ onMounted(() => {
 .info-card {
   height: 100%;
   background-color: #fff;
-  border-radius: 12px;
+  border-radius: 6px;
   border: none;
   display: flex;
   flex-direction: column;
@@ -369,10 +369,10 @@ onMounted(() => {
 }
 
 .info-header {
-  padding: 12px 16px;
+  padding: 0.4rem 0.6rem 0.35rem;
   border-bottom: none;
-  background-color: transparent;
-  border-radius: 12px 12px 0 0;
+  background-color: #fff;
+  border-radius: 6px 6px 0 0;
 }
 
 .info-title {
@@ -386,16 +386,16 @@ onMounted(() => {
 
 .info-content {
   flex: 1;
-  padding: 0.85rem;
+  padding: 0.6rem;
   overflow-y: auto;
 }
 
 .feature-tree-container {
   height: 100%; /* 占满剩余空间 */
   background-color: #f7f9fc;
-  border-radius: 10px;
+  border-radius: 6px;
   border: none;
-  padding: 0.6rem;
+  padding: 0.4rem;
   min-height: 150px;
 }
 
