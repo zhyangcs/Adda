@@ -106,15 +106,15 @@ def send_prompt(role_prompt:str, user_prompt:str, model:str = default_model, tes
 def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_model, temperature = 0.9, test_speed:bool = False):
     import threading
     import concurrent.futures
-    
-    def call_with_timeout(timeout_seconds, seed_value):
+
+    def call_with_timeout(timeout_seconds):
         """带超时的API调用函数"""
         client = OpenAI(
             base_url=openai_base_url,
             api_key=openai_api_key,
             timeout=min(timeout_seconds, 30.0)  # 设置OpenAI客户端超时
         )
-        
+
         messages = []
         if role_prompt != "":
             messages.append({
@@ -124,79 +124,76 @@ def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_m
 
         messages.append({
                 "role": "user",
-                "content": user_prompt,  
+                "content": user_prompt,
         })
-        
+
         completion = client.chat.completions.create(
             model = model,
             temperature = temperature,
             messages = messages,
             max_tokens = 1000,
-            seed=seed_value
+            n = n,
+            seed = global_seed,
         )
-        
+
         return completion
-    
+
     t1 = time.time()
     if test_speed:
         time.sleep(1)
         return []
-    
-    msglist = []
-    total_tokens = 0
-    
-    # 模拟多响应：通过多次调用来实现
-    for i in range(n):
-        retry_time = RETRY_TIME
-        success = False
-        completion = None
-        
-        while retry_time > 0 and not success:
-            try:
-                print(termcolor.colored(f"Sending prompt {i+1}/{n} to OpenAI...", "yellow"))
-                
-                # 使用线程池实现超时
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(call_with_timeout, 45, global_seed + i)
-                    try:
-                        completion = future.result(timeout=45)  # 45秒超时
-                        print(termcolor.colored(f"Received response {i+1}/{n} successfully!", "yellow"))
-                        total_tokens += completion.usage.total_tokens
-                        msglist.append(completion.choices[0].message.content)
-                        success = True
-                    except concurrent.futures.TimeoutError:
-                        print(termcolor.colored(f"Timeout error on prompt {i+1}/{n}", "red"))
-                        future.cancel()  # 取消任务
-                        retry_time -= 1
-                        if retry_time > 0:
-                            print(termcolor.colored("Retrying in 5 seconds...", "yellow"))
-                            time.sleep(5)
-                        continue
-                        
-            except OpenAIError as e:
-                print(termcolor.colored("OpenAI Error: %s" % e, "red"))
-                retry_time -= 1
-                if retry_time > 0:
-                    print(termcolor.colored("Retrying in 10 seconds...", "yellow"))
-                    time.sleep(10)
-                    
-            except Exception as e:
-                print(termcolor.colored(f"Unexpected error on prompt {i+1}/{n}: {e}", "red"))
-                retry_time -= 1
-                if retry_time > 0:
-                    time.sleep(5)
-        
-        if not success:
-            print(termcolor.colored(f"Failed to send prompt {i+1}/{n} to OpenAI after all retries", "red"))
-            # 如果至少有一个响应成功，继续执行
-            if len(msglist) > 0:
-                break
-            else:
-                # 如果没有成功响应，返回空列表
-                return []
-    
+
+    retry_time = RETRY_TIME
+    success = False
+    completion = None
+
+    while retry_time > 0 and not success:
+        try:
+            print(termcolor.colored("Sending prompt to OpenAI...", "yellow"))
+
+            # 使用线程池实现超时
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(call_with_timeout, 45)
+                try:
+                    completion = future.result(timeout=45)  # 45秒超时
+                    print(termcolor.colored("Received the response successfully!", "yellow"))
+                    success = True
+                except concurrent.futures.TimeoutError:
+                    print(termcolor.colored("Timeout error", "red"))
+                    future.cancel()  # 取消任务
+                    retry_time -= 1
+                    if retry_time > 0:
+                        print(termcolor.colored("Retrying in 5 seconds...", "yellow"))
+                        time.sleep(5)
+                    continue
+
+        except OpenAIError as e:
+            print(termcolor.colored("OpenAI Error: %s" % e, "red"))
+            retry_time -= 1
+            if retry_time > 0:
+                print(termcolor.colored("Retrying in 10 seconds...", "yellow"))
+                time.sleep(10)
+
+        except Exception as e:
+            print(termcolor.colored(f"Unexpected error: {e}", "red"))
+            retry_time -= 1
+            if retry_time > 0:
+                time.sleep(5)
+
+    if not success:
+        print(termcolor.colored("Failed to send prompt to OpenAI after all retries", "red"))
+        return []
+
+    # 确保不越界访问choices
+    actual_choices = len(completion.choices)
+    if actual_choices < n:
+        print(termcolor.colored(f"Warning: Requested {n} responses, but only got {actual_choices}", "yellow"))
+        n = actual_choices
+
+    msglist = [completion.choices[i].message.content for i in range(n)]
+
     t2 = time.time()
-    print(termcolor.colored("Time used: %s, Total Token Usage: %d, Responses: %d/%d" % (t2 - t1, total_tokens, len(msglist), n), "yellow"))
+    print(termcolor.colored("Time used: %s, Token Usage: %d" % (t2 - t1, completion.usage.total_tokens), "yellow"))
     return msglist
     
 def get_score(df:pd.DataFrame, label, model):
