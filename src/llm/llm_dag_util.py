@@ -246,7 +246,9 @@ class LLMDagConstructor():
                 if cur_step_idx < self.high_order_num and (not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info)):
                     # 使用分治策略重新生成代码
                     print(termcolor.colored(f"Entering divide_code for node {next_node.node_id}...", "yellow"))
-                    next_node, could_exec_code = divide_agent.divide_code(next_node)
+                    combined_node, could_exec_code = divide_agent.divide_code(next_node)
+                    if combined_node is not None:
+                        next_node = combined_node
                     print(termcolor.colored(f"divide_code completed for node {next_node.node_id}, success: {could_exec_code}", "yellow"))
 
                 # 3. 如果代码生成成功，尝试生成修复特征

@@ -36,10 +36,12 @@ class DivideAgent():
                     break
             except Exception as e:
                 print(termcolor.colored(f"Error in Exec_Same: {e}", "red"))
-                return self.combine_nodes(pre_node_list), True
+                combined_node, combined_ok = self.combine_nodes(pre_node_list)
+                return combined_node, combined_ok
             pre_node_list = cur_node_list
             cur_node_list = []
-        return self.combine_nodes(cur_node_list), True
+        combined_node, combined_ok = self.combine_nodes(cur_node_list)
+        return combined_node, combined_ok
         
     def flat_node(self, node_list):
         """
@@ -201,10 +203,19 @@ class DivideAgent():
                 # but should notice: if divide is useless, we do not do it(complexity do not fall off)
                 if not could_exec or not self_consist and origin_code_complexity > get_code_complexity(step_node.task_code):
                     divide_agent = self.__class__()
-                    step_node, could_exec = divide_agent.divide_code(step_node, False)
+                    combined_node, could_exec = divide_agent.divide_code(step_node, False)
+                    if combined_node is not None:
+                        step_node = combined_node
+                    else:
+                        # 分治失败，跳过这个步骤
+                        continue
 
-                cur_df = step_node.out_cur_df.copy(deep = True)
-                step_nodes.append(step_node)
+                if step_node.out_cur_df is not None and not step_node.out_cur_df.empty:
+                    cur_df = step_node.out_cur_df.copy(deep = True)
+                    step_nodes.append(step_node)
+                else:
+                    could_exec = False
+                    continue
                 
             return cur_df, step_nodes, could_exec
         else:

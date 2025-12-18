@@ -259,10 +259,13 @@ class LLMDagConstructor():
                 # 2. 检查是否需要分治处理
                 # 条件1: 当前步骤小于高阶特征数且代码生成失败
                 # 条件2: 代码复杂度超过阈值
+                # 与原版保持一致：只在前 high_order_num 轮里，且「生成失败或复杂度过高」时才启用分治
                 if cur_step_idx < self.high_order_num and (not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info)):
                     # 使用分治策略重新生成代码
                     print(termcolor.colored(f"Entering divide_code for node {next_node.node_id}...", "yellow"))
-                    next_node, could_exec_code = divide_agent.divide_code(next_node)
+                    combined_node, could_exec_code = divide_agent.divide_code(next_node)
+                    if combined_node is not None:
+                        next_node = combined_node  # 只有在分治成功时才更新节点
                     print(termcolor.colored(f"divide_code completed for node {next_node.node_id}, success: {could_exec_code}", "yellow"))
 
                 if getattr(self, "stop_flag", False):
