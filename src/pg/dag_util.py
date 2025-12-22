@@ -348,7 +348,7 @@ class DagConstructor():
                 cur_node = list(self.Dag.successors(cur_node))[0]
                 
 
-    def bfs_dag(self, extra_step, sql_file: str, udf_file: str, import_code, seq, reuse=True, concrete_time=False):
+    def bfs_dag(self, extra_step, sql_file: str, udf_file: str, import_code, seq, reuse=True, concrete_time=False, collect_payload=None, skip_write=False):
         """
         bfs the dag, and using the script_scope and the cte_name to generate the relevant sql code
         1. the src table is the predecessor of the node
@@ -386,7 +386,11 @@ class DagConstructor():
         sql_pair = []
         udfs = []
         model_name = f"model_{self.tb_name}_{self.pipe.pipe_id}"
-        conn = get_conn()
+        try:
+            conn = get_conn()
+        except Exception as e:
+            print(colored(f"Failed to init DB connection for SQL generation: {e}", "red"))
+            conn = None
         while len(queue) != 0:
             cur_node = queue.pop(0)
             if cur_node in processed_node:
@@ -402,6 +406,8 @@ class DagConstructor():
             
             #-----------------generate the sql code-----------------
             seq[cur_node.op_type.op_type] += 1
+            node_sqls = []
+            node_udfs = []
             if cur_node.op_type.op_type != OpTypeEnum.START:
                 pre_nodes = list(self.Dag.predecessors(cur_node))
                 pre_cte = pre_nodes[0].cte_name
@@ -417,6 +423,7 @@ class DagConstructor():
                     tb_name, stored_attr = self.pipe.reusemap[target_col]
                     cur_sql = Py2Sql.reuse(self.tb_name + str(tb_name), stored_attr, target_col, pre_cte, self.id_col)
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type in EASY_OF_TYPE:
                     print("--------------------------------")
@@ -427,30 +434,41 @@ class DagConstructor():
                     exec(wrapper_code_for_pd2sql(self.id2funcmap[cur_node.code_ref_id], pre_cte, "tmp", self.var_name, self.id_col), new_script_scope)
                     sql_var = copy.copy(new_script_scope["tmp"])
                     sql_pair.append((cur_node.cte_name, sql_var))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": sql_var})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.NUMERIZE:
                     # sampling the distinct value in database, if could not then sampling the partial data
-                    cate_col = get_for_category_col(self.tb_name, list(cur_node.read_set)[0], conn)
+                    if conn is None:
+                        cate_col = []
+                    else:
+                        cate_col = get_for_category_col(self.tb_name, list(cur_node.read_set)[0], conn)
                     if cate_col == []:
                         print(termcolor.colored("Fallback to sampling the column", "red"))
                         cate_col = get_sample_for_category_col(in_df, list(cur_node.read_set)[0])
                     # cur_sql = Py2Sql.label_encode("encode_table_"+str(seq[cur_node.op_type.op_type]), pre_cte, cur_node.op_type.relevant_cols[0], cur_node.op_type.target_cols[0], cate_col)
                     cur_sql = Py2Sql.label_encode_by_update(pre_cte, list(cur_node.read_set)[0], list(cur_node.write_set)[0], cate_col)
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.NORMALIZE:
                     cur_sql, percent_sql, percent_tb = Py2Sql.normalization(cur_node.op_type.parameters["scaler_type"], pre_cte, list(cur_node.read_set), list(cur_node.write_set), seq[cur_node.op_type.op_type])
                     if percent_sql != "":   
                         sql_pair.append((percent_tb, percent_sql))
+                        node_sqls.append({"cte": percent_tb, "sql": percent_sql})
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.GET_DUMMIES:
                     # cur_sql = Py2Sql.one_hot_encode("ohencode_table_"+str(seq[cur_node.op_type.op_type]), pre_cte, cur_node.op_type.relevant_cols[0], get_sample_for_category_col(in_df, cur_node.op_type.relevant_cols[0]))
-                    cate_col = get_for_category_col(self.tb_name, cur_node.op_type.relevant_cols[0], conn)
+                    if conn is None:
+                        cate_col = []
+                    else:
+                        cate_col = get_for_category_col(self.tb_name, cur_node.op_type.relevant_cols[0], conn)
                     if cate_col == []:
                         cate_col = get_sample_for_category_col(in_df, cur_node.op_type.relevant_cols[0])
                     cur_sql = Py2Sql.one_hot_by_update(pre_cte, cur_node.op_type.relevant_cols[0], cate_col)
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.DISCRETIZE:
                     # if cur_node.op_type.parameters["discretize_type"] == DiscretizeTypeEnum.QCUT:
@@ -469,8 +487,11 @@ class DagConstructor():
 
                     cur_udf, (call_sql1, call_sql2), (call_tb, _) = Py2Udf.convert_for_discrete(in_df, out_df, pre_cte, list(cur_node.read_set)[0], list(cur_node.write_set)[0], cur_node.op_type.label_cols, seq[cur_node.op_type.op_type], cur_node.op_type.parameters["discretize_type"])
                     udfs.append(cur_udf)
+                    node_udfs.append(cur_udf)
                     sql_pair.append((call_tb, call_sql1))
                     sql_pair.append((cur_node.cte_name, call_sql2))
+                    node_sqls.append({"cte": call_tb, "sql": call_sql1})
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": call_sql2})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.JOIN:
                     assert(len(pre_nodes) == 2)
@@ -478,6 +499,7 @@ class DagConstructor():
                     pre_attrs = [cur_node.op_type.parameters["node1_attrs"], cur_node.op_type.parameters["node2_attrs"]]
                     cur_sql = Py2Sql.join(pre_ctes, pre_attrs, self.id_col)
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.FILLNA:
                     fillna_type_list = cur_node.op_type.parameters["fillna_type"]
@@ -485,6 +507,7 @@ class DagConstructor():
                         fillna_type_list = [fillna_type_list]
                     cur_sql = Py2Sql.fillna_by_select(fillna_type_list, pre_cte, list(cur_node.read_set), list(cur_node.write_set))
                     sql_pair.append((cur_node.cte_name, cur_sql))
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     
                 elif cur_node.op_type.op_type == OpTypeEnum.UNSUPPORT:
                     code = self.id2funcmap[cur_node.code_ref_id]  
@@ -494,8 +517,11 @@ class DagConstructor():
                     out_df = new_script_scope[self.var_name].copy()               
                     cur_udf, (cur_sql1, cur_sql2), (cte1, _) = Py2Udf.convert_for_combined_exec(in_df, out_df, pre_cte, self.var_name, code, seq[cur_node.op_type.op_type], import_code)
                     udfs.append(cur_udf)
+                    node_udfs.append(cur_udf)
                     sql_pair.append((cte1, cur_sql1))
                     sql_pair.append((cur_node.cte_name, cur_sql2))
+                    node_sqls.append({"cte": cte1, "sql": cur_sql1})
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql2})
                     print(termcolor.colored(f"Unsupport add the {cur_sql1} {cur_sql2}", "yellow"))
                 
                 elif cur_node.op_type.op_type == OpTypeEnum.TRAIN:
@@ -505,19 +531,27 @@ class DagConstructor():
                     else:
                         cur_udf, (call_sql1, call_sql2), (call_tb, _) = Py2Udf.convert_for_train(in_df, self.target_col, pre_cte, model_name, self.task_type, self.id_col)
                     udfs.append(cur_udf)
+                    node_udfs.append(cur_udf)
                     sql_pair.append((call_tb, call_sql1))
                     sql_pair.append((cur_node.cte_name, call_sql2))
+                    node_sqls.append({"cte": call_tb, "sql": call_sql1})
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": call_sql2})
                 
                 elif cur_node.op_type.op_type == OpTypeEnum.PREDICT:
                     cur_udf, (call_sql, call_sql2), (predict_tb, _) = Py2Udf.convert_for_predict(in_df, model_name, pre_cte, "lightgbm_predict", self.target_col, self.id_col, seq[cur_node.op_type.op_type])
                     udfs.append(cur_udf)
+                    node_udfs.append(cur_udf)
                     sql_pair.append((predict_tb, call_sql))
                     sql_pair.append((cur_node.cte_name, call_sql2))
+                    node_sqls.append({"cte": predict_tb, "sql": call_sql})
+                    node_sqls.append({"cte": cur_node.cte_name, "sql": call_sql2})
 
                 elif cur_node.op_type.op_type == OpTypeEnum.APPLY:
                     # currently only support unary input
                     if len(list(cur_node.read_set)) != 1:
-                        sql_pair.append((cur_node.cte_name, "SELECT *, " + list(cur_node.read_set)[0] + " AS " + list(cur_node.write_set)[0] + " FROM " + pre_cte))
+                        cur_sql = "SELECT *, " + list(cur_node.read_set)[0] + " AS " + list(cur_node.write_set)[0] + " FROM " + pre_cte
+                        sql_pair.append((cur_node.cte_name, cur_sql))
+                        node_sqls.append({"cte": cur_node.cte_name, "sql": cur_sql})
                     else:
                         pycode = self.id2funcmap[cur_node.code_ref_id]  
                         exec(pycode, cur_node.script_scope)   
@@ -526,12 +560,22 @@ class DagConstructor():
                         out_df = cur_node.script_scope[self.var_name].copy()   
                         cur_udf, (call_sql, call_sql2), (apply_tb, _) = Py2Udf.convert_for_c_function(in_df, out_df, pre_cte, ccode, list(cur_node.write_set)[0], seq[cur_node.op_type.op_type])
                         udfs.append(cur_udf)
+                        node_udfs.append(cur_udf)
                         sql_pair.append((apply_tb, call_sql))
                         sql_pair.append((cur_node.cte_name, call_sql2))
+                        node_sqls.append({"cte": apply_tb, "sql": call_sql})
+                        node_sqls.append({"cte": cur_node.cte_name, "sql": call_sql2})
                 else:
                     # currently cut for the train part / end part
                     pass
             #-------------------------------------------------------
+            if collect_payload is not None:
+                nodes_payload = collect_payload.setdefault("nodes", {})
+                nodes_payload[cur_node.node_id] = {
+                    "cte": cur_node.cte_name,
+                    "sql": node_sqls,
+                    "udf": node_udfs,
+                }
             processed_node.add(cur_node)
             queue.extend(list(self.Dag.successors(cur_node)))
         
@@ -553,26 +597,26 @@ class DagConstructor():
         self.total_sql_num = len(sql_pair)
             
         # finally we construct the whole sql
-        with open(sql_file, "w") as f:
-            stored_attr = [attr for attr in self.pipe.resAttr2isStore.keys() if self.pipe.resAttr2isStore[attr] == True]
-            tb_name = self.tb_name + str(self.pipe.pipe_id)
-            if self.do_cte_combine:
-                if self.use_py_train_pred:
-                    f.write(SQLFormater.sqls_reformat_from_pair_py(extra_step, sql_pair, stored_attr, tb_name, self.id_col, False, model_type=self.model_type))
+        if not skip_write:
+            with open(sql_file, "w") as f:
+                stored_attr = [attr for attr in self.pipe.resAttr2isStore.keys() if self.pipe.resAttr2isStore[attr] == True]
+                tb_name = self.tb_name + str(self.pipe.pipe_id)
+                if self.do_cte_combine:
+                    if self.use_py_train_pred:
+                        f.write(SQLFormater.sqls_reformat_from_pair_py(extra_step, sql_pair, stored_attr, tb_name, self.id_col, False, model_type=self.model_type))
+                    else:
+                        f.write(SQLFormater.sql_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col))
                 else:
-                    f.write(SQLFormater.sql_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col))
-            else:
-                f.write(SQLFormater.sqls_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col))
+                    f.write(SQLFormater.sqls_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col))
 
-            
-            if concrete_time:
-                with open(sql_file[:-4]+"_noop.sql", "w") as f_noop:
-                    f_noop.write(SQLFormater.sql_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col, False))
-                with open(sql_file[:-4]+"_notrain.sql", "w") as f_notrain:
-                    f_notrain.write(SQLFormater.sql_reformat_from_pair(0, sql_pair, stored_attr, tb_name, self.id_col, True, True))
-        with open(udf_file, "w") as f:
-            for udf in udfs:
-                f.write(udf + "\n") 
+                if concrete_time:
+                    with open(sql_file[:-4]+"_noop.sql", "w") as f_noop:
+                        f_noop.write(SQLFormater.sql_reformat_from_pair(extra_step, sql_pair, stored_attr, tb_name, self.id_col, False))
+                    with open(sql_file[:-4]+"_notrain.sql", "w") as f_notrain:
+                        f_notrain.write(SQLFormater.sql_reformat_from_pair(0, sql_pair, stored_attr, tb_name, self.id_col, True, True))
+            with open(udf_file, "w") as f:
+                for udf in udfs:
+                    f.write(udf + "\n") 
             
     # def assign_cte_name(node: DagNode):
     #     """
