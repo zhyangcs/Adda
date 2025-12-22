@@ -104,96 +104,98 @@ def send_prompt(role_prompt:str, user_prompt:str, model:str = default_model, tes
     return completion.choices[0].message.content
 
 def send_prompt_n(role_prompt:str, user_prompt:str, n:int, model:str = default_model, temperature = 0.9, test_speed:bool = False):
-    import threading
+    """
+    发送提示并获取 n 个响应
+    由于某些 API（如 DeepSeek）不支持 n > 1 参数，这里采用并行调用的方式
+    """
     import concurrent.futures
 
-    def call_with_timeout(timeout_seconds):
-        """带超时的API调用函数"""
+    def single_api_call(index):
+        """单次API调用函数，返回 (index, response_text, tokens) 或 (index, None, 0)"""
         client = OpenAI(
             base_url=openai_base_url,
             api_key=openai_api_key,
-            timeout=min(timeout_seconds, 30.0)  # 设置OpenAI客户端超时
+            timeout=30.0
         )
 
         messages = []
         if role_prompt != "":
             messages.append({
-                    "role": "system",
-                    "content": role_prompt,
-                })
+                "role": "system",
+                "content": role_prompt,
+            })
 
         messages.append({
-                "role": "user",
-                "content": user_prompt,
+            "role": "user",
+            "content": user_prompt,
         })
 
-        completion = client.chat.completions.create(
-            model = model,
-            temperature = temperature,
-            messages = messages,
-            max_tokens = 1000,
-            n = n,
-            seed = global_seed,
-        )
-
-        return completion
+        retry_time = RETRY_TIME
+        while retry_time > 0:
+            try:
+                print(termcolor.colored(f"Sending prompt {index+1}/{n} to OpenAI...", "yellow"))
+                
+                completion = client.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    max_tokens=1000,
+                    seed=global_seed + index,  # 使用不同的seed获取不同响应
+                )
+                
+                print(termcolor.colored(f"Received response {index+1}/{n} successfully!", "yellow"))
+                return (index, completion.choices[0].message.content, completion.usage.total_tokens)
+                
+            except OpenAIError as e:
+                print(termcolor.colored(f"OpenAI Error for request {index+1}/{n}: {e}", "red"))
+                retry_time -= 1
+                if retry_time > 0:
+                    print(termcolor.colored(f"Retrying request {index+1}/{n} in 10 seconds...", "yellow"))
+                    time.sleep(10)
+                    
+            except Exception as e:
+                print(termcolor.colored(f"Unexpected error for request {index+1}/{n}: {e}", "red"))
+                retry_time -= 1
+                if retry_time > 0:
+                    time.sleep(5)
+        
+        print(termcolor.colored(f"Failed to get response {index+1}/{n} after all retries", "red"))
+        return (index, None, 0)
 
     t1 = time.time()
     if test_speed:
         time.sleep(1)
         return []
 
-    retry_time = RETRY_TIME
-    success = False
-    completion = None
-
-    while retry_time > 0 and not success:
-        try:
-            print(termcolor.colored("Sending prompt to OpenAI...", "yellow"))
-
-            # 使用线程池实现超时
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(call_with_timeout, 45)
-                try:
-                    completion = future.result(timeout=45)  # 45秒超时
-                    print(termcolor.colored("Received the response successfully!", "yellow"))
-                    success = True
-                except concurrent.futures.TimeoutError:
-                    print(termcolor.colored("Timeout error", "red"))
-                    future.cancel()  # 取消任务
-                    retry_time -= 1
-                    if retry_time > 0:
-                        print(termcolor.colored("Retrying in 5 seconds...", "yellow"))
-                        time.sleep(5)
-                    continue
-
-        except OpenAIError as e:
-            print(termcolor.colored("OpenAI Error: %s" % e, "red"))
-            retry_time -= 1
-            if retry_time > 0:
-                print(termcolor.colored("Retrying in 10 seconds...", "yellow"))
-                time.sleep(10)
-
-        except Exception as e:
-            print(termcolor.colored(f"Unexpected error: {e}", "red"))
-            retry_time -= 1
-            if retry_time > 0:
-                time.sleep(5)
-
-    if not success:
-        print(termcolor.colored("Failed to send prompt to OpenAI after all retries", "red"))
-        return []
-
-    # 确保不越界访问choices
-    actual_choices = len(completion.choices)
-    if actual_choices < n:
-        print(termcolor.colored(f"Warning: Requested {n} responses, but only got {actual_choices}", "yellow"))
-        n = actual_choices
-
-    msglist = [completion.choices[i].message.content for i in range(n)]
-
+    # 并行调用多个API请求
+    msglist = [None] * n
+    total_tokens = 0
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(n, 5)) as executor:
+        # 提交所有任务
+        futures = [executor.submit(single_api_call, i) for i in range(n)]
+        
+        # 收集结果
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                index, response, tokens = future.result()
+                if response is not None:
+                    msglist[index] = response
+                    total_tokens += tokens
+            except Exception as e:
+                print(termcolor.colored(f"Error collecting result: {e}", "red"))
+    
+    # 过滤掉失败的请求
+    msglist = [msg for msg in msglist if msg is not None]
+    
     t2 = time.time()
-    print(termcolor.colored("Time used: %s, Token Usage: %d" % (t2 - t1, completion.usage.total_tokens), "yellow"))
+    successful_count = len(msglist)
+    print(termcolor.colored(
+        f"Time used: {t2 - t1:.2f}s, Total Token Usage: {total_tokens}, "
+        f"Responses: {successful_count}/{n}", 
+        "yellow"
+    ))
+    
     return msglist
     
 def get_score(df:pd.DataFrame, label, model):
