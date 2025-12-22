@@ -35,7 +35,7 @@ from src.pg.add_parent_transformer import AddParentTransformer
 from src.pg.check_transformer import CheckTransformer
 from src.pg.func_utils import split_code_for_comment, self_copy, get_python_code, get_script_scope
 from src.pg.df_wrapper import DataFrameWrapper
-from src.pg.op_type import OpTypeEnum, FillnaType, FillnaTypeEnum
+from src.pg.op_type import OpTypeEnum, FillnaType, FillnaTypeEnum, PipeTypeEnum
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
 
 # 导入完整论文指标计算器
@@ -230,7 +230,7 @@ class FeatureSearchManager:
                     eval_model_type=model_type,
                     beam_limit=1,
                     do_feature_selection=False,
-                    high_order_num=5,
+                    high_order_num=3,
                     token_limit=128000
                 )
 
@@ -437,6 +437,25 @@ def _select_pipeline_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, da
     return valid_paths[0]
 
 
+def _select_pipe_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, dataset_key: str, ml_model_key: str):
+    """
+    Choose a pipe object from cur_states, prefer matching pipeline_hint.
+    """
+    if not pipe_ctor or not hasattr(pipe_ctor, "pipes"):
+        return None, None
+    valid_pipes = []
+    for p in pipe_ctor.pipes or []:
+        code_path = getattr(p, "code_path", None)
+        resolved = _resolve_code_path(code_path, store_dir, dataset_key, ml_model_key)
+        if resolved:
+            valid_pipes.append((p, resolved))
+            if pipeline_hint and pipeline_hint in os.path.basename(resolved):
+                return p, resolved
+    if valid_pipes:
+        return valid_pipes[0]
+    return None, None
+
+
 def _load_sql_code(store_dir: str):
     """
     尝试读取已生成的SQL文件（若存在）。
@@ -556,6 +575,105 @@ def _generate_sql_from_ctor(dataset_key: str, ml_model_key: str, pipe_ctor, stor
     return result
 
 
+def _build_pipeline_dag_preview(dataset_key: str, ml_model_key: str, pipe_obj, pipe_ctor, store_dir: str):
+    """
+    Build a pipeline DAG preview with per-node python/sql/udf snippets.
+    """
+    result = {"nodes": [], "edges": [], "meta": {}, "error": None}
+    temp_dir = None
+    try:
+        task_name, target_col, task_type = task_config(dataset_key)
+        csv_path = os.path.join(dataset_path, task_name, "train_new.csv")
+        if not os.path.isfile(csv_path):
+            raise FileNotFoundError(f"找不到数据集: {csv_path}")
+
+        df = pd.read_csv(csv_path)
+        col_num = df.shape[1]
+        row_num = df.shape[0]
+        db_tb_name = f"{task_name}_src_tb"
+
+        temp_dir = tempfile.mkdtemp(prefix="py2sql_dag_")
+        resolved_code_path = _resolve_code_path(getattr(pipe_obj, "code_path", None), store_dir, dataset_key, ml_model_key)
+        if not resolved_code_path:
+            raise FileNotFoundError("无法解析pipeline code_path")
+
+        import copy as _copy
+        pipe_copy = _copy.copy(pipe_obj)
+        pipe_copy.code_path = resolved_code_path
+
+        polisher = PythonPolisher(
+            db_tb_name,
+            target_col,
+            "df",
+            [pipe_copy],
+            temp_dir,
+            2,
+            col_num,
+            pipe_ctor,
+            id_col="id",
+            total_num=row_num,
+            do_optimize=2,
+            task_type=task_type,
+            use_py_train_pred=True,
+            model_type=ml_model_key,
+        )
+
+        polisher.polish_code()
+        if not polisher.DagCons:
+            raise Exception("无法构建pipeline DAG")
+
+        dag_ctor = polisher.DagCons[0]
+        import_code = polisher.import_codes[0] if polisher.import_codes else []
+        collector = {"nodes": {}}
+        dag_ctor.bfs_dag(
+            PipeTypeEnum.NOTHING,
+            os.path.join(temp_dir, "spsql.sql"),
+            os.path.join(temp_dir, "spudf.sql"),
+            import_code,
+            row_num,
+            reuse=True,
+            concrete_time=False,
+            collect_payload=collector,
+            skip_write=True,
+        )
+
+        nodes = []
+        for node in dag_ctor.Dag.nodes:
+            code = ""
+            if getattr(node, "code_ref_id", -1) != -1:
+                code = dag_ctor.id2funcmap.get(node.code_ref_id, "")
+            payload = collector.get("nodes", {}).get(node.node_id, {})
+            nodes.append({
+                "nodeId": node.node_id,
+                "cteName": node.cte_name,
+                "opType": node.op_type.op_type.name if hasattr(node.op_type.op_type, "name") else str(node.op_type.op_type),
+                "readColumns": sorted(list(node.read_set)) if node.read_set else [],
+                "writeColumns": sorted(list(node.write_set)) if node.write_set else [],
+                "pythonCode": code,
+                "sqlSnippets": payload.get("sql", []),
+                "udfSnippets": payload.get("udf", []),
+            })
+
+        edges = []
+        for src, dst in dag_ctor.Dag.edges:
+            edges.append({"from": src.node_id, "to": dst.node_id})
+
+        result["nodes"] = nodes
+        result["edges"] = edges
+        result["meta"] = {
+            "task_name": task_name,
+            "target_col": target_col,
+            "task_type": task_type,
+            "pipelinePath": resolved_code_path,
+        }
+    except Exception as e:
+        result["error"] = str(e)
+    finally:
+        if temp_dir and os.path.isdir(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    return result
+
+
 def _build_dummy_df_from_code(code_text: str, df_name: str = "df"):
     try:
         transformer = AddPandasTransformer(df_name)
@@ -672,6 +790,80 @@ def _ast_to_dict(node: ast.AST, depth: int = 0, max_depth: int = 6):
     if children:
         data["children"] = children
     return data
+
+
+def _get_operator_display_name(op_type, op_obj=None):
+    """
+    将底层算子统一映射成语义友好的名字，用于前端聚合展示。
+    """
+    mapping = {
+        OpTypeEnum.NORMALIZE: "Normalize Operator",
+        OpTypeEnum.NUMERIZE: "Label Encode Operator",
+        OpTypeEnum.GET_DUMMIES: "One-Hot Operator",
+        OpTypeEnum.DISCRETIZE: "Discretize Operator",
+        OpTypeEnum.FILLNA: "FillNA Operator",
+        OpTypeEnum.UNARY: "Unary Operator",
+        OpTypeEnum.BINARY: "Binary Operator",
+        OpTypeEnum.DROP: "Drop/Select Operator",
+        OpTypeEnum.APPLY: "Apply Operator",
+    }
+    if op_type == OpTypeEnum.UNSUPPORT:
+        return "UDF (Python)"
+    return mapping.get(op_type, str(op_type.name if hasattr(op_type, "name") else op_type))
+
+
+def _get_operator_color(op_type):
+    """
+    为前端提供简洁的配色，方便区分不同算子聚合块。
+    """
+    color_map = {
+        OpTypeEnum.NORMALIZE: "#4C8BF5",    # 蓝色
+        OpTypeEnum.NUMERIZE: "#7E57C2",     # 紫色
+        OpTypeEnum.GET_DUMMIES: "#13B197",  # 绿色
+        OpTypeEnum.DISCRETIZE: "#FFB74D",   # 橙色
+        OpTypeEnum.FILLNA: "#6D9886",       # 青灰
+        OpTypeEnum.UNARY: "#5C6BC0",
+        OpTypeEnum.BINARY: "#5C6BC0",
+        OpTypeEnum.DROP: "#9E9E9E",
+        OpTypeEnum.APPLY: "#26A69A",
+        OpTypeEnum.UNSUPPORT: "#E53935",    # 红色，标识UDF
+    }
+    return color_map.get(op_type, "#6C757D")
+
+
+def _build_semantic_summary(op_type, op_obj, read_cols, write_cols):
+    """
+    基于算子类型聚合成一个高层级语义节点，避免在前端渲染大量底层AST节点。
+    """
+    return {
+        "type": "operator" if op_type != OpTypeEnum.UNSUPPORT else "udf",
+        "displayName": _get_operator_display_name(op_type, op_obj),
+        "inputs": read_cols or ["df"],
+        "outputs": write_cols or (read_cols or ["df"]),
+        "parameters": _serialize_op_parameters(op_obj),
+        "color": _get_operator_color(op_type),
+        "sqlConvertible": op_type not in (OpTypeEnum.UNSUPPORT, OpTypeEnum.DISCRETIZE)
+    }
+
+
+def _build_semantic_ast_view(summary_node, preview_ast, raw_ast=None):
+    """
+    生成语义聚合视图：
+    - summary_node: 单个高层算子块信息
+    - preview_ast: 精简AST（截断深度，用于悬停/展开预览）
+    - raw_ast: 原始完整AST，前端点击后可下钻查看
+    """
+    return {
+        "summaryNode": summary_node,
+        "previewAst": preview_ast,
+        "rawAst": raw_ast,
+        "edges": [
+            {"from": src, "to": dst}
+            for src in summary_node.get("inputs", [])
+            for dst in summary_node.get("outputs", [])
+        ],
+        "drillDownAvailable": raw_ast is not None
+    }
 
 @app.route('/')
 def index():
@@ -958,6 +1150,10 @@ def py2sql_ast():
 
             read_cols, write_cols = _extract_columns_from_ast(tree, "df")
             sql_snippet = _build_sql_snippet(op_type, read_cols, write_cols)
+            raw_ast = _ast_to_dict(tree)
+            preview_ast = _ast_to_dict(tree, max_depth=3)
+            semantic_summary = _build_semantic_summary(op_type, checker.op_type, read_cols, write_cols)
+            semantic_ast_view = _build_semantic_ast_view(semantic_summary, preview_ast, raw_ast)
 
             block_info = {
                 "nodeId": node_id,
@@ -966,8 +1162,11 @@ def py2sql_ast():
                 "readColumns": read_cols,
                 "writeColumns": write_cols,
                 "code": code,
-                "ast": _ast_to_dict(tree),
-                "sqlSnippet": sql_snippet
+                "ast": raw_ast,
+                "sqlSnippet": sql_snippet,
+                # 新增：语义聚合视图，避免在前端展示海量底层AST节点
+                "semanticNode": semantic_summary,
+                "semanticAst": semantic_ast_view
             }
 
             if execution_error:
@@ -1019,6 +1218,49 @@ def py2sql_ast():
         return jsonify(response)
     except Exception as e:
         return jsonify({"status": "fail", "message": f"解析pipeline失败: {str(e)}"}), 500
+
+
+@app.route('/py2sql-dag/', methods=['POST'])
+def py2sql_dag():
+    """
+    Build a single pipeline DAG preview with per-node python/sql/udf snippets.
+    """
+    try:
+        payload = request.get_json(force=True) or {}
+    except Exception:
+        payload = {}
+
+    dataset = payload.get('dataset') or payload.get('taskName') or payload.get('task_name') or ""
+    ml_model = payload.get('mlModel') or payload.get('ml_model_type') or payload.get('modelType') or "RF"
+    pipeline_hint = payload.get('pipelineId') or payload.get('pipelineName')
+    dataset_key = _normalize_dataset_name(dataset)
+    ml_model_key = (ml_model or "RF").strip()
+
+    pipe_ctor = None
+    store_dir = None
+    pipe_obj = None
+    resolved_code_path = None
+    for cand_dir in _candidate_store_dirs(dataset, ml_model):
+        pipe_ctor, _ = _load_pipe_ctor(cand_dir)
+        if not pipe_ctor:
+            continue
+        pipe_obj, resolved_code_path = _select_pipe_from_ctor(pipe_ctor, pipeline_hint, cand_dir, dataset_key, ml_model_key)
+        if pipe_obj and resolved_code_path:
+            store_dir = cand_dir
+            break
+
+    if not pipe_obj:
+        return jsonify({"status": "fail", "message": "未找到可用的pipeline（cur_states.pkl不存在或无有效pipes）"}), 404
+
+    result = _build_pipeline_dag_preview(dataset_key, ml_model_key, pipe_obj, pipe_ctor, store_dir or "")
+    if result.get("error"):
+        return jsonify({"status": "fail", "message": result["error"]}), 500
+
+    return jsonify({
+        "status": "success",
+        "message": "pipeline DAG built",
+        "data": result
+    })
 
 @app.route('/gen-model/', methods=['POST'])
 def gen_model():

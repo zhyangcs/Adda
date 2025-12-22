@@ -4,7 +4,8 @@ import type {
   FeatureTreeResponse,
   PerformanceResponse,
   Notification,
-  Py2SqlAstResponse
+  Py2SqlAstResponse,
+  Py2SqlDagResponse
 } from '@/types'
 
 class APIService {
@@ -190,6 +191,10 @@ class APIService {
 
   async getPy2SqlAst(payload: { dataset: string, mlModel: string, pipelineId?: string }): Promise<Py2SqlAstResponse> {
     return this.post('/py2sql-ast/', payload, 2 * 60 * 1000)
+  }
+
+  async getPy2SqlDag(payload: { dataset: string, mlModel: string, pipelineId?: string }): Promise<Py2SqlDagResponse> {
+    return this.post('/py2sql-dag/', payload, 2 * 60 * 1000)
   }
 
   // 可暂停/恢复的特征搜索（demo LLMDagConstructor）

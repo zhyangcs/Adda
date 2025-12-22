@@ -117,6 +117,24 @@ export interface Py2SqlAstNode {
   children?: Py2SqlAstNode[]
 }
 
+export interface Py2SqlSemanticNode {
+  type: 'operator' | 'udf'
+  displayName: string
+  inputs: string[]
+  outputs: string[]
+  parameters?: Record<string, any>
+  color?: string
+  sqlConvertible?: boolean
+}
+
+export interface Py2SqlSemanticAstView {
+  summaryNode: Py2SqlSemanticNode
+  previewAst?: Py2SqlAstNode
+  rawAst?: Py2SqlAstNode
+  edges?: { from: string; to: string }[]
+  drillDownAvailable?: boolean
+}
+
 export interface Py2SqlAstBlock {
   nodeId?: number | null
   opType: string
@@ -126,6 +144,8 @@ export interface Py2SqlAstBlock {
   sqlSnippet?: string
   code: string
   ast: Py2SqlAstNode
+  semanticNode?: Py2SqlSemanticNode
+  semanticAst?: Py2SqlSemanticAstView
   executionError?: string
 }
 
@@ -153,4 +173,37 @@ export interface Py2SqlAstResponse {
   status: 'success' | 'fail'
   message?: string
   data?: Py2SqlAstData
+}
+
+export interface Py2SqlDagSnippet {
+  cte?: string
+  sql: string
+}
+
+export interface Py2SqlDagNode {
+  nodeId: number
+  cteName: string
+  opType: string
+  readColumns: string[]
+  writeColumns: string[]
+  pythonCode?: string
+  sqlSnippets?: Py2SqlDagSnippet[]
+  udfSnippets?: string[]
+}
+
+export interface Py2SqlDagEdge {
+  from: number
+  to: number
+}
+
+export interface Py2SqlDagData {
+  nodes: Py2SqlDagNode[]
+  edges: Py2SqlDagEdge[]
+  meta?: Record<string, any>
+}
+
+export interface Py2SqlDagResponse {
+  status: 'success' | 'fail'
+  message?: string
+  data?: Py2SqlDagData
 }
