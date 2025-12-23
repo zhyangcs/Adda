@@ -188,6 +188,55 @@
             height: 400px;
         }
 
+        .pipeline-dag-container {
+            background-color: #f7f7f7;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            height: 320px;
+        }
+
+        .pipeline-node rect {
+            fill: #3a6ea5;
+            stroke: #27496d;
+            stroke-width: 2;
+            rx: 6;
+        }
+
+        .pipeline-node text {
+            fill: white;
+            font-size: 11px;
+            text-anchor: middle;
+        }
+
+        .pipeline-link {
+            fill: none;
+            stroke: #8a8a8a;
+            stroke-width: 1.2;
+        }
+
+        .pipeline-code-block {
+            margin-top: 10px;
+        }
+
+        .pipeline-block-title {
+            font-weight: bold;
+            color: #27496d;
+            margin-bottom: 4px;
+        }
+
+        .pipeline-code {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e1e1;
+            border-radius: 6px;
+            padding: 8px;
+            max-height: 180px;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+        }
+
         .node rect {
             /* fill: #4CAF50; */
             stroke: #b4b4b4;
@@ -346,12 +395,37 @@
                                     <span id="loadingSpinner3" class="spinner-border spinner-border-sm d-none"
                                         role="status"></span>
                                 </button>
+                                <button id="showPipelineDag" class="btn fw-bold" onclick="fetchPipelineDag()">
+                                    Show Pipeline DAG
+                                </button>
                             </div>
                             
                             <!-- 新增：用于显示节点信息的固定区域 -->
                             <div id="nodeInfoContainer" class="node-info-container">
                                 <strong class="fs-6">Node Information:</strong><br>
                                 <span id="nodeInfoContent">Hover over a node to see details.</span>
+                            </div>
+
+                            <div class="node-info-container">
+                                <strong class="fs-6">Pipeline DAG:</strong>
+                                <div class="pipeline-dag-container" id="pipelineDagContainer"></div>
+                            </div>
+
+                            <div id="pipelineNodeInfoContainer" class="node-info-container">
+                                <strong class="fs-6">Pipeline Node Detail:</strong><br>
+                                <span id="pipelineNodeTitle">Hover over a pipeline node to see details.</span>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">Python</div>
+                                    <pre id="pipelinePythonCode" class="pipeline-code"></pre>
+                                </div>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">SQL</div>
+                                    <pre id="pipelineSqlCode" class="pipeline-code"></pre>
+                                </div>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">UDF</div>
+                                    <pre id="pipelineUdfCode" class="pipeline-code"></pre>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -539,6 +613,14 @@
                     console.error('Error:', error);
                     alert('An error occurred while checking the format.');
                 });
+        }
+
+        function getCurrentDatasetModel() {
+            const datasetSelect = document.querySelector('select[aria-label="Dataset"]');
+            const modelSelect = document.querySelector('select[aria-label="LLMModel"]');
+            const datasetText = datasetSelect.options[datasetSelect.selectedIndex].text;
+            const modelText = modelSelect.options[modelSelect.selectedIndex].text;
+            return { dataset: datasetText, model: modelText };
         }
 
 
@@ -776,6 +858,182 @@
                 .catch(error => {
                     console.error("Error fetching tree data:", error);
                 });
+        }
+
+        function fetchPipelineDag() {
+            const current = getCurrentDatasetModel();
+            fetch('/py2sql-dag/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dataset: current.dataset,
+                    mlModel: current.model
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        dataInfoProxy.unshift({
+                            notice_description: 'Pipeline DAG loaded',
+                            notice_type: 'success'
+                        });
+                        renderPipelineDag(data.data);
+                    } else {
+                        dataInfoProxy.unshift({
+                            notice_description: `Pipeline DAG failed: ${data.message}`,
+                            notice_type: 'fail'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching pipeline DAG:", error);
+                    dataInfoProxy.unshift({
+                        notice_description: `Pipeline DAG failed: ${error.message}`,
+                        notice_type: 'fail'
+                    });
+                });
+        }
+
+        function renderPipelineDag(dagData) {
+            const container = document.getElementById("pipelineDagContainer");
+            container.innerHTML = "";
+            if (!dagData || !dagData.nodes || dagData.nodes.length === 0) {
+                container.textContent = "No pipeline DAG data.";
+                return;
+            }
+
+            const nodes = dagData.nodes;
+            const edges = dagData.edges || [];
+            const nodeMap = new Map(nodes.map(n => [n.nodeId, n]));
+            const inDegree = new Map(nodes.map(n => [n.nodeId, 0]));
+            const adjacency = new Map(nodes.map(n => [n.nodeId, []]));
+
+            edges.forEach(edge => {
+                if (adjacency.has(edge.from)) {
+                    adjacency.get(edge.from).push(edge.to);
+                }
+                if (inDegree.has(edge.to)) {
+                    inDegree.set(edge.to, inDegree.get(edge.to) + 1);
+                }
+            });
+
+            const level = new Map();
+            const queue = [];
+            nodes.forEach(n => {
+                if (inDegree.get(n.nodeId) === 0) {
+                    queue.push(n.nodeId);
+                    level.set(n.nodeId, 0);
+                }
+            });
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                const curLevel = level.get(cur) || 0;
+                (adjacency.get(cur) || []).forEach(next => {
+                    const nextLevel = Math.max(level.get(next) || 0, curLevel + 1);
+                    level.set(next, nextLevel);
+                    inDegree.set(next, inDegree.get(next) - 1);
+                    if (inDegree.get(next) === 0) {
+                        queue.push(next);
+                    }
+                });
+            }
+
+            nodes.forEach(n => {
+                if (!level.has(n.nodeId)) {
+                    level.set(n.nodeId, 0);
+                }
+            });
+
+            const levels = {};
+            nodes.forEach(n => {
+                const l = level.get(n.nodeId) || 0;
+                if (!levels[l]) {
+                    levels[l] = [];
+                }
+                levels[l].push(n);
+            });
+
+            const levelKeys = Object.keys(levels).map(Number).sort((a, b) => a - b);
+            const maxPerLevel = Math.max(...levelKeys.map(k => levels[k].length), 1);
+            const width = Math.max(700, maxPerLevel * 180);
+            const height = Math.max(260, levelKeys.length * 120);
+
+            const svg = d3.select("#pipelineDagContainer")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            const positions = new Map();
+            levelKeys.forEach((lvl, lvlIdx) => {
+                const row = levels[lvl];
+                row.forEach((node, idx) => {
+                    const x = (idx + 1) * (width / (row.length + 1));
+                    const y = (lvlIdx + 1) * 100;
+                    positions.set(node.nodeId, { x, y });
+                });
+            });
+
+            svg.selectAll(".pipeline-link")
+                .data(edges)
+                .enter()
+                .append("path")
+                .attr("class", "pipeline-link")
+                .attr("d", d => {
+                    const src = positions.get(d.from);
+                    const dst = positions.get(d.to);
+                    if (!src || !dst) return "";
+                    return `M${src.x},${src.y} L${dst.x},${dst.y}`;
+                });
+
+            const nodeGroups = svg.selectAll(".pipeline-node")
+                .data(nodes)
+                .enter()
+                .append("g")
+                .attr("class", "pipeline-node")
+                .attr("transform", d => {
+                    const pos = positions.get(d.nodeId);
+                    return `translate(${pos.x},${pos.y})`;
+                })
+                .on("mouseover", function (event, d) {
+                    showPipelineNodeInfo(d);
+                });
+
+            nodeGroups.append("rect")
+                .attr("width", 150)
+                .attr("height", 36)
+                .attr("x", -75)
+                .attr("y", -18);
+
+            nodeGroups.append("text")
+                .attr("dy", -2)
+                .text(d => `${d.opType || "NODE"}`);
+
+            nodeGroups.append("text")
+                .attr("dy", 12)
+                .text(d => `#${d.nodeId}`);
+        }
+
+        function showPipelineNodeInfo(node) {
+            const title = document.getElementById("pipelineNodeTitle");
+            const py = document.getElementById("pipelinePythonCode");
+            const sql = document.getElementById("pipelineSqlCode");
+            const udf = document.getElementById("pipelineUdfCode");
+
+            title.textContent = `${node.opType || "NODE"} #${node.nodeId} (${node.cteName || "cte"})`;
+
+            py.textContent = node.pythonCode && node.pythonCode.trim().length > 0
+                ? node.pythonCode
+                : "(no python code)";
+
+            const sqlBlocks = (node.sqlSnippets || []).map(item => {
+                const label = item.cte ? `-- cte: ${item.cte}` : "-- sql";
+                return `${label}\n${item.sql}`;
+            }).join("\n\n");
+            sql.textContent = sqlBlocks || "(no sql snippet)";
+
+            const udfBlocks = (node.udfSnippets || []).join("\n\n");
+            udf.textContent = udfBlocks || "(no udf snippet)";
         }
 
         function nextstep() {

@@ -68,3 +68,4 @@ cd demo && python app.py  # Runs on localhost:5000
 - **Visualizations**: `/test/store/{dataset}_{model}_Full/graph/*.png`
 
 - Frontend UI must not display Chinese text; use English-only user-facing strings.
+- 显示在前端的消息和提示中永远不要包含中文

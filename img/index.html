@@ -454,7 +454,7 @@
             // 创建上一页按钮
             const prevButton = document.createElement('li');
             prevButton.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-            prevButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">上一页</a>`;
+            prevButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
             paginationControls.appendChild(prevButton);
 
             // 创建页码按钮
@@ -468,7 +468,7 @@
             // 创建下一页按钮
             const nextButton = document.createElement('li');
             nextButton.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-            nextButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">下一页</a>`;
+            nextButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
             paginationControls.appendChild(nextButton);
         }
 

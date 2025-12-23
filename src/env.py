@@ -17,7 +17,7 @@ TOTAL_RETRY_TIMES = 2
 DIVIDE_RETRY_TIMES = 2
 
 topK_rag = 10
-diverse_num = 6 # k in the paper
+diverse_num = 3 # k in the paper
 alpha = math.sqrt(2) / 1000.0 # w in the paper
 
 # rag_model_id_or_path = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"

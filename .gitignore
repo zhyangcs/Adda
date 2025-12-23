@@ -53,3 +53,5 @@ apache-madlib-*/
 
 *.sql
 logfile
+
+CLAUDE.md
