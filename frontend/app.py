@@ -896,10 +896,23 @@ def check_format():
 @app.route('/get-treejson/', methods=['POST'])
 def get_tree_json():
     try:
-        if adda.current_tree:
-            return jsonify({"status": "success", "json": adda.current_tree})
-        else:
-            return jsonify({"status": "fail", "message": "没有活动任务，请先启动任务"})
+        tree = None
+        # 若feature_search在运行/暂停/完成，优先从其ctor构建最新树
+        if feature_search_manager.ctor and feature_search_manager.status != "idle":
+            try:
+                adda.llm_dag_constructor = feature_search_manager.ctor
+                tree = adda._convert_dag_to_tree()
+                if tree:
+                    adda.current_tree = tree
+            except Exception as e:
+                print(f"[get-treejson] build tree from feature_search failed: {e}")
+
+        if not tree:
+            tree = adda.current_tree
+
+        if tree:
+            return jsonify({"status": "success", "json": tree})
+        return jsonify({"status": "fail", "message": "没有活动任务，请先启动任务"})
     except Exception as e:
         return jsonify({"status": "fail", "message": str(e)})
 
