@@ -406,11 +406,6 @@ class LLMDagConstructor():
                 else:
                     # 没有相似节点时，发送基础的thinking消息
                     print(f"[DEBUG] No similar nodes found, sending basic thinking message for node {cur_node.node_id}")
-                    self.status_wrapper.send_agent_thinking({
-                        "type": "agent_thinking",
-                        "agent": "system",
-                        "thinking": self._truncate_text(f"正在为节点 {cur_node.node_id} 准备特征生成。没有找到相似节点，将从头开始探索特征空间。")
-                    })
             except Exception as e:
                 print(f"Warning: Error sending RAG thinking: {e}")
                 # 发送一个简化的思考消息作为备选

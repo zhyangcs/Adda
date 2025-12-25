@@ -12,7 +12,7 @@ class NLAgent():
         self.status_wrapper = status_wrapper or agent_status_wrapper
 
     @staticmethod
-    def _truncate_text(text: str, max_chars: int = 150) -> str:
+    def _truncate_text(text: str, max_chars: int = 500) -> str:
         if text is None:
             return text
         text = str(text)

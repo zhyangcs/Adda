@@ -19,7 +19,7 @@ class DivideAgent():
         self.status_wrapper = status_wrapper or agent_status_wrapper
 
     @staticmethod
-    def _truncate_text(text: str, max_chars: int = 150) -> str:
+    def _truncate_text(text: str, max_chars: int = 500) -> str:
         if text is None:
             return text
         text = str(text)
@@ -271,16 +271,8 @@ class DivideAgent():
                     raise Exception("Exception for one steps more than 4 comma")
                 step_list = [step_info.strip("\{\} \n").split(":")[-1] for step_info in step_list]
                 rel_cols, output_cols = parse_string_to_list(step_list[1]), parse_string_to_list(step_list[2])
-                if self.status_wrapper:
-                    rel_cols_list = sorted(list(rel_cols))
-                    output_cols_list = sorted(list(output_cols))
-                    self.status_wrapper.send_agent_thinking({
-                        "type": "agent_thinking",
-                        "agent": "optimizationagent",
-                        "thinking": self._truncate_text(
-                            f"DivideAgent: step {idx + 1} outputs {output_cols_list} from {rel_cols_list}: {step_list[3]}"
-                        )
-                    })
+                rel_cols_list = sorted(list(rel_cols))
+                output_cols_list = sorted(list(output_cols))
                 for output_col in output_cols - cur_column_info.keys():
                     cur_column_info[output_col] = output_col + ": (created in previous step) " + step_list[3] + "\n"
                 print(step_list)
@@ -299,6 +291,23 @@ class DivideAgent():
                     else:
                         # 分治失败，跳过这个步骤
                         continue
+                if self.status_wrapper:
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "optimizationagent",
+                        "thinking": self._truncate_text(
+                            "DivideAgent: step {step}\n"
+                            "Purpose: derive outputs from inputs for later steps\n"
+                            "Inputs: {inputs} (source columns required)\n"
+                            "Outputs: {outputs} (new features produced)\n"
+                            "Method: {desc} (calculation rule for outputs)".format(
+                                step=idx + 1,
+                                inputs=rel_cols_list,
+                                outputs=output_cols_list,
+                                desc=step_list[3]
+                            )
+                        )
+                    })
 
                 if step_node.out_cur_df is not None and not step_node.out_cur_df.empty:
                     cur_df = step_node.out_cur_df.copy(deep = True)

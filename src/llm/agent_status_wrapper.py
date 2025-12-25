@@ -152,11 +152,6 @@ class AgentStatusWrapper:
                 return
 
             thinking_content = thinking_data['thinking']
-            has_code_block = "```" in thinking_content
-            if len(thinking_content) > 150 and not has_code_block:
-                thinking_content = thinking_content[:150] + "...(truncated)"
-                thinking_data = thinking_data.copy()
-                thinking_data['thinking'] = thinking_content
 
             # 添加时间戳
             thinking_data['timestamp'] = time.time()
