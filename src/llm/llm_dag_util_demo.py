@@ -109,10 +109,20 @@ class LLMDagConstructor():
         self.eval_model_type, self.eval_model = get_model(eval_model_type, task_type)
         self.high_order_num = high_order_num
         self.token_limit = token_limit
-        self.nl_agent = NLAgent(self.eval_model_type)
-
         # 初始化Agent状态包装器
         self.status_wrapper = agent_status_wrapper
+        self.nl_agent = NLAgent(self.eval_model_type, status_wrapper=self.status_wrapper)
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int = 150) -> str:
+        if text is None:
+            return text
+        text = str(text)
+        if "```" in text:
+            return text
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "...(truncated)"
 
     def init_task_params(self, data_agenda:list[str], data_desc:list[str], target_col:str, tb_name:str = None, csv_path:str = None, do_unfinished:bool = False, task_name:str = None):
         """
@@ -248,6 +258,22 @@ class LLMDagConstructor():
                     time.sleep(0.2)
 
                 # 1. 使用code_agent生成特征转换代码
+                if hasattr(self, "status_wrapper"):
+                    self.status_wrapper.send_agent_status({
+                        "type": "agent_status",
+                        "agent": "mainagent",
+                        "status": "working",
+                        "work_type": "code_agent",
+                        "details": {
+                            "node_id": next_node.node_id,
+                            "step_index": cur_step_idx
+                        }
+                    })
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "mainagent",
+                        "thinking": self._truncate_text(f"CodeAgent: generating code for node {next_node.node_id} based on NL description.")
+                    })
                 could_exec_code = code_agent.feature_to_code(next_node)
 
                 # 再次检查停止/暂停，避免长任务后继续占用资源
@@ -263,6 +289,22 @@ class LLMDagConstructor():
                 if cur_step_idx < self.high_order_num and (not could_exec_code or whether_code_complex(next_node.task_code, next_node.column_info)):
                     # 使用分治策略重新生成代码
                     print(termcolor.colored(f"Entering divide_code for node {next_node.node_id}...", "yellow"))
+                    if hasattr(self, "status_wrapper"):
+                        self.status_wrapper.send_agent_status({
+                            "type": "agent_status",
+                            "agent": "optimizationagent",
+                            "status": "working",
+                            "work_type": "divide_agent",
+                            "details": {
+                                "node_id": next_node.node_id,
+                                "step_index": cur_step_idx
+                            }
+                        })
+                        self.status_wrapper.send_agent_thinking({
+                            "type": "agent_thinking",
+                            "agent": "optimizationagent",
+                            "thinking": self._truncate_text(f"DivideAgent: splitting complex code for node {next_node.node_id}.")
+                        })
                     combined_node, could_exec_code = divide_agent.divide_code(next_node)
                     if combined_node is not None:
                         next_node = combined_node  # 只有在分治成功时才更新节点
@@ -276,6 +318,17 @@ class LLMDagConstructor():
                 # 3. 如果代码生成成功，尝试生成修复特征
                 if could_exec_code:
                     print(termcolor.colored(f"Entering generate_fixing_features for node {next_node.node_id}...", "cyan"))
+                    if hasattr(self, "status_wrapper"):
+                        self.status_wrapper.send_agent_status({
+                            "type": "agent_status",
+                            "agent": "mainagent",
+                            "status": "working",
+                            "work_type": "fix_features",
+                            "details": {
+                                "node_id": next_node.node_id,
+                                "step_index": cur_step_idx
+                            }
+                        })
                     could_exec_fix = code_agent.generate_fixing_features(next_node, self.label)
                     print(termcolor.colored(f"generate_fixing_features completed for node {next_node.node_id}, success: {could_exec_fix}", "cyan"))
                 else:
@@ -312,6 +365,11 @@ class LLMDagConstructor():
 
         # [WebSocket推送] System Agent状态推送 - 示例生成
         if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "system",
+                "thinking": self._truncate_text(f"RAG examples prompt: {example_prompt}")
+            })
             self.status_wrapper.send_agent_status({
                 "type": "agent_status",
                 "agent": "system",
@@ -351,7 +409,7 @@ class LLMDagConstructor():
                     self.status_wrapper.send_agent_thinking({
                         "type": "agent_thinking",
                         "agent": "system",
-                        "thinking": f"正在为节点 {cur_node.node_id} 准备特征生成。没有找到相似节点，将从头开始探索特征空间。"
+                        "thinking": self._truncate_text(f"正在为节点 {cur_node.node_id} 准备特征生成。没有找到相似节点，将从头开始探索特征空间。")
                     })
             except Exception as e:
                 print(f"Warning: Error sending RAG thinking: {e}")
@@ -359,16 +417,61 @@ class LLMDagConstructor():
                 self.status_wrapper.send_agent_thinking({
                     "type": "agent_thinking",
                     "agent": "system",
-                    "thinking": f"正在为节点 {cur_node.node_id} 生成RAG示例。找到了 {len(nodes)} 个相似节点，将用于指导特征生成。"
+                    "thinking": self._truncate_text(f"正在为节点 {cur_node.node_id} 生成RAG示例。找到了 {len(nodes)} 个相似节点，将用于指导特征生成。")
                 })
 
         print(termcolor.colored("="*60, "red"))
         
+        if hasattr(self, "status_wrapper"):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "working",
+                "work_type": "nl_agent",
+                "details": {
+                    "current_node": cur_node.node_id,
+                    "step_index": cur_step_idx,
+                    "requested": src.env.diverse_num
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(f"NLAgent: generating {src.env.diverse_num} feature descriptions for node {cur_node.node_id}.")
+            })
+
         next_state = self.nl_agent.task_to_desc(cur_node, src.env.diverse_num, self.target_col, cur_step_idx, self.high_order_num, self.token_limit, example_prompt)
 
+        if hasattr(self, "status_wrapper"):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "completed",
+                "work_type": "nl_agent",
+                "details": {
+                    "current_node": cur_node.node_id,
+                    "step_index": cur_step_idx,
+                    "generated": len(next_state)
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(f"NLAgent: generated {len(next_state)} candidate descriptions; handing off to CodeAgent.")
+            })
+            if next_state:
+                feature_preview = "; ".join(
+                    [f"{', '.join(sorted(list(node.write_set)))} -> {node.operation_desc}" for node in next_state]
+                )
+                self.status_wrapper.send_agent_thinking({
+                    "type": "agent_thinking",
+                    "agent": "mainagent",
+                    "thinking": self._truncate_text(f"NLAgent: candidates detail: {feature_preview}")
+                })
+
         # 2. CodeAgent generate the code and fixing code
-        code_agent = CodeAgent()
-        divide_agent = DivideAgent(self.token_limit)
+        code_agent = CodeAgent(status_wrapper=self.status_wrapper)
+        divide_agent = DivideAgent(self.token_limit, status_wrapper=self.status_wrapper)
         next_states_with_code = []
         # for next_node in next_state[:]:
         #     try:
@@ -413,14 +516,14 @@ class LLMDagConstructor():
                 },
                 "data": {
                     "nodes_to_process": len(next_state),
-                    "operation": f"处理 {cur_node.operation_desc}"
+                    "operation": self._truncate_text(f"处理 {cur_node.operation_desc}")
                 }
             })
             # [WebSocket推送] Main Agent思考消息 - 批量特征生成开始
             self.status_wrapper.send_agent_thinking({
                 "type": "agent_thinking",
                 "agent": "mainagent",
-                "thinking": f"Starting to generate {len(next_state)} feature nodes"
+                "thinking": self._truncate_text(f"Starting to generate {len(next_state)} feature nodes")
             })
 
         # 串行执行以便在每个Agent调用之间可停/可暂停
@@ -480,7 +583,7 @@ class LLMDagConstructor():
                 self.status_wrapper.send_agent_thinking({
                     "type": "agent_thinking",
                     "agent": "mainagent",
-                    "thinking": f"Node {node_id_for_msg} {outcome}. Progress {processed_count}/{total_nodes}."
+                    "thinking": self._truncate_text(f"Node {node_id_for_msg} {outcome}. Progress {processed_count}/{total_nodes}.")
                 })
 
                 # [WebSocket推送] 优化Agent提示 - 代码复杂度检查
@@ -503,7 +606,7 @@ class LLMDagConstructor():
                             self.status_wrapper.send_agent_thinking({
                                 "type": "agent_thinking",
                                 "agent": "optimizationagent",
-                                "thinking": f"Node {processed_node.node_id} complexity {complexity:.1f}, considering divide-and-conquer or simplification."
+                                "thinking": self._truncate_text(f"Node {processed_node.node_id} complexity {complexity:.1f}, considering divide-and-conquer or simplification.")
                             })
                     except Exception as e:
                         print(f"Warning: optimization complexity check failed: {e}")
@@ -561,7 +664,7 @@ class LLMDagConstructor():
                     self.status_wrapper.send_agent_thinking({
                         "type": "agent_thinking",
                         "agent": "mainagent",
-                        "thinking": f"成功生成了 {len(successful_nodes)} 个特征节点，平均复杂度约为 {total_complexity / max(len(successful_nodes), 1):.1f}。"
+                        "thinking": self._truncate_text(f"成功生成了 {len(successful_nodes)} 个特征节点，平均复杂度约为 {total_complexity / max(len(successful_nodes), 1):.1f}。")
                     })
             else:
                 self.status_wrapper.send_agent_status({
@@ -838,7 +941,7 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
                 self.status_wrapper.send_agent_thinking({
                     "type": "agent_thinking",
                     "agent": "nodevalidator",
-                    "thinking": f"正在验证节点 {node.node_id} 的性能。当前有 {len(node.column_info)} 个特征，评估分数为 {node.final_score:.4f}。"
+                    "thinking": self._truncate_text(f"正在验证节点 {node.node_id} 的性能。当前有 {len(node.column_info)} 个特征，评估分数为 {node.final_score:.4f}。")
                 })
 
         return node.final_score

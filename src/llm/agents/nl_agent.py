@@ -1,13 +1,26 @@
 from src.llm.utils.llm_util import *
 from src.llm.llm_dag_node import *
 from src.llm.utils.prompt import *
+from src.llm.agent_status_wrapper import agent_status_wrapper
 
 class NLAgent():
     normal_feature_pre_list = ["new_feature", "detailed description", "brief description", "relevant"]
     high_order_feature_pre_list = ["new_feature", "detailed description", "brief description", "relevant"]
     
-    def __init__(self, eval_model_type):
+    def __init__(self, eval_model_type, status_wrapper=None):
         self.eval_model_type = eval_model_type
+        self.status_wrapper = status_wrapper or agent_status_wrapper
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int = 150) -> str:
+        if text is None:
+            return text
+        text = str(text)
+        if "```" in text:
+            return text
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "...(truncated)"
     
     @staticmethod
     def parse_nl_comma(content, pre_list):    
@@ -210,6 +223,24 @@ class NLAgent():
         """
         print(termcolor.colored(f"[task to features] cur_node: {cur_node.node_id}", "yellow"))
         next_state = []  # 存储生成的新节点
+
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "working",
+                "work_type": "nl_agent",
+                "details": {
+                    "node_id": cur_node.node_id,
+                    "step_index": cur_step_idx,
+                    "requested": send_num
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(f"NLAgent: preparing prompts for node {cur_node.node_id}.")
+            })
             
         while True:
             try:
@@ -287,6 +318,15 @@ class NLAgent():
                                 next_node.column_info[attr] = attr + ": (created in previous step) " + operation_desc_brief + "\n"
                             
                             next_state.append(next_node)
+                            if self.status_wrapper:
+                                out_attr_list = list(out_attr) if not isinstance(out_attr, list) else out_attr
+                                self.status_wrapper.send_agent_thinking({
+                                    "type": "agent_thinking",
+                                    "agent": "mainagent",
+                                    "thinking": self._truncate_text(
+                                        f"NLAgent: feature {', '.join(out_attr_list)} -> {operation_desc_brief}"
+                                    )
+                                })
                         else:
                             print(termcolor.colored(f"响应验证失败", "red"))
                     else:
@@ -294,6 +334,23 @@ class NLAgent():
                     
                     # 如果生成足够数量的特征，返回结果
                     if len(next_state) >= send_num:
+                        if self.status_wrapper:
+                            self.status_wrapper.send_agent_status({
+                                "type": "agent_status",
+                                "agent": "mainagent",
+                                "status": "completed",
+                                "work_type": "nl_agent",
+                                "details": {
+                                    "node_id": cur_node.node_id,
+                                    "step_index": cur_step_idx,
+                                    "generated": len(next_state)
+                                }
+                            })
+                            self.status_wrapper.send_agent_thinking({
+                                "type": "agent_thinking",
+                                "agent": "mainagent",
+                                "thinking": self._truncate_text(f"NLAgent: generated {len(next_state)} descriptions for node {cur_node.node_id}.")
+                            })
                         return next_state
                         
                 if len(next_state) == 0:

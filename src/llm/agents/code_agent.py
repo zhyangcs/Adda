@@ -6,10 +6,22 @@ from src.llm.utils.prompt import *
 import numpy as np
 import pandas as pd
 from src.env import *
+from src.llm.agent_status_wrapper import agent_status_wrapper
 
 class CodeAgent():
-    def __init__(self):
-        pass
+    def __init__(self, status_wrapper=None):
+        self.status_wrapper = status_wrapper or agent_status_wrapper
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int = 150) -> str:
+        if text is None:
+            return text
+        text = str(text)
+        if "```" in text:
+            return text
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "...(truncated)"
 
     def check_self_consistency(self, all_df:list, write_set:list):
         """
@@ -50,6 +62,21 @@ class CodeAgent():
         return: True if the code is generated successfully, False otherwise
         """
         print(termcolor.colored(f"[feature to code] cur_node: {cur_node.node_id}", "yellow"))
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "working",
+                "work_type": "code_agent",
+                "details": {
+                    "node_id": cur_node.node_id
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(f"CodeAgent: generating code for node {cur_node.node_id}.")
+            })
         # 1. generate the relevant code from the llm
         detail_desc = []
         for key in list(cur_node.read_set):
@@ -85,12 +112,43 @@ class CodeAgent():
                     # check whether the code could be SQLization, if not, then return False
                     if not check_SQLization(parsed_code, cur_node.in_cur_df):
                         return False
+                if self.status_wrapper:
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "mainagent",
+                        "thinking": self._truncate_text(
+                            f"CodeAgent: generated code for node {cur_node.node_id}:\n```python\n{parsed_code}\n```"
+                        )
+                    })
+                    self.status_wrapper.send_agent_status({
+                        "type": "agent_status",
+                        "agent": "mainagent",
+                        "status": "completed",
+                        "work_type": "code_agent",
+                        "details": {
+                            "node_id": cur_node.node_id
+                        },
+                        "result": {
+                            "success": True
+                        }
+                    })
                 return True
             else:
                 retry_times -= 1
                 if retry_times > 0:
                     print(termcolor.colored("Code execution failed, retrying...", "yellow"))
                 
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "error",
+                "work_type": "code_agent",
+                "details": {
+                    "node_id": cur_node.node_id
+                },
+                "error": "Code generation failed after retries"
+            })
         return False
     
     def generate_fixing_features(self, cur_node:LLMDAGNODE, labels:list):
@@ -98,6 +156,24 @@ class CodeAgent():
         from the main feature, we generate the fixing features[normalization, fillna]
         """
         print(termcolor.colored(f"[generate fixing features] cur_node: {cur_node.node_id}", "yellow"))
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "working",
+                "work_type": "fix_features",
+                "details": {
+                    "node_id": cur_node.node_id
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(f"CodeAgent: generating fixing features for node {cur_node.node_id}.")
+            })
+        if cur_node.out_cur_df is None or cur_node.out_cur_df.empty:
+            print(termcolor.colored("Skip fixing features: empty output df", "yellow"))
+            return False
         df_desc = get_df_desc_prompt(cur_node.out_cur_df, 20, labels, cur_node.read_set, cur_node.task_code, cur_node.column_info)
         whole_prompt = f"{GENERATE_FIX_FEATURE_PROMPT.format(df_desc = df_desc, output_attr = cur_node.write_set)}"
         # print(termcolor.colored(whole_prompt, "grey"))
@@ -120,6 +196,19 @@ class CodeAgent():
                     # filter the useless head
                     ret = [pair for pair in ret if pair[0] == "No need to preprocess" or pair[0] == "Fill NaN" or pair[0] == "Normalization" or pair[0] == "Label encoding"]
                     if len(ret) == 0:
+                        if self.status_wrapper:
+                            self.status_wrapper.send_agent_status({
+                                "type": "agent_status",
+                                "agent": "mainagent",
+                                "status": "completed",
+                                "work_type": "fix_features",
+                                "details": {
+                                    "node_id": cur_node.node_id
+                                },
+                                "result": {
+                                    "success": True
+                                }
+                            })
                         return True
                     else:
                         replace_map = {}
@@ -142,10 +231,34 @@ class CodeAgent():
                                     cur_node.fixing_node.append(cur_fixing_node)
 
                         self.reformat_code(cur_node, replace_map)
+                        if self.status_wrapper:
+                            self.status_wrapper.send_agent_status({
+                                "type": "agent_status",
+                                "agent": "mainagent",
+                                "status": "completed",
+                                "work_type": "fix_features",
+                                "details": {
+                                    "node_id": cur_node.node_id
+                                },
+                                "result": {
+                                    "success": True
+                                }
+                            })
                         return True
             except Exception as e:
                 print(termcolor.colored(f"Error:regrenerate the code in fixing: {e}", "red"))
                 retry_time -= 1
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "mainagent",
+                "status": "error",
+                "work_type": "fix_features",
+                "details": {
+                    "node_id": cur_node.node_id
+                },
+                "error": "Fixing feature generation failed"
+            })
         return False
     
     def reformat_code(self, cur_node:LLMDAGNODE, replace_map:dict):
@@ -207,6 +320,8 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, col_name),
         # print(termcolor.colored(prompt_str, "grey"))
         
         retry_times = TOTAL_RETRY_TIMES
+        success = False
+        is_consistency = False
         while retry_times > 0:
             parsed_codes = [parse_code(code) for code in send_prompt_n("", prompt_str, 4)]
             print(termcolor.colored(f"{parsed_codes[0]}\n-----\n{parsed_codes[1]}\n----\n{parsed_codes[2]}\n", "green"))
@@ -229,5 +344,12 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, col_name),
                 retry_times -= 1
                 continue
             break    
-                
+        if success and self.status_wrapper:
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "mainagent",
+                "thinking": self._truncate_text(
+                    f"CodeAgent: generated subtask code for node {cur_node.node_id}:\n```python\n{cur_node.task_code}\n```"
+                )
+            })
         return is_consistency, success

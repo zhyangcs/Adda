@@ -8,13 +8,26 @@ from collections import deque
 import numpy as np
 import networkx as nx
 import pandas as pd
+from src.llm.agent_status_wrapper import agent_status_wrapper
 
 class DivideAgent():
-    def __init__(self, token_limit:int = 800):
+    def __init__(self, token_limit:int = 800, status_wrapper=None):
         self.code_tree = nx.DiGraph()
         self.root_node = None
         self.node_map = dict()
         self.token_limit = token_limit
+        self.status_wrapper = status_wrapper or agent_status_wrapper
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int = 150) -> str:
+        if text is None:
+            return text
+        text = str(text)
+        if "```" in text:
+            return text
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "...(truncated)"
     
     def divide_code(self, cur_node:LLMDAGNODE, check_code_complexity:bool = True):
         """
@@ -22,6 +35,21 @@ class DivideAgent():
         If so, we recursively divide the node to the subtask and conquer the subtask
         """
         self.root_node = cur_node
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "optimizationagent",
+                "status": "working",
+                "work_type": "divide_agent",
+                "details": {
+                    "node_id": cur_node.node_id
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "optimizationagent",
+                "thinking": self._truncate_text(f"DivideAgent: analyzing complexity for node {cur_node.node_id}.")
+            })
         pre_node_list = [self.root_node]
         cur_node_list = []
         max_rounds = 10
@@ -56,6 +84,27 @@ class DivideAgent():
             pre_node_list = cur_node_list
             cur_node_list = []
         combined_node, combined_ok = self.combine_nodes(cur_node_list)
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "optimizationagent",
+                "status": "completed" if combined_ok else "error",
+                "work_type": "divide_agent",
+                "details": {
+                    "node_id": cur_node.node_id
+                },
+                "result": {
+                    "success": bool(combined_ok)
+                }
+            })
+            if combined_ok and combined_node and combined_node.task_code:
+                self.status_wrapper.send_agent_thinking({
+                    "type": "agent_thinking",
+                    "agent": "optimizationagent",
+                    "thinking": self._truncate_text(
+                        f"DivideAgent: combined code for node {cur_node.node_id}:\n```python\n{combined_node.task_code}\n```"
+                    )
+                })
         return combined_node, combined_ok
         
     def flat_node(self, node_list):
@@ -170,6 +219,12 @@ class DivideAgent():
         Divide the operation description into subtask: return whether could execute the code of node
         """
         print(termcolor.colored(f"[Split Task] cur_node: {cur_node.node_id}", "yellow"))
+        if self.status_wrapper:
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "optimizationagent",
+                "thinking": self._truncate_text(f"DivideAgent: splitting node {cur_node.node_id} into subtasks.")
+            })
         data_desc = f"/* {get_column_info(cur_node.column_info, token_limit=self.token_limit, attr_imp_list=None)} */"
         output_feature = list(cur_node.write_set)[0]
         prompt_str = SPLIT_PROMPT.format(input_features = data_desc, procedure_desc=cur_node.operation_desc, output_feature = output_feature)
@@ -216,6 +271,16 @@ class DivideAgent():
                     raise Exception("Exception for one steps more than 4 comma")
                 step_list = [step_info.strip("\{\} \n").split(":")[-1] for step_info in step_list]
                 rel_cols, output_cols = parse_string_to_list(step_list[1]), parse_string_to_list(step_list[2])
+                if self.status_wrapper:
+                    rel_cols_list = sorted(list(rel_cols))
+                    output_cols_list = sorted(list(output_cols))
+                    self.status_wrapper.send_agent_thinking({
+                        "type": "agent_thinking",
+                        "agent": "optimizationagent",
+                        "thinking": self._truncate_text(
+                            f"DivideAgent: step {idx + 1} outputs {output_cols_list} from {rel_cols_list}: {step_list[3]}"
+                        )
+                    })
                 for output_col in output_cols - cur_column_info.keys():
                     cur_column_info[output_col] = output_col + ": (created in previous step) " + step_list[3] + "\n"
                 print(step_list)

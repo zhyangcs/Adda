@@ -196,7 +196,18 @@
                           <span class="chat-author">{{ agentDisplayConfig[message.agent].label }}</span>
                           <span class="chat-time">{{ formatChatTime(message.timestamp) }}</span>
                         </div>
-                        <p class="chat-text">{{ message.content }}</p>
+                        <div class="chat-body">
+                          <template
+                            v-for="(segment, segIndex) in parseMessageSegments(message.content)"
+                            :key="`${message.id}-${segIndex}`"
+                          >
+                            <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
+                            <details v-else class="code-block">
+                              <summary class="code-summary">{{ segment.label }}</summary>
+                              <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
+                            </details>
+                          </template>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -338,6 +349,13 @@ interface ChatMessage {
   timestamp: number
 }
 
+interface MessageSegment {
+  type: 'text' | 'code'
+  content: string
+  language?: string
+  label?: string
+}
+
 // 每个Agent的消息队列
 const agentMessageQueues = ref<Map<AgentKey, QueuedMessage[]>>(new Map())
 const currentDisplayedMessage = ref<Map<AgentKey, QueuedMessage | null>>(new Map())
@@ -345,6 +363,138 @@ const disappearingTimers = ref<Map<string, number>>(new Map())
 const chatMessages = ref<ChatMessage[]>([])
 const chatListRef = ref<HTMLElement | null>(null)
 const MAX_CHAT_HISTORY = 200
+
+const PYTHON_KEYWORDS = [
+  'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+  'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import',
+  'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'
+]
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function highlightCode(code: string, language?: string): string {
+  const normalizedLang = (language || '').toLowerCase()
+  if (normalizedLang !== 'python') {
+    return escapeHtml(code)
+  }
+
+  const tokens: Array<{ type: 'normal' | 'string' | 'comment'; text: string }> = []
+  let i = 0
+  while (i < code.length) {
+    const ch = code[i]
+    if (ch === '#') {
+      const start = i
+      while (i < code.length && code[i] !== '\n') {
+        i += 1
+      }
+      tokens.push({ type: 'comment', text: code.slice(start, i) })
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      const start = i
+      i += 1
+      let escaped = false
+      while (i < code.length) {
+        const current = code[i]
+        if (escaped) {
+          escaped = false
+          i += 1
+          continue
+        }
+        if (current === '\\') {
+          escaped = true
+          i += 1
+          continue
+        }
+        if (current === quote) {
+          i += 1
+          break
+        }
+        i += 1
+      }
+      tokens.push({ type: 'string', text: code.slice(start, i) })
+      continue
+    }
+
+    const start = i
+    while (i < code.length) {
+      const current = code[i]
+      if (current === '#' || current === '"' || current === "'") {
+        break
+      }
+      i += 1
+    }
+    tokens.push({ type: 'normal', text: code.slice(start, i) })
+  }
+
+  const keywordRegex = new RegExp(`\\b(${PYTHON_KEYWORDS.join('|')})\\b`, 'g')
+  return tokens.map(token => {
+    if (token.type === 'comment') {
+      return `<span class="code-comment">${escapeHtml(token.text)}</span>`
+    }
+    if (token.type === 'string') {
+      return `<span class="code-string">${escapeHtml(token.text)}</span>`
+    }
+
+    let escaped = escapeHtml(token.text)
+    escaped = escaped.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="code-number">$1</span>')
+    escaped = escaped.replace(keywordRegex, '<span class="code-keyword">$1</span>')
+    return escaped
+  }).join('')
+}
+
+function parseMessageSegments(content: string): MessageSegment[] {
+  if (!content) {
+    return []
+  }
+
+  const parts = content.split('```')
+  const segments: MessageSegment[] = []
+
+  parts.forEach((part, index) => {
+    if (!part) {
+      return
+    }
+
+    if (index % 2 === 0) {
+      const trimmed = part.trim()
+      if (trimmed) {
+        segments.push({ type: 'text', content: trimmed })
+      }
+      return
+    }
+
+    const newlineIndex = part.indexOf('\n')
+    let language = ''
+    let code = part
+
+    if (newlineIndex >= 0) {
+      language = part.slice(0, newlineIndex).trim()
+      code = part.slice(newlineIndex + 1)
+    } else {
+      language = part.trim()
+      code = ''
+    }
+
+    const label = language ? `${language.toUpperCase()} code` : 'Code'
+    segments.push({ type: 'code', content: code.trim(), language, label })
+  })
+
+  if (!segments.length) {
+    segments.push({ type: 'text', content })
+  }
+
+  return segments
+}
 
 // 初始化消息队列
 const agentTypes: AgentKey[] = ['system', 'main', 'optimization', 'validation']
@@ -1050,6 +1200,65 @@ onUnmounted(() => {
   color: #1f2933;
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.chat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.code-block {
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+
+.code-summary {
+  cursor: pointer;
+  padding: 0.45rem 0.65rem;
+  font-size: calc(var(--font-size-sm) * 0.9);
+  color: #1f2933;
+  background: #eef2f7;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.code-summary:hover {
+  background: #e2e8f0;
+}
+
+.code-pre {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: calc(var(--font-size-sm) * 0.95);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.code-code {
+  font-family: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Courier New", monospace;
+  white-space: pre;
+}
+
+.code-code .code-keyword {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.code-code .code-string {
+  color: #fca5a5;
+}
+
+.code-code .code-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.code-code .code-number {
+  color: #facc15;
 }
 
 /* ===========================================

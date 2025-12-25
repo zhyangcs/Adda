@@ -151,16 +151,17 @@ class AgentStatusWrapper:
                 print("[WARNING] Agent thinking data missing 'thinking' field")
                 return
 
-            # 过滤掉RAG example模板内容，避免显示冗长的示例
             thinking_content = thinking_data['thinking']
-            if 'Here are' in thinking_content and 'examples' in thinking_content and 'illustrating the impact' in thinking_content:
-                print(f"[DEBUG] Filtered out RAG example content for {thinking_data['agent']}")
-                return  # 不发送RAG示例内容
+            has_code_block = "```" in thinking_content
+            if len(thinking_content) > 150 and not has_code_block:
+                thinking_content = thinking_content[:150] + "...(truncated)"
+                thinking_data = thinking_data.copy()
+                thinking_data['thinking'] = thinking_content
 
             # 添加时间戳
             thinking_data['timestamp'] = time.time()
 
-            # 缓存当前思考
+            # 缓存当前思考（保留完整内容）
             agent = thinking_data['agent']
             self.current_thinking[agent] = thinking_data.copy()
 
@@ -244,18 +245,16 @@ class AgentStatusWrapper:
                 thinking_content += "\n\nDetails:"
                 for key, value in details.items():
                     if isinstance(value, (list, tuple)):
-                        thinking_content += f"\n- {key}: {', '.join(map(str, value[:3]))}"
-                        if len(value) > 3:
-                            thinking_content += f" (total {len(value)} items)"
+                        thinking_content += f"\n- {key}: {', '.join(map(str, value))}"
                     elif isinstance(value, dict):
-                        thinking_content += f"\n- {key}: {list(value.keys())[:2]}..."  # Show first few keys
+                        thinking_content += f"\n- {key}: {list(value.keys())}"
                     else:
                         thinking_content += f"\n- {key}: {value}"
 
             # Add examples - make them clean and readable
             if examples:
                 thinking_content += "\n\nExamples:"
-                for i, example in enumerate(examples[:2], 1):  # Show max 2 examples
+                for i, example in enumerate(examples, 1):
                     # Clean up the example to remove code artifacts
                     clean_example = example.replace('# Import necessary libraries:', '').replace('import pandas as pd', '').replace('import numpy as np', '').strip()
                     clean_example = clean_example.replace('# Core code definition:', '').strip()
@@ -284,7 +283,7 @@ class AgentStatusWrapper:
 
         examples = []
         if similar_nodes and len(similar_nodes) > 0:
-            for i, node in enumerate(similar_nodes[:2]):
+            for i, node in enumerate(similar_nodes):
                 if hasattr(node, 'operation_desc') and hasattr(node, 'node_id'):
                     score = f" (similarity: {similarity_scores[i]:.2f})" if similarity_scores and i < len(similarity_scores) else ""
                     examples.append(f"Node {node.node_id}{score}: '{node.operation_desc}'")
@@ -303,7 +302,7 @@ class AgentStatusWrapper:
         })
 
         # Send each node as a separate message
-        for i, node in enumerate(successful_nodes[:3], 1):  # Show first 3 nodes
+        for i, node in enumerate(successful_nodes, 1):
             thinking_content = f"Node {i}:\n"
 
             # Show feature description (from nl agent)
@@ -317,11 +316,9 @@ class AgentStatusWrapper:
                 # Remove import statements and keep only the core logic
                 core_lines = [line for line in code_lines if not line.strip().startswith(('import', 'from', '#'))]
                 if core_lines:
-                    thinking_content += f"Code:\n"
-                    for line in core_lines[:5]:  # Show max 5 lines of code
+                    thinking_content += "Code:\n"
+                    for line in core_lines:
                         thinking_content += f"  {line}\n"
-                    if len(core_lines) > 5:
-                        thinking_content += f"  ...\n"
 
             # Send individual node message
             self.send_agent_thinking({
