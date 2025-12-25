@@ -626,11 +626,11 @@ def analyze_agents_activity_from_nodes(status_wrapper, generated_nodes, original
 
                 # 根据复杂度确定优化策略
                 if complexity > 20:
-                    optimization_strategies.append("分治处理+函数分解")
+                    optimization_strategies.append("Divide and conquer + function decomposition")
                 elif complexity > 15:
-                    optimization_strategies.append("代码简化+逻辑优化")
+                    optimization_strategies.append("Code simplification + logic optimization")
                 else:
-                    optimization_strategies.append("基础优化")
+                    optimization_strategies.append("Basic optimization")
 
             # 计算复杂度降低百分比（估算）
             complexity_reduction = min(30, max(10, original_complexity * 0.2)) if original_complexity > 10 else 0

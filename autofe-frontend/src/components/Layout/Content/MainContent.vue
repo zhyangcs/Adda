@@ -138,10 +138,6 @@
                     <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
                   </div>
                   <div class="node-detail">
-                    <span class="detail-label">Task Code:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.task_code }}</span>
-                  </div>
-                  <div class="node-detail">
                     <span class="detail-label">Operation:</span>
                     <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
                   </div>
@@ -152,6 +148,13 @@
                   <div class="node-detail">
                     <span class="detail-label">Score:</span>
                     <span class="detail-value">{{ formatScore(featureTreeStore.selectedNode.score) }}</span>
+                  </div>
+                  <div class="node-code">
+                    <details v-if="featureTreeStore.selectedNode.task_code" class="code-block" open>
+                      <summary class="code-summary">PYTHON code</summary>
+                      <pre class="code-pre"><code class="code-code" v-html="highlightCode(featureTreeStore.selectedNode.task_code, 'python')"></code></pre>
+                    </details>
+                    <div v-else class="no-task-code">No task code available.</div>
                   </div>
                 </div>
                 <div v-else class="no-node-info">
@@ -506,8 +509,8 @@ agentTypes.forEach(agent => {
 // 全局消息队列 - 用于处理所有Agent的消息排队
 const globalMessageQueue = ref<QueuedMessage[]>([])
 const isProcessingGlobalQueue = ref(false)
-// 记录各Agent上一条thinking的时间戳，防止重复渲染
-const lastThinkingTimestamps = ref<Map<AgentKey, number>>(new Map())
+// 记录各Agent上一条thinking的签名，防止重复渲染
+const lastThinkingSignatures = ref<Map<AgentKey, string>>(new Map())
 
 // 处理全局消息队列
 function processGlobalMessageQueue() {
@@ -665,11 +668,12 @@ watch(currentAgentThinking, (thinkingMap) => {
     if (agent && thinking.thinking) {
       const tsRaw = thinking.timestamp ?? Date.now()
       const tsMs = tsRaw < 1e12 ? tsRaw * 1000 : tsRaw
-      const lastTs = lastThinkingTimestamps.value.get(agent)
+      const signature = `${tsMs}-${thinking.thinking}`
+      const lastSignature = lastThinkingSignatures.value.get(agent)
 
       // 避免同一条消息在新Agent到来时被重复渲染
-      if (!lastTs || Math.abs(tsMs - lastTs) > 1) {
-        lastThinkingTimestamps.value.set(agent, tsMs)
+      if (signature !== lastSignature) {
+        lastThinkingSignatures.value.set(agent, signature)
         console.log(`Processing thinking for ${agent}:`, thinking.thinking.substring(0, 50) + '...')
         addThinkingMessageToQueue(agent, thinking.thinking, tsMs)
       } else {
@@ -1743,6 +1747,16 @@ onUnmounted(() => {
   word-break: break-word;
   flex: 1;
   font-size: var(--font-size-md);
+}
+
+.node-code {
+  margin-top: 0.75rem;
+}
+
+.no-task-code {
+  color: #6c757d;
+  font-style: italic;
+  font-size: 0.9rem;
 }
 
 .no-node-info {

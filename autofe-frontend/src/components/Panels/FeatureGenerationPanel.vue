@@ -143,10 +143,6 @@
                 <span class="node-info-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
               </div>
               <div class="node-detail">
-                <span class="node-info-label">Task Code:</span>
-                <span class="node-info-value">{{ featureTreeStore.selectedNode.task_code }}</span>
-              </div>
-              <div class="node-detail">
                 <span class="node-info-label">Operation:</span>
                 <span class="node-info-value">{{ featureTreeStore.selectedNode.op_type }}</span>
               </div>
@@ -161,6 +157,13 @@
               <div class="node-detail">
                 <span class="node-info-label">Execution Time:</span>
                 <span class="node-info-value">{{ featureTreeStore.selectedNode.exec_time.toFixed(3) }}s</span>
+              </div>
+              <div class="node-code">
+                <details v-if="featureTreeStore.selectedNode.task_code" class="code-block" open>
+                  <summary class="code-summary">PYTHON code</summary>
+                  <pre class="code-pre"><code class="code-code" v-html="highlightCode(featureTreeStore.selectedNode.task_code, 'python')"></code></pre>
+                </details>
+                <div v-else class="no-task-code">No task code available.</div>
               </div>
             </div>
             <div v-else class="text-muted">
@@ -196,6 +199,94 @@ const formatScore = (score: number) => {
   return 'Validating...'
 }
 const isModelLoading = ref(false)
+
+const PYTHON_KEYWORDS = [
+  'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+  'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import',
+  'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'
+]
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function highlightCode(code: string, language?: string): string {
+  const normalizedLang = (language || '').toLowerCase()
+  if (normalizedLang !== 'python') {
+    return escapeHtml(code)
+  }
+
+  const tokens: Array<{ type: 'normal' | 'string' | 'comment'; text: string }> = []
+  let i = 0
+  while (i < code.length) {
+    const ch = code[i]
+    if (ch === '#') {
+      const start = i
+      while (i < code.length && code[i] !== '\n') {
+        i += 1
+      }
+      tokens.push({ type: 'comment', text: code.slice(start, i) })
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      const start = i
+      i += 1
+      let escaped = false
+      while (i < code.length) {
+        const current = code[i]
+        if (escaped) {
+          escaped = false
+          i += 1
+          continue
+        }
+        if (current === '\\') {
+          escaped = true
+          i += 1
+          continue
+        }
+        if (current === quote) {
+          i += 1
+          break
+        }
+        i += 1
+      }
+      tokens.push({ type: 'string', text: code.slice(start, i) })
+      continue
+    }
+
+    const start = i
+    while (i < code.length) {
+      const current = code[i]
+      if (current === '#' || current === '"' || current === "'") {
+        break
+      }
+      i += 1
+    }
+    tokens.push({ type: 'normal', text: code.slice(start, i) })
+  }
+
+  const keywordRegex = new RegExp(`\\b(${PYTHON_KEYWORDS.join('|')})\\b`, 'g')
+  return tokens.map(token => {
+    if (token.type === 'comment') {
+      return `<span class="code-comment">${escapeHtml(token.text)}</span>`
+    }
+    if (token.type === 'string') {
+      return `<span class="code-string">${escapeHtml(token.text)}</span>`
+    }
+
+    let escaped = escapeHtml(token.text)
+    escaped = escaped.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="code-number">$1</span>')
+    escaped = escaped.replace(keywordRegex, '<span class="code-keyword">$1</span>')
+    return escaped
+  }).join('')
+}
 
 const featureTreeDisplay = computed(() => {
   if (featureTreeStore.currentFeatures.length === 0) {
@@ -556,6 +647,69 @@ function handleNodeClick(nodeData: any) {
   color: #6c757d;
   word-break: break-word;
   flex: 1;
+}
+
+.node-code {
+  margin-top: 0.75rem;
+}
+
+.no-task-code {
+  color: #6c757d;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.code-block {
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+
+.code-summary {
+  cursor: pointer;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.85rem;
+  color: #1f2933;
+  background: #eef2f7;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.code-summary:hover {
+  background: #e2e8f0;
+}
+
+.code-pre {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.code-code {
+  font-family: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Courier New", monospace;
+  white-space: pre;
+}
+
+.code-code .code-keyword {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.code-code .code-string {
+  color: #fca5a5;
+}
+
+.code-code .code-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.code-code .code-number {
+  color: #facc15;
 }
 
 .btn {
