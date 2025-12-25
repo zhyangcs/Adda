@@ -24,7 +24,11 @@ class DivideAgent():
         self.root_node = cur_node
         pre_node_list = [self.root_node]
         cur_node_list = []
+        max_rounds = 10
+        prev_node_ids = None
+        rounds = 0
         while True:
+            rounds += 1
             for cur_node in pre_node_list:
                 if not check_code_complexity or whether_code_complex(cur_node.task_code, cur_node.column_info.keys()) == True:
                     if not self.recur_divide(cur_node):
@@ -38,6 +42,17 @@ class DivideAgent():
                 print(termcolor.colored(f"Error in Exec_Same: {e}", "red"))
                 combined_node, combined_ok = self.combine_nodes(pre_node_list)
                 return combined_node, combined_ok
+            cur_node_ids = tuple(node.node_id for node in cur_node_list)
+            if prev_node_ids is not None and cur_node_ids == prev_node_ids:
+                # No structural change between rounds; avoid infinite loop.
+                print(termcolor.colored("Divide loop made no progress; stopping to avoid hang.", "red"))
+                combined_node, _ = self.combine_nodes(pre_node_list)
+                return combined_node, False
+            if rounds >= max_rounds:
+                print(termcolor.colored("Divide loop reached max rounds; stopping to avoid hang.", "red"))
+                combined_node, _ = self.combine_nodes(pre_node_list)
+                return combined_node, False
+            prev_node_ids = cur_node_ids
             pre_node_list = cur_node_list
             cur_node_list = []
         combined_node, combined_ok = self.combine_nodes(cur_node_list)
@@ -71,8 +86,18 @@ class DivideAgent():
         cur_combined_node, _ = self.combine_nodes(cur_node_list)
         if cur_combined_node == None:
             raise Exception("new node is not executable, so we should abandon or rollback")
-        write_list = list(self.root_node.write_set)
-        return pre_combined_node!=None and cur_combined_node!=None and np.isclose(pre_combined_node.out_cur_df[write_list], cur_combined_node.out_cur_df[write_list]).all()
+        if pre_combined_node is None:
+            return False
+        write_list = sorted(self.root_node.write_set)
+        if not write_list:
+            return True
+        if any(col not in pre_combined_node.out_cur_df.columns for col in write_list):
+            return False
+        if any(col not in cur_combined_node.out_cur_df.columns for col in write_list):
+            return False
+        pre_vals = pre_combined_node.out_cur_df[write_list].to_numpy()
+        cur_vals = cur_combined_node.out_cur_df[write_list].to_numpy()
+        return np.isclose(pre_vals, cur_vals, equal_nan=True).all()
         
         
     def combine_nodes(self, node_list) -> (LLMDAGNODE, bool):
@@ -102,7 +127,7 @@ class DivideAgent():
         import threading
 
         exec_env = get_script_scope("")
-        exec_env = {'df': node_list[0].in_cur_df.copy(deep=True)}
+        exec_env['df'] = node_list[0].in_cur_df.copy(deep=True)
 
         # 用于存储执行结果和异常
         exec_result = {'success': False, 'result': None, 'exception': None}
