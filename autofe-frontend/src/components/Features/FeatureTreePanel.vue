@@ -57,6 +57,10 @@ let svgRootSelection: d3.Selection<SVGSVGElement, unknown, null, undefined> | nu
 let currentTransform: d3.ZoomTransform = d3.zoomIdentity
 let hasUserTransform = false
 
+const isScoreReady = (score: unknown) => {
+  return typeof score === 'number' && score >= 0
+}
+
 // D3.js 树形图渲染
 function renderTree(treeStructure: any) {
   if (!treeContainer.value) return
@@ -311,14 +315,13 @@ function renderD3Tree(data: any) {
     .attr("dy", 60)
     .attr("text-anchor", "middle")
     .style("font-size", "13px")
-    .style("fill", (d: any) => d.data.score !== undefined ? "#059669" : "#94a3b8") // 有分数为绿色，否则灰色
+    .style("fill", (d: any) => isScoreReady(d.data.score) ? "#059669" : "#94a3b8") // 有分数为绿色，否则灰色
     .style("font-weight", "500")
     .text((d: any) => {
-       if (d.data.score !== undefined && d.data.score !== null) {
-         // 格式化分数，保留4位小数
+       if (isScoreReady(d.data.score)) {
          return `Score: ${Number(d.data.score).toFixed(4)}`
        }
-       return ''
+       return 'Score: validating'
     })
 
   // 设置根节点引用

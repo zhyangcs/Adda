@@ -151,7 +151,7 @@
                   </div>
                   <div class="node-detail">
                     <span class="detail-label">Score:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.score?.toFixed(4) }}</span>
+                    <span class="detail-value">{{ formatScore(featureTreeStore.selectedNode.score) }}</span>
                   </div>
                 </div>
                 <div v-else class="no-node-info">
@@ -249,6 +249,13 @@ const connectionActiveValidation = ref(false)
 const connectionActiveSystem = ref(false)
 const treeReloadTimer = ref<number | null>(null)
 const displayMode = ref<DisplayMode>('paper')
+
+const formatScore = (score?: number) => {
+  if (typeof score === 'number' && score >= 0) {
+    return score.toFixed(4)
+  }
+  return 'Validating...'
+}
 
 // Right panel hosts the chat feed
 const showRightPanel = true

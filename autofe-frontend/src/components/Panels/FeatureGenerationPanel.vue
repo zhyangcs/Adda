@@ -156,7 +156,7 @@
               </div>
               <div class="node-detail">
                 <span class="node-info-label">Score:</span>
-                <span class="node-info-value">{{ featureTreeStore.selectedNode.score.toFixed(4) }}</span>
+                <span class="node-info-value">{{ formatScore(featureTreeStore.selectedNode.score) }}</span>
               </div>
               <div class="node-detail">
                 <span class="node-info-label">Execution Time:</span>
@@ -188,6 +188,13 @@ const workspaceStore = useWorkspaceStore()
 const treeContainer = ref<HTMLElement>()
 const isNextStepLoading = ref(false)
 const isPerformanceLoading = ref(false)
+
+const formatScore = (score: number) => {
+  if (typeof score === 'number' && score >= 0) {
+    return score.toFixed(4)
+  }
+  return 'Validating...'
+}
 const isModelLoading = ref(false)
 
 const featureTreeDisplay = computed(() => {
