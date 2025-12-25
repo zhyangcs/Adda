@@ -18,10 +18,20 @@ def remove_quote(s:str):
     
 def get_df_desc_prompt(df1:pd.DataFrame, head_num:int, label, expect_cols, code:str, column_info):
     samples = ""
+    if df1 is None:
+        return f"""The dataframe of the task `df` is loaded and in memory. Columns are also named attributes.
+Columns in `df` (true feature dtypes listed here, categoricals encoded as int):
+Now we try to execute the following function to generate a new feature:
+```python
+{code}
+```
+"""
     df = df1.copy()
-    df = pd.concat([df, label], axis = 1)
+    if label is not None:
+        df = pd.concat([df, label], axis = 1)
     df_ = df.head(head_num)
-    for i in expect_cols:
+    valid_cols = [i for i in expect_cols if i in df.columns]
+    for i in valid_cols:
         # show the list of values
         nan_freq = "%s" % float("%.2g" % (df[i].isna().mean() * 100))
         if df[i].dtype in [int, float, 'int64', 'float64']:
@@ -37,8 +47,9 @@ def get_df_desc_prompt(df1:pd.DataFrame, head_num:int, label, expect_cols, code:
             f"{df_[i].name} ({df[i].dtype}): NaN-freq [{nan_freq}%], Skewness [{skewness}], unique num [{unique_num}], Samples {s}\n"
         )
     relevant_cols = []
-    for i in expect_cols:
-        relevant_cols.append(column_info[i])
+    for i in valid_cols:
+        if i in column_info:
+            relevant_cols.append(column_info[i])
     relevant_cols_str = "".join(relevant_cols)
     return f"""The dataframe of the task `df` is loaded and in memory. Columns are also named attributes.
 Columns in `df` (true feature dtypes listed here, categoricals encoded as int):
