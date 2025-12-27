@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { TaskConfig, TaskStatus, TaskResponse, Notification, AutoStepData } from '@/types/task'
 import { apiService } from '@/services/APIService'
+import { useFeatureTreeStore } from '@/stores/featureTree'
+import { useAgentStore } from '@/stores/agent'
 
 export const useTaskStore = defineStore('task', () => {
   // 状态
@@ -19,8 +21,10 @@ export const useTaskStore = defineStore('task', () => {
   const error = ref<string | null>(null)
   const notifications = ref<Notification[]>([])
   const autoStepData = ref<AutoStepData | null>(null)
-  const agentSearchStatus = ref<'idle' | 'running' | 'paused' | 'finished' | 'stopped' | 'error'>('idle')
+  type AgentSearchStatus = 'idle' | 'running' | 'paused' | 'finished' | 'stopped' | 'error' | 'clear'
+  const agentSearchStatus = ref<AgentSearchStatus>('idle')
   const agentSearchInfo = ref<any>(null)
+  const featureSearchClearedAt = ref(0)
 
   // 计算属性
   const canStartTask = computed(() =>
@@ -229,6 +233,24 @@ export const useTaskStore = defineStore('task', () => {
     '4': 'Deepseek-v3'
   }
 
+  function normalizeFeatureSearchStatus(nextStatus?: string): AgentSearchStatus {
+    const normalized = (nextStatus || '').toLowerCase()
+    if (normalized === 'running') return 'running'
+    if (normalized === 'paused') return 'paused'
+    if (normalized === 'error') return 'error'
+    if (normalized === 'idle') return 'idle'
+    if (normalized === 'finished' || normalized === 'stopped') return 'clear'
+    if (normalized === 'stopping') return 'running'
+    return 'idle'
+  }
+
+  function setFeatureSearchStatus(nextStatus: AgentSearchStatus, info?: any) {
+    agentSearchStatus.value = nextStatus
+    if (info !== undefined) {
+      agentSearchInfo.value = info
+    }
+  }
+
   async function startFeatureSearch(depth: number = 1, forceNew = false, resume = false) {
     try {
       const dataset = datasetMap[config.value.dataset] || config.value.dataset || 'Heart'
@@ -242,7 +264,7 @@ export const useTaskStore = defineStore('task', () => {
         resume
       })
       agentSearchInfo.value = res.data || null
-      agentSearchStatus.value = res.data?.status || 'running'
+      agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'running')
       addNotification(`Feature search started (depth=${depth}, model=${modelType})`, 'info')
       return true
     } catch (error: any) {
@@ -256,7 +278,7 @@ export const useTaskStore = defineStore('task', () => {
     try {
       const res = await apiService.featureSearchPause()
       agentSearchInfo.value = res.data || null
-      agentSearchStatus.value = res.data?.status || 'paused'
+      agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'paused')
       addNotification('Feature search paused', 'info')
       return true
     } catch (error: any) {
@@ -270,7 +292,7 @@ export const useTaskStore = defineStore('task', () => {
     try {
       const res = await apiService.featureSearchResume()
       agentSearchInfo.value = res.data || null
-      agentSearchStatus.value = res.data?.status || 'running'
+      agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'running')
       addNotification('Feature search resumed', 'info')
       return true
     } catch (error: any) {
@@ -284,7 +306,7 @@ export const useTaskStore = defineStore('task', () => {
     try {
       const res = await apiService.featureSearchStop()
       agentSearchInfo.value = res.data || null
-      agentSearchStatus.value = res.data?.status || 'stopped'
+      agentSearchStatus.value = 'clear'
       addNotification('Feature search stopped', 'warning')
       return true
     } catch (error: any) {
@@ -299,11 +321,27 @@ export const useTaskStore = defineStore('task', () => {
       const res = await apiService.featureSearchStatus()
       agentSearchInfo.value = res.data || null
       if (res.data?.status) {
-        agentSearchStatus.value = res.data.status
+        agentSearchStatus.value = normalizeFeatureSearchStatus(res.data.status)
       }
     } catch (error) {
       console.error('Failed to refresh feature search status:', error)
     }
+  }
+
+  function markFeatureSearchCompleted(info?: any) {
+    setFeatureSearchStatus('clear', info)
+  }
+
+  function clearFeatureSearchOutput() {
+    const featureTreeStore = useFeatureTreeStore()
+    const agentStore = useAgentStore()
+    featureTreeStore.clearFeatureOutput()
+    agentStore.clearMessageQueue()
+    agentStore.clearAgentCache()
+    agentSearchInfo.value = null
+    agentSearchStatus.value = 'idle'
+    featureSearchClearedAt.value = Date.now()
+    addNotification('Feature output cleared', 'success')
   }
 
   return {
@@ -317,6 +355,7 @@ export const useTaskStore = defineStore('task', () => {
     autoStepData,
     agentSearchStatus,
     agentSearchInfo,
+    featureSearchClearedAt,
 
     // 计算属性
     canStartTask,
@@ -337,6 +376,9 @@ export const useTaskStore = defineStore('task', () => {
     resumeFeatureSearch,
     stopFeatureSearch,
     refreshFeatureSearchStatus,
-    ensureInitialized
+    ensureInitialized,
+    setFeatureSearchStatus,
+    markFeatureSearchCompleted,
+    clearFeatureSearchOutput
   }
 })

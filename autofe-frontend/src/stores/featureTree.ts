@@ -95,6 +95,16 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     }
   }
 
+  function clearFeatureOutput() {
+    treeData.value = null
+    root.value = null
+    selectedNodes.value.clear()
+    selectedNode.value = null
+    currentFeatures.value = []
+    performance.value = 'not calculated yet'
+    isLoading.value = false
+  }
+
   async function testPerformance(modelType?: string): Promise<boolean> {
     if (!hasSelection.value) return false
 
@@ -160,6 +170,7 @@ export const useFeatureTreeStore = defineStore('featureTree', () => {
     updateSelectionFromTree,
     updateCurrentFeatures,
     clearSelection,
+    clearFeatureOutput,
     testPerformance,
     generateModel,
     setRoot,

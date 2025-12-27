@@ -26,6 +26,7 @@ interface AgentState {
   last_updated: number
 }
 import { webSocketService } from '@/services/WebSocketService'
+import { useTaskStore } from '@/stores/task'
 
 export const useAgentStore = defineStore('agent', () => {
   // ===== 状态定义 =====
@@ -217,6 +218,17 @@ export const useAgentStore = defineStore('agent', () => {
     const { agent, status, work_type, details, data, result, error, timestamp } = statusMessage
 
     console.log(`[STATE UPDATE] Received status for ${agent}: ${status} - ${work_type || 'N/A'}`)
+
+    if (work_type === 'feature_search') {
+      const taskStore = useTaskStore()
+      if (status === 'completed') {
+        taskStore.markFeatureSearchCompleted(statusMessage)
+      } else if (status === 'error') {
+        taskStore.setFeatureSearchStatus('error', statusMessage)
+      } else if (status === 'working') {
+        taskStore.setFeatureSearchStatus('running', statusMessage)
+      }
+    }
 
     // 清除之前的延迟更新
     if (stateUpdateTimeouts.has(agent)) {

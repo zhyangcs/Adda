@@ -30,8 +30,15 @@
       <button v-if="isAgentPage" class="action-btn primary" type="button" @click="handleAgentRunAction">
         {{ agentRunLabel }}
       </button>
-      <button v-if="isAgentPage" class="action-btn danger" type="button" @click="handleAgentStop" :disabled="agentRunState === 'run' && agentSearchStatus === 'idle'">
-        Stop
+      <button
+        v-if="isAgentPage"
+        class="action-btn danger"
+        type="button"
+        @click="handleAgentStop"
+        :disabled="isStopping || agentSearchStatus === 'idle' || agentSearchStatus === 'clear'"
+      >
+        <span v-if="isStopping" class="stop-spinner" aria-hidden="true"></span>
+        {{ stopLabel }}
       </button>
       <button v-else class="action-btn primary" type="button" @click="handleRunAction">
         Run
@@ -80,31 +87,47 @@ watch(() => route.path, (path) => {
 
 const isAgentPage = computed(() => currentRoute.value === 'agent-feature-generation')
 
-type AgentRunState = 'run' | 'pause' | 'resume'
+type AgentRunState = 'run' | 'pause' | 'resume' | 'clear'
 const agentRunState = computed<AgentRunState>(() => {
   if (agentSearchStatus.value === 'running') return 'pause'
   if (agentSearchStatus.value === 'paused') return 'resume'
+  if (agentSearchStatus.value === 'clear') return 'clear'
   return 'run'
 })
 
 const agentRunLabel = computed(() => {
   if (agentRunState.value === 'run') return 'Run'
   if (agentRunState.value === 'pause') return 'Pause'
+  if (agentRunState.value === 'clear') return 'Clear'
   return 'Resume'
 })
+
+const isStopping = ref(false)
+const stopLabel = computed(() => (isStopping.value ? 'Stopping...' : 'Stop'))
 
 async function handleAgentRunAction() {
   if (agentRunState.value === 'run') {
     await taskStore.startFeatureSearch()
   } else if (agentRunState.value === 'pause') {
     await taskStore.pauseFeatureSearch()
+  } else if (agentRunState.value === 'clear') {
+    taskStore.clearFeatureSearchOutput()
   } else {
     await taskStore.resumeFeatureSearch()
   }
 }
 
 async function handleAgentStop() {
-  await taskStore.stopFeatureSearch()
+  if (isStopping.value) return
+  isStopping.value = true
+  try {
+    const stopped = await taskStore.stopFeatureSearch()
+    if (stopped) {
+      taskStore.addNotification('Feature search has been stopped.', 'success')
+    }
+  } finally {
+    isStopping.value = false
+  }
 }
 
 async function handleRunAction() {
@@ -174,6 +197,24 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.15s ease;
   min-width: 40px;
+}
+
+.stop-spinner {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.25rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: stop-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes stop-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .action-btn.primary {
@@ -285,4 +326,3 @@ onMounted(() => {
   }
 }
 </style>
-

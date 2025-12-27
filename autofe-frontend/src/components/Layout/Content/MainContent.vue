@@ -261,6 +261,7 @@ const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 const agentStore = useAgentStore()
 const { currentAgentThinking, allAgentStates } = storeToRefs(agentStore)
+const { featureSearchClearedAt } = storeToRefs(taskStore)
 
 type AgentKey = 'system' | 'main' | 'optimization' | 'validation'
 type DisplayMode = 'paper'
@@ -750,6 +751,28 @@ function appendChatMessage(message: QueuedMessage) {
   }
 }
 
+function resetThinkingFeed() {
+  chatMessages.value = []
+  globalMessageQueue.value = []
+  isProcessingGlobalQueue.value = false
+  lastThinkingSignatures.value = new Map()
+  expandedExampleKeys.value = new Set()
+
+  const clearedQueues = new Map<AgentKey, QueuedMessage[]>()
+  const clearedDisplayed = new Map<AgentKey, QueuedMessage | null>()
+  agentTypes.forEach(agent => {
+    clearedQueues.set(agent, [])
+    clearedDisplayed.set(agent, null)
+  })
+  agentMessageQueues.value = clearedQueues
+  currentDisplayedMessage.value = clearedDisplayed
+
+  disappearingTimers.value.forEach(timer => {
+    clearTimeout(timer)
+  })
+  disappearingTimers.value.clear()
+}
+
 function formatChatTime(timestamp: number): string {
   const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -865,6 +888,12 @@ watch(() => chatMessages.value.length, () => {
       container.scrollTop = container.scrollHeight
     }
   })
+})
+
+watch(featureSearchClearedAt, (clearedAt) => {
+  if (clearedAt) {
+    resetThinkingFeed()
+  }
 })
 
 // 测试Agent状态
