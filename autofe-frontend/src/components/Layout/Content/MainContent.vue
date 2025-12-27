@@ -92,7 +92,7 @@
                           :class="{ working: workingAgents.includes('validation') }"
                         >
                           <div class="agent-icon">
-                            <img src="/demo_validation.jpg" alt="Node Validation" class="agent-image" />
+                            <img src="/demo_validation3.png" alt="Node Validation" class="agent-image" />
                           </div>
                           <div class="agent-label">Node Validation</div>
                           <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>

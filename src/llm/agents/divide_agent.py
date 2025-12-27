@@ -36,6 +36,14 @@ class DivideAgent():
         """
         self.root_node = cur_node
         if self.status_wrapper:
+            complexity = None
+            is_complex = None
+            if check_code_complexity and hasattr(cur_node, "task_code") and cur_node.task_code:
+                try:
+                    complexity = get_code_complexity(cur_node.task_code)
+                    is_complex = whether_code_complex(cur_node.task_code, cur_node.column_info.keys())
+                except Exception as e:
+                    print(termcolor.colored(f"Error checking complexity for node {cur_node.node_id}: {e}", "red"))
             self.status_wrapper.send_agent_status({
                 "type": "agent_status",
                 "agent": "optimizationagent",
@@ -45,10 +53,20 @@ class DivideAgent():
                     "node_id": cur_node.node_id
                 }
             })
+            if isinstance(complexity, (int, float)):
+                complexity_text = f"Node {cur_node.node_id} complexity {complexity:.1f}"
+            else:
+                complexity_text = f"Node {cur_node.node_id} complexity unknown"
+            thinking_text = (
+                f"{complexity_text}, considering divide-and-conquer or simplification. "
+                "Rule: divide if check_code_complexity is False OR "
+                "whether_code_complex(code, columns) == True "
+                f"(check_code_complexity={check_code_complexity}, is_complex={is_complex})."
+            )
             self.status_wrapper.send_agent_thinking({
                 "type": "agent_thinking",
                 "agent": "optimizationagent",
-                "thinking": self._truncate_text(f"DivideAgent: analyzing complexity for node {cur_node.node_id}.")
+                "thinking": self._truncate_text(thinking_text)
             })
         pre_node_list = [self.root_node]
         cur_node_list = []

@@ -464,6 +464,11 @@ class AddaConnector:
 
                 # 添加节点信息（使用原始node_id）
                 if current.node_id != 1:  # 跳过已添加的根节点
+                    op_desc = getattr(current, "operation_desc", None)
+                    if isinstance(op_desc, list):
+                        op_desc = "; ".join([str(item) for item in op_desc if item])
+                    if not op_desc:
+                        op_desc = self._generate_desc(current.task_code)
                     tree["node_info"].append({
                         "node_id": current.node_id,
                         "feature_name": self._get_feature_name(current.task_code),
@@ -471,7 +476,7 @@ class AddaConnector:
                         "op_type": self._infer_op_type(current.task_code),
                         "score": current.score,
                         "exec_time": current.exec_time, # 真的需要这两项吗？ TODO: 这部分的信息可能需要体现在前端界面的其他部分而不是在特征树上
-                        "operation_desc": self._generate_desc(current.task_code)
+                        "operation_desc": op_desc
                     })
 
                 # 添加父子关系
@@ -488,9 +493,11 @@ class AddaConnector:
     
     def _get_feature_name(self, task_code: str) -> str:
         """严格提取单个特征名称"""
-        pattern = r"df\['([^']+)'\]"
-        match = re.search(pattern, task_code)
-        return match.group(1) if match else "Unnamed_Feature"
+        pattern = r"([A-Za-z_][A-Za-z0-9_]*)\[(?:'|\")([^'\"]+)(?:'|\")\]"
+        matches = re.findall(pattern, task_code)
+        if not matches:
+            return "Unnamed_Feature"
+        return matches[-1][1]
     
     def _infer_op_type(self, task_code: str) -> str:
         """推断操作类型（参考llm_dag_util.py的代码分析逻辑）"""
