@@ -205,9 +205,25 @@
                             :key="`${message.id}-${segIndex}`"
                           >
                             <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
-                            <details v-else class="code-block">
+                            <details v-else-if="segment.type === 'code'" class="code-block">
                               <summary class="code-summary">{{ segment.label }}</summary>
                               <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
+                            </details>
+                            <details
+                              v-else
+                              class="code-block example-block"
+                              :open="isExampleExpanded(message.id, segIndex)"
+                              @toggle="onExampleToggle(message.id, segIndex, $event)"
+                            >
+                              <summary class="code-summary example-summary">
+                                <span class="example-caret" aria-hidden="true"></span>
+                                <span class="example-summary-text">{{ getExampleSummary(segment.items) }}</span>
+                              </summary>
+                              <ul v-if="isExampleExpanded(message.id, segIndex)" class="examples-list">
+                                <li v-for="(item, exIndex) in (segment.items || [])" :key="`${message.id}-${segIndex}-ex-${exIndex}`">
+                                  {{ item }}
+                                </li>
+                              </ul>
                             </details>
                           </template>
                         </div>
@@ -353,10 +369,11 @@ interface ChatMessage {
 }
 
 interface MessageSegment {
-  type: 'text' | 'code'
+  type: 'text' | 'code' | 'examples'
   content: string
   language?: string
   label?: string
+  items?: string[]
 }
 
 // 每个Agent的消息队列
@@ -463,6 +480,95 @@ function parseMessageSegments(content: string): MessageSegment[] {
   const parts = content.split('```')
   const segments: MessageSegment[] = []
 
+  const splitExamplesFromText = (text: string): MessageSegment[] => {
+    const match = text.match(/(^|\n\n|\n)Examples:\s*/)
+    if (!match || match.index === undefined) {
+      return [{ type: 'text', content: text.trim() }]
+    }
+
+    const markerIndex = match.index
+    const markerLength = match[0].length
+    const before = text.slice(0, markerIndex).trim()
+    const after = text.slice(markerIndex + markerLength).trim()
+    const result: MessageSegment[] = []
+
+    if (before) {
+      result.push({ type: 'text', content: before })
+    }
+
+    const rawItems = after.split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => line.replace(/^\d+\.\s*/, '').replace(/^-+\s*/, ''))
+
+    result.push({ type: 'examples', content: '', items: rawItems })
+    return result
+  }
+
+  const splitCodeFromText = (text: string): MessageSegment[] => {
+    const lines = text.split('\n')
+    const segments: MessageSegment[] = []
+    let buffer: string[] = []
+    let inCode = false
+    let codeLines: string[] = []
+
+    const flushBuffer = () => {
+      const bufferedText = buffer.join('\n').trim()
+      if (bufferedText) {
+        splitExamplesFromText(bufferedText).forEach(segment => segments.push(segment))
+      }
+      buffer = []
+    }
+
+    const flushCode = () => {
+      if (codeLines.length) {
+        segments.push({
+          type: 'code',
+          content: codeLines.join('\n').trim(),
+          language: 'python',
+          label: 'PYTHON code'
+        })
+      }
+      codeLines = []
+    }
+
+    lines.forEach(line => {
+      if (!inCode && line.trim() === 'Code:') {
+        flushBuffer()
+        inCode = true
+        return
+      }
+
+      if (inCode) {
+        if (line.startsWith('  ')) {
+          codeLines.push(line.slice(2))
+          return
+        }
+        if (line.startsWith('\t')) {
+          codeLines.push(line.slice(1))
+          return
+        }
+        if (line.trim() === '') {
+          codeLines.push('')
+          return
+        }
+        flushCode()
+        inCode = false
+        buffer.push(line)
+        return
+      }
+
+      buffer.push(line)
+    })
+
+    if (inCode) {
+      flushCode()
+    }
+
+    flushBuffer()
+    return segments
+  }
+
   parts.forEach((part, index) => {
     if (!part) {
       return
@@ -471,7 +577,9 @@ function parseMessageSegments(content: string): MessageSegment[] {
     if (index % 2 === 0) {
       const trimmed = part.trim()
       if (trimmed) {
-        segments.push({ type: 'text', content: trimmed })
+        splitCodeFromText(trimmed).forEach(segment => {
+          segments.push(segment)
+        })
       }
       return
     }
@@ -511,6 +619,7 @@ const globalMessageQueue = ref<QueuedMessage[]>([])
 const isProcessingGlobalQueue = ref(false)
 // 记录各Agent上一条thinking的签名，防止重复渲染
 const lastThinkingSignatures = ref<Map<AgentKey, string>>(new Map())
+const expandedExampleKeys = ref<Set<string>>(new Set())
 
 // 处理全局消息队列
 function processGlobalMessageQueue() {
@@ -644,6 +753,72 @@ function appendChatMessage(message: QueuedMessage) {
 function formatChatTime(timestamp: number): string {
   const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatExamplePreview(item: string): string {
+  const cleaned = item
+    .replace(/\s*\(similarity:[^)]+\)/i, '')
+    .replace(/^Node\s+/i, 'node ')
+    .trim()
+  const match = cleaned.match(/node\s+(\d+)\s*:\s*['"]?(.+?)['"]?$/i)
+  if (match) {
+    return `node ${match[1]}：${match[2]}`
+  }
+  return cleaned || 'examples'
+}
+
+function getExampleSummary(items?: string[]): string {
+  if (!items || items.length === 0) {
+    return 'No details'
+  }
+
+  const count = items.length
+  const first = items[0]
+
+  if (first.includes('similarity:')) {
+    return `Reference Examples (${count} items)`
+  }
+
+  if (first.includes('complexity:')) {
+    return `Optimization Candidates (${count} items)`
+  }
+
+  if (first.match(/^Feature\s+\d+:/)) {
+    return `Top Features (${count} items)`
+  }
+
+  if (first.match(/^Node\s+\d+/)) {
+    return `Related Nodes (${count} items)`
+  }
+
+  return `View Details (${count} items)`
+}
+
+function getExampleKey(messageId: string, segIndex: number): string {
+  return `${messageId}-${segIndex}`
+}
+
+function isExampleExpanded(messageId: string, segIndex: number): boolean {
+  return expandedExampleKeys.value.has(getExampleKey(messageId, segIndex))
+}
+
+function setExampleExpanded(messageId: string, segIndex: number, open: boolean) {
+  const key = getExampleKey(messageId, segIndex)
+  const next = new Set(expandedExampleKeys.value)
+  if (open) {
+    next.add(key)
+  } else {
+    next.delete(key)
+  }
+  expandedExampleKeys.value = next
+}
+
+function onExampleToggle(messageId: string, segIndex: number, event: Event) {
+  const target = event.target as HTMLDetailsElement | null
+  if (!target) {
+    return
+  }
+  setExampleExpanded(messageId, segIndex, target.open)
 }
 
 // 监听agent store中的thinking消息变化
@@ -1169,6 +1344,7 @@ onUnmounted(() => {
 /* 聊天气泡：显示Agent消息内容 */
 .chat-bubble {
   flex: 1;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: none;
@@ -1204,6 +1380,8 @@ onUnmounted(() => {
   color: #1f2933;
   line-height: 1.45;
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .chat-body {
@@ -1230,6 +1408,65 @@ onUnmounted(() => {
 
 .code-summary:hover {
   background: #e2e8f0;
+}
+
+.example-block {
+  border: none !important;
+  background: transparent !important;
+}
+
+.example-block .code-summary {
+  border-bottom: none !important;
+  background: transparent !important;
+  padding-left: 0 !important;
+}
+
+.example-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: calc(var(--font-size-sm) * 0.85);
+  color: #4b5563;
+}
+
+.example-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: rotate(225deg);
+  transition: transform 0.2s ease;
+  margin-left: 4px;
+}
+
+.example-block[open] .example-caret {
+  transform: rotate(405deg);
+}
+
+.example-summary-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.example-block .examples-list {
+  margin: 0 0 0 7px;
+  padding: 0.5rem 0 0.5rem 1rem;
+  background: transparent;
+  color: #1f2933;
+  list-style: none;
+  border-left: 2px solid #e2e8f0;
+}
+
+.example-block .examples-list li {
+  margin-left: 0;
+  padding: 0.2rem 0;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .code-pre {

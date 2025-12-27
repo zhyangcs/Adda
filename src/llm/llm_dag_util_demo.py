@@ -114,7 +114,7 @@ class LLMDagConstructor():
         self.nl_agent = NLAgent(self.eval_model_type, status_wrapper=self.status_wrapper)
 
     @staticmethod
-    def _truncate_text(text: str, max_chars: int = 150) -> str:
+    def _truncate_text(text: str, max_chars: int = 2000) -> str:
         if text is None:
             return text
         text = str(text)
@@ -454,15 +454,7 @@ class LLMDagConstructor():
                 "agent": "mainagent",
                 "thinking": self._truncate_text(f"NLAgent: generated {len(next_state)} candidate descriptions; handing off to CodeAgent.")
             })
-            if next_state:
-                feature_preview = "; ".join(
-                    [f"{', '.join(sorted(list(node.write_set)))} -> {node.operation_desc}" for node in next_state]
-                )
-                self.status_wrapper.send_agent_thinking({
-                    "type": "agent_thinking",
-                    "agent": "mainagent",
-                    "thinking": self._truncate_text(f"NLAgent: candidates detail: {feature_preview}")
-                })
+            # 逐条消息由 NLAgent 内部发送，避免将多条候选合并到一条消息中。
 
         # 2. CodeAgent generate the code and fixing code
         code_agent = CodeAgent(status_wrapper=self.status_wrapper)
@@ -784,6 +776,14 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         # [WebSocket推送] 后置Agent活动分析 - A*搜索步骤完成
         if hasattr(self, 'status_wrapper') and next_states:
             analyze_agents_activity_from_nodes(self.status_wrapper, next_states, cur_node, cur_feature_idx)
+
+        # [WebSocket推送] 单步搜索完成提示
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "system",
+                "thinking": self._truncate_text(f"Feature search round {cur_feature_idx + 1} completed.")
+            })
         
     def astar_k_step(self, step_num:int, data_agenda:list[str] = None, data_desc:list[str] = None, target_col:str = None, tb_name:str=None, csv_path:str=None, do_unfinished:bool = False, task_name:str = None):
         """A*算法多步执行入口函数
@@ -837,6 +837,14 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         # 后处理：生成最终特征代码
         self.compute_best_code()
         self.finish = True  # 标记任务完成
+
+        # [WebSocket推送] 全部搜索完成提示
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "system",
+                "thinking": self._truncate_text("Feature search completed.")
+            })
         
     def async_task_to_features(self, cur_node:LLMDAGNODE, cur_feature_idx:int, next_states):
         cur_next_states = self.task_to_features(cur_node, cur_feature_idx)

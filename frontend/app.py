@@ -951,7 +951,8 @@ def feature_search_start():
 
     dataset = payload.get("dataset", "heart")
     model_type = payload.get("modelType", "RF")
-    depth = int(payload.get("depth", 1))
+    # depth = int(payload.get("depth", 2))
+    depth = int(2)
     force_new = str(payload.get("forceNew", "false")).lower() in ["true", "1", "yes"]
     resume = str(payload.get("resume", "false")).lower() in ["true", "1", "yes"]
 
