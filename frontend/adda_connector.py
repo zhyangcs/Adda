@@ -404,6 +404,7 @@ class AddaConnector:
         dag = self.llm_dag_constructor.dag
         draw_nodes = nx.DiGraph()
         nodes_map = {}
+        drawn_node_map = {}
         
         # 重建DRAWNODE结构（参考llm_dag_util.py 478-514行）
         for node in dag.nodes:
@@ -414,6 +415,7 @@ class AddaConnector:
                 exec_time=node.exec_time
             )
             nodes_map[node] = drawn_node
+            drawn_node_map[drawn_node] = node
             draw_nodes.add_node(drawn_node)
         
         for edge in dag.edges:
@@ -464,11 +466,21 @@ class AddaConnector:
 
                 # 添加节点信息（使用原始node_id）
                 if current.node_id != 1:  # 跳过已添加的根节点
-                    op_desc = getattr(current, "operation_desc", None)
+                    original_node = drawn_node_map.get(current)
+                    op_desc = getattr(original_node, "operation_desc", None) if original_node else None
                     if isinstance(op_desc, list):
                         op_desc = "; ".join([str(item) for item in op_desc if item])
                     if not op_desc:
+                        print(termcolor.colored(
+                            f"[tree] node {current.node_id} missing operation_desc, fallback to _generate_desc",
+                            "cyan"
+                        ))
                         op_desc = self._generate_desc(current.task_code)
+                    else:
+                        print(termcolor.colored(
+                            f"[tree] node {current.node_id} operation_desc: {op_desc}",
+                            "red"
+                        ))
                     tree["node_info"].append({
                         "node_id": current.node_id,
                         "feature_name": self._get_feature_name(current.task_code),
@@ -493,8 +505,16 @@ class AddaConnector:
     
     def _get_feature_name(self, task_code: str) -> str:
         """严格提取单个特征名称"""
-        pattern = r"([A-Za-z_][A-Za-z0-9_]*)\[(?:'|\")([^'\"]+)(?:'|\")\]"
-        matches = re.findall(pattern, task_code)
+        assign_pattern = r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(['\"])([^'\"]+)\2\s*\]\s*="
+        last_lhs_feature = None
+        for line in task_code.splitlines():
+            match = re.search(assign_pattern, line)
+            if match:
+                last_lhs_feature = match.group(3)
+        if last_lhs_feature:
+            return last_lhs_feature
+        fallback_pattern = r"([A-Za-z_][A-Za-z0-9_]*)\[(?:'|\")([^'\"]+)(?:'|\")\]"
+        matches = re.findall(fallback_pattern, task_code)
         if not matches:
             return "Unnamed_Feature"
         return matches[-1][1]

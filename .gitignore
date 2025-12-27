@@ -55,3 +55,6 @@ apache-madlib-*/
 logfile
 
 CLAUDE.md
+
+*.png
+*.jpg
