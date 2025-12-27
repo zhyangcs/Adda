@@ -304,9 +304,11 @@ export const useTaskStore = defineStore('task', () => {
 
   async function stopFeatureSearch() {
     try {
+      const agentStore = useAgentStore()
       const res = await apiService.featureSearchStop()
       agentSearchInfo.value = res.data || null
       agentSearchStatus.value = 'clear'
+      agentStore.clearWorkingStates()
       addNotification('Feature search stopped', 'warning')
       return true
     } catch (error: any) {
@@ -338,6 +340,7 @@ export const useTaskStore = defineStore('task', () => {
     featureTreeStore.clearFeatureOutput()
     agentStore.clearMessageQueue()
     agentStore.clearAgentCache()
+    agentStore.clearWorkingStates()
     agentSearchInfo.value = null
     agentSearchStatus.value = 'idle'
     featureSearchClearedAt.value = Date.now()

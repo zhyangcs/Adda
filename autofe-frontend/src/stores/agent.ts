@@ -33,6 +33,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // Agent状态映射 {agent_type: AgentState}
   const agentStates = ref<Map<AgentType, AgentState>>(new Map())
+  const latestWorkingAgent = ref<AgentType | null>(null)
 
   // Agent思考历史 {agent_type: AgentThinking[]}
   const agentThinkingHistory = ref<Map<AgentType, AgentThinking[]>>(new Map())
@@ -70,23 +71,36 @@ export const useAgentStore = defineStore('agent', () => {
     const allStates = Array.from(agentStates.value.values())
     console.log('All agent states:', allStates.map(s => `${s.agent}: ${s.status}`))
 
-    // 获取所有正在工作的agent，并映射到简化的名称
-    const working = allStates
+    const activeAgent = latestWorkingAgent.value
+    const activeState = activeAgent ? agentStates.value.get(activeAgent) : undefined
+
+    const resolveMappedName = (agent: AgentType) => {
+      let mappedName = agent
+      if (agent === 'mainagent') mappedName = 'main'
+      if (agent === 'optimizationagent') mappedName = 'optimization'
+      if (agent === 'nodevalidator') mappedName = 'validation'
+      if (agent === 'system') mappedName = 'system'
+      return mappedName
+    }
+
+    if (activeState && activeState.status === 'working') {
+      const mappedName = resolveMappedName(activeState.agent)
+      console.log('Working agent (latest):', mappedName)
+      return [mappedName]
+    }
+
+    const fallback = allStates
       .filter(state => state.status === 'working')
-      .map(state => {
-        // 将后端的agent名称映射到前端的简化名称
-        let mappedName = state.agent
-        if (state.agent === 'mainagent') mappedName = 'main'
-        if (state.agent === 'optimizationagent') mappedName = 'optimization'
-        if (state.agent === 'nodevalidator') mappedName = 'validation'
-        if (state.agent === 'system') mappedName = 'system'
+      .sort((a, b) => (b.last_updated || 0) - (a.last_updated || 0))[0]
 
-        console.log(`Mapping working agent: ${state.agent} -> ${mappedName}`)
-        return mappedName
-      })
+    if (fallback) {
+      const mappedName = resolveMappedName(fallback.agent)
+      console.log('Working agent (fallback):', mappedName)
+      return [mappedName]
+    }
 
-    console.log('Final working agents mapped:', working)
-    return working
+    console.log('Final working agents mapped:', [])
+    return []
   })
 
   // 检查特定Agent是否正在工作
@@ -243,6 +257,7 @@ export const useAgentStore = defineStore('agent', () => {
     console.log(`[STATE UPDATE] ${agent} is working: ${isWorkingState}, delay: ${delay}ms`)
 
     if (isWorkingState) {
+      latestWorkingAgent.value = agent
       // working 状态立即更新
       const agentState: AgentState = {
         agent,
@@ -413,7 +428,19 @@ export const useAgentStore = defineStore('agent', () => {
       agentStates.value = new Map()
       agentThinkingHistory.value = new Map()
       currentAgentThinking.value = new Map()
+      latestWorkingAgent.value = null
     }
+  }
+
+  const clearWorkingStates = () => {
+    const nextStates = new Map(agentStates.value)
+    nextStates.forEach((state, key) => {
+      if (state.status === 'working') {
+        nextStates.set(key, { ...state, status: 'idle' })
+      }
+    })
+    agentStates.value = nextStates
+    latestWorkingAgent.value = null
   }
 
   // 清除系统通知
@@ -472,6 +499,7 @@ export const useAgentStore = defineStore('agent', () => {
     unsubscribeFromAgent,
     subscribeToAllAgents,
     clearAgentCache,
+    clearWorkingStates,
     clearNotifications,
     pingServer,
     initializeWebSocket,

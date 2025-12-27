@@ -14,6 +14,9 @@ import threading
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Known agent identifiers for status normalization.
+_KNOWN_AGENTS = ("mainagent", "optimizationagent", "system", "nodevalidator")
+
 # 全局WebSocket消息队列，避免直接持有WebSocket服务器引用
 _websocket_message_queue = queue.Queue()
 _websocket_handlers = []
@@ -102,6 +105,10 @@ class AgentStatusWrapper:
                 logger.warning("Agent status data missing 'status' field")
                 return
 
+            # When one agent starts working, mark others as idle to avoid multi-highlight.
+            if status_data.get('status') == 'working':
+                self._set_other_agents_idle(status_data.get('agent'))
+
             # 添加时间戳
             status_data['timestamp'] = time.time()
 
@@ -129,6 +136,32 @@ class AgentStatusWrapper:
         except Exception as e:
             logger.error(f"Error sending agent status: {e}")
             print(f"[ERROR] Failed to send agent status: {e}")
+
+    def _set_other_agents_idle(self, active_agent: str):
+        """Mark other agents as idle when one agent is working."""
+        if not active_agent:
+            return
+
+        candidates = set(_KNOWN_AGENTS)
+        candidates.update(self.agent_states.keys())
+
+        for agent in candidates:
+            if agent == active_agent:
+                continue
+
+            current_status = self.agent_states.get(agent, {}).get("status")
+            if current_status not in (None, "working"):
+                continue
+
+            self.send_agent_status({
+                "type": "agent_status",
+                "agent": agent,
+                "status": "idle",
+                "details": {
+                    "idle_reason": "preempted_by",
+                    "active_agent": active_agent
+                }
+            })
 
     def send_agent_thinking(self, thinking_data: Dict[str, Any]):
         """

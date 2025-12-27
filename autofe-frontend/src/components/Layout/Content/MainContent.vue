@@ -260,7 +260,7 @@ import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
 const agentStore = useAgentStore()
-const { currentAgentThinking, allAgentStates } = storeToRefs(agentStore)
+const { currentAgentThinking, allAgentStates, workingAgents } = storeToRefs(agentStore)
 const { featureSearchClearedAt } = storeToRefs(taskStore)
 
 type AgentKey = 'system' | 'main' | 'optimization' | 'validation'
@@ -273,7 +273,6 @@ const agentDisplayConfig: Record<AgentKey, { label: string; initial: string }> =
   validation: { label: 'Node Validation', initial: 'NV' }
 }
 
-const workingAgents = ref<AgentKey[]>([])
 const connectionActive = ref(false)
 const connectionActiveReverse = ref(false)
 const connectionActiveValidation = ref(false)
@@ -937,37 +936,6 @@ function testWebSocketMessage() {
   agentStore.updateAgentThinking(testThinkingMessage)
 }
 
-// 模拟agent工作状态（保持原有逻辑）
-function simulateAgentWork() {
-  if (taskStore.status === 'running') {
-    workingAgents.value = ['system']
-    connectionActive.value = true
-
-    setTimeout(() => {
-      workingAgents.value = ['main']
-      connectionActive.value = false
-      connectionActiveReverse.value = true
-
-      setTimeout(() => {
-        workingAgents.value = ['optimization']
-        connectionActiveReverse.value = false
-        connectionActiveValidation.value = true
-
-        setTimeout(() => {
-          workingAgents.value = ['validation']
-          connectionActiveValidation.value = false
-          connectionActiveSystem.value = true
-
-          setTimeout(() => {
-            workingAgents.value = []
-            connectionActiveSystem.value = false
-          }, 2000)
-        }, 2000)
-      }, 2000)
-    }, 2000)
-  }
-}
-
 // 轻量防抖：Agent状态变化时触发特征树刷新
 function scheduleTreeReload() {
   if (treeReloadTimer.value) return
@@ -981,19 +949,6 @@ function scheduleTreeReload() {
   }, 800)
 }
 
-// 监听任务状态变化
-watch(() => taskStore.status, (newStatus) => {
-  if (newStatus === 'running') {
-    simulateAgentWork()
-  } else {
-    workingAgents.value = []
-    connectionActive.value = false
-    connectionActiveReverse.value = false
-    connectionActiveValidation.value = false
-    connectionActiveSystem.value = false
-  }
-})
-
 // 监听任务初始化状态变化
 watch(() => taskStore.isInitialized, (isInitialized) => {
   if (isInitialized) {
@@ -1005,34 +960,12 @@ watch(() => taskStore.isInitialized, (isInitialized) => {
 // 监听Agent状态变化，更新工作状态
 watch(allAgentStates, (states) => {
   const stateList = states || []
-  const agentTypeMap: Record<string, AgentKey> = {
-    'system': 'system',
-    'mainagent': 'main',
-    'optimizationagent': 'optimization',
-    'nodevalidator': 'validation'
-  }
 
-  const newWorkingAgents: AgentKey[] = []
-
-  stateList.forEach((state: AgentState) => {
-    const shortName = agentTypeMap[state.agent]
-    if (shortName && state.status === 'working') {
-      newWorkingAgents.push(shortName)
-    }
-  })
-
-  workingAgents.value = newWorkingAgents
-
-  // 更新连接状态
-  const hasMainAgent = stateList.some((s: AgentState) => s.agent === 'mainagent' && s.status === 'working')
-  const hasOptAgent = stateList.some((s: AgentState) => s.agent === 'optimizationagent' && s.status === 'working')
-  const hasValidationAgent = stateList.some((s: AgentState) => s.agent === 'nodevalidator' && s.status === 'working')
-  const hasSystemAgent = stateList.some((s: AgentState) => s.agent === 'system' && s.status === 'working')
-
-  connectionActive.value = hasMainAgent || hasSystemAgent
-  connectionActiveReverse.value = hasOptAgent
-  connectionActiveValidation.value = hasValidationAgent
-  connectionActiveSystem.value = hasSystemAgent
+  const active = (workingAgents.value?.[0] as AgentKey | undefined) || undefined
+  connectionActive.value = active === 'main'
+  connectionActiveReverse.value = active === 'optimization'
+  connectionActiveValidation.value = active === 'validation'
+  connectionActiveSystem.value = active === 'system'
 
   // 主Agent工作/完成时触发特征树刷新（防抖）
   const mainAgentState = stateList.find((s: AgentState) => s.agent === 'mainagent')
@@ -1921,9 +1854,14 @@ onUnmounted(() => {
 
 
 .agent-node.working .agent-icon {
-  background-color: #28a745;
-  color: white;
-  animation: breathe 2s ease-in-out infinite;
+  background-color: transparent;
+  color: #007bff;
+  box-shadow: none;
+  animation: none;
+}
+
+.agent-node.working .agent-image {
+  animation: glow 2s ease-in-out infinite;
 }
 
 .agent-label {
@@ -2034,10 +1972,19 @@ onUnmounted(() => {
 }
 
 /* 动画 */
-@keyframes breathe {
-  0%, 50%, 100% {
-    box-shadow: none;
-  }
+@keyframes glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(0, 123, 255, 0.5)); }
+  50% { filter: drop-shadow(0 0 8px rgba(0, 123, 255, 0.8)); }
+}
+
+@keyframes flow-horizontal {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@keyframes flow-vertical {
+  0% { background-position: 0 100%; }
+  100% { background-position: 0 -100%; }
 }
 
 @keyframes pulse {
@@ -2192,15 +2139,24 @@ onUnmounted(() => {
    =========================================== */
 
 /* 激活状态：当Agent正在工作时的高亮效果 */
-.arrow-horizontal.active,
+.arrow-horizontal.active {
+  background: linear-gradient(90deg, #dee2e6, #007bff, #dee2e6);
+  background-size: 200% 100%;
+  animation: flow-horizontal 1.5s linear infinite;
+}
+
 .arrow-vertical.active {
-  background-color: #007bff;
+  background: linear-gradient(180deg, #dee2e6, #007bff, #dee2e6);
+  background-size: 100% 200%;
+  animation: flow-vertical 1.5s linear infinite;
 }
 
 /* 激活状态的箭头符号颜色 */
-.arrow-horizontal.active::after,
-.arrow-vertical.active::after {
+.arrow-horizontal.active::after {
   border-left-color: #007bff;
+}
+
+.arrow-vertical.active::after {
   border-top-color: #007bff;
 }
 

@@ -801,6 +801,23 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         self.search_type = "ASTAR"
         # 同步全局节点ID（用于节点唯一标识）
         src.llm.llm_dag_node.global_node_id = self.node_id
+
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "system",
+                "status": "working",
+                "work_type": "feature_search",
+                "details": {
+                    "task": task_name,
+                    "step_num": step_num
+                }
+            })
+            self.status_wrapper.send_agent_thinking({
+                "type": "agent_thinking",
+                "agent": "system",
+                "thinking": self._truncate_text("Feature search started.")
+            })
         
         # 初始化任务参数（数据加载/预处理）
         self.init_task_params(data_agenda, data_desc, target_col, tb_name, csv_path, do_unfinished, task_name)
@@ -837,6 +854,18 @@ df['%s'] = label_encoder.fit_transform(df[['%s']])""" %(new_col_name, pair[1]), 
         # 后处理：生成最终特征代码
         self.compute_best_code()
         self.finish = True  # 标记任务完成
+
+        if hasattr(self, 'status_wrapper'):
+            self.status_wrapper.send_agent_status({
+                "type": "agent_status",
+                "agent": "system",
+                "status": "completed",
+                "work_type": "feature_search",
+                "details": {
+                    "task": task_name,
+                    "step_num": step_num
+                }
+            })
 
         # [WebSocket推送] 全部搜索完成提示
         if hasattr(self, 'status_wrapper'):
