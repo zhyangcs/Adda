@@ -139,7 +139,7 @@ class APIService {
   async runAutoPipeline(config?: TaskConfig): Promise<TaskResponse> {
     if (config) {
       // 调试：打印配置信息
-      console.log('AutoStep API Call - Config:', {
+      console.log('PerformanceEvaluation API Call - Config:', {
         description: config.description,
         descriptionLength: config.description?.length || 0,
         dataset: config.dataset,
@@ -149,12 +149,10 @@ class APIService {
       // 传入任务配置，与checkFormat相同的逻辑
       const formData = new FormData()
 
-      // 确保description存在且不为空
-      if (!config.description || config.description.trim() === '') {
-        throw new Error('Task description is required')
+      const description = (config.description || '').trim()
+      if (description) {
+        formData.append('taskDescription', description)
       }
-
-      formData.append('taskDescription', config.description.trim())
 
       // 将数字值转换为对应的文本
       const datasetMap: Record<string, string> = {
@@ -178,14 +176,14 @@ class APIService {
       formData.append('ml_model_type', config.mlModel || 'RF')
       formData.append('comparison_methods', JSON.stringify(config.comparisonMethods || []))
 
-      const response = await fetch(`${this.baseURL}/auto-step/`, {
+      const response = await fetch(`${this.baseURL}/performance-evaluation/`, {
         method: 'POST',
         body: formData
       })
 
       return response.json()
     } else {
-      return this.post('/auto-step/')
+      return this.post('/performance-evaluation/')
     }
   }
 

@@ -538,7 +538,7 @@ class AddaConnector:
             return "应用自定义函数"
         return "特征转换操作"
 
-    def _run_multimodal_performance(self, model_type="RF", task_name=None):
+    def _run_multimodal_performance(self, model_type="RF", task_name=None, store_dir=None):
         """
         直接模仿 run_multimodel_type.py 的做法来执行性能测试
         避开有bug的 test_performance 方法
@@ -546,6 +546,7 @@ class AddaConnector:
         参数:
             model_type: 模型类型 (RF, XGB, LightGBM)
             task_name: 任务名称（如果不提供，尝试从当前DAG构造器获取）
+            store_dir: 可选的特征生成结果目录（例如 test/store/heart_RF_Full）
 
         返回:
             dict: 包含性能指标、SQL代码和执行结果的字典
@@ -583,17 +584,31 @@ class AddaConnector:
             origin_name = os.path.join(test_save_path, f"{actual_task_name}{postfix}")
             exec_name = os.path.join(test_save_path, actual_task_name)
 
-            print(f"Debug: _run_multimodal_performance - dir_path={dir_path}")
-            print(f"Debug: _run_multimodal_performance - postfix={postfix}")
-            print(f"Debug: _run_multimodal_performance - origin_name={origin_name}")
-            print(f"Debug: _run_multimodal_performance - exec_name={exec_name}")
-            print(f"Debug: _run_multimodal_performance - origin_name exists: {os.path.exists(origin_name)}")
+            if store_dir:
+                if not os.path.isdir(store_dir):
+                    return {
+                        "success": False,
+                        "error": f"特征结果目录不存在: {store_dir}",
+                        "auc": 0.0,
+                        "execution_time": 0.0,
+                        "sql_code": {}
+                    }
+                dir_path = store_dir
+                origin_name = store_dir
+                exec_name = store_dir
+                print(f"Debug: _run_multimodal_performance - using store_dir={store_dir}")
+            else:
+                print(f"Debug: _run_multimodal_performance - dir_path={dir_path}")
+                print(f"Debug: _run_multimodal_performance - postfix={postfix}")
+                print(f"Debug: _run_multimodal_performance - origin_name={origin_name}")
+                print(f"Debug: _run_multimodal_performance - exec_name={exec_name}")
+                print(f"Debug: _run_multimodal_performance - origin_name exists: {os.path.exists(origin_name)}")
 
-            # 4. 修复目录重命名逻辑 - 跳过重命名，直接使用现有目录
-            # 因为auto-step已经将pickle文件保存在正确位置
-            print(f"Debug: Skipping directory rename, using existing directory structure")
-            # if os.path.exists(origin_name):
-            #     os.rename(origin_name, exec_name)
+                # 4. 修复目录重命名逻辑 - 跳过重命名，直接使用现有目录
+                # 因为auto-step已经将pickle文件保存在正确位置
+                print("Debug: Skipping directory rename, using existing directory structure")
+                # if os.path.exists(origin_name):
+                #     os.rename(origin_name, exec_name)
 
             # 5. 设置数据库连接
             conn = get_conn()
@@ -602,7 +617,7 @@ class AddaConnector:
             # 6. 设置数据文件和表名
             csvpath = os.path.join(dataset_path, actual_task_name, "train_new.csv")
             db_tb_name = f"{actual_task_name}_src_tb"
-            pycodepath = os.path.join(test_save_path, actual_task_name, "pycodes")
+            pycodepath = os.path.join(dir_path, "pycodes")
 
             # 检查数据文件是否存在
             if not os.path.exists(csvpath):
@@ -620,7 +635,7 @@ class AddaConnector:
             os.makedirs(pycodepath, exist_ok=True)
 
             # 8. 加载LLMDagConstructor状态（关键步骤）
-            last_pipector_path = os.path.join(test_save_path, actual_task_name, "cur_states.pkl")
+            last_pipector_path = os.path.join(dir_path, "cur_states.pkl")
 
             print(f"Debug: Looking for pickle file at {last_pipector_path}")
             print(f"Debug: Pickle file exists: {os.path.exists(last_pipector_path)}")
@@ -638,6 +653,26 @@ class AddaConnector:
 
             # 9. 设置表名
             pipeCtor.tb_name = db_tb_name
+
+            # 9.1 当使用store_dir时，重写pipe的code_path，避免指向旧的任务目录
+            if store_dir and hasattr(pipeCtor, 'pipes') and pipeCtor.pipes:
+                pycode_dir = os.path.join(store_dir, "pycodes")
+                if os.path.isdir(pycode_dir):
+                    for idx, pipe in enumerate(pipeCtor.pipes):
+                        if pipe is None or not getattr(pipe, 'code_path', None):
+                            continue
+                        code_basename = os.path.basename(pipe.code_path)
+                        candidate_path = os.path.join(pycode_dir, code_basename)
+                        if os.path.exists(candidate_path):
+                            pipe.code_path = candidate_path
+                        else:
+                            # 保留原始路径，后续由polisher过滤无效管道
+                            print(
+                                f"Warning: Remapped code path not found for pipe {idx}: {candidate_path}. "
+                                f"Keeping original: {pipe.code_path}"
+                            )
+                else:
+                    print(f"Warning: pycodes directory not found under store_dir: {pycode_dir}")
 
             # 10. 检查是否有有效的pipes（关键修复）
             if not hasattr(pipeCtor, 'pipes') or not pipeCtor.pipes:
@@ -750,7 +785,7 @@ class AddaConnector:
                 }
 
             # 15. 恢复目录名称
-            if os.path.exists(exec_name):
+            if not store_dir and os.path.exists(exec_name):
                 os.rename(exec_name, origin_name)
 
             # 16. 读取生成的SQL文件 - 修复路径问题
@@ -785,7 +820,7 @@ class AddaConnector:
         except Exception as e:
             # 确保在出错时恢复目录名称
             try:
-                if 'exec_name' in locals() and 'origin_name' in locals():
+                if not store_dir and 'exec_name' in locals() and 'origin_name' in locals():
                     if os.path.exists(exec_name):
                         os.rename(exec_name, origin_name)
             except:

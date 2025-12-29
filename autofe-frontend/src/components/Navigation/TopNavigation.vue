@@ -131,6 +131,11 @@ async function handleAgentStop() {
 }
 
 async function handleRunAction() {
+  if (currentRoute.value === 'performance') {
+    if (taskStore.isRunning) return
+    await taskStore.autoStep(true)
+    return
+  }
   workspaceStore.triggerExecution()
 }
 
