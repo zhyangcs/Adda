@@ -56,6 +56,8 @@
                 v-show="tooltipVisible"
                 class="dag-tooltip"
                 :style="{ left: `${tooltipX}px`, top: `${tooltipY}px` }"
+                @mouseenter="onTooltipMouseEnter"
+                @mouseleave="onTooltipMouseLeave"
               >
                 <div class="tooltip-title">{{ pipelineNodeTitle }}</div>
                 <div class="tooltip-section">
@@ -282,6 +284,9 @@ const selectedPipelineNode = ref<Py2SqlDagNode | null>(null)
 const tooltipVisible = ref(false)
 const tooltipX = ref(0)
 const tooltipY = ref(0)
+const isHoveringDagNode = ref(false)
+const isHoveringTooltip = ref(false)
+let tooltipHideTimer: number | null = null
 
 // 分页状态
 const currentPage = ref(0)
@@ -523,6 +528,13 @@ function renderPipelineDag() {
   const container = pipelineDagContainer.value
   if (!container) return
   d3.select(container).selectAll('svg').remove()
+  tooltipVisible.value = false
+  isHoveringDagNode.value = false
+  isHoveringTooltip.value = false
+  if (tooltipHideTimer) {
+    window.clearTimeout(tooltipHideTimer)
+    tooltipHideTimer = null
+  }
   const dag = pipelineDagData.value
   if (!dag || !dag.nodes?.length) return
 
@@ -608,12 +620,12 @@ function renderPipelineDag() {
       levels[l].push(n)
     })
     const levelKeys = Object.keys(levels).map(Number).sort((a, b) => a - b)
-    const maxPerLevel = Math.max(...levelKeys.map(k => levels[k].length), 1)
+    const maxPerLevel = Math.max(...levelKeys.map(k => (levels[k]?.length ?? 0)), 1)
     width = Math.max(740, maxPerLevel * 240)
     height = Math.max(300, levelKeys.length * 160)
 
     levelKeys.forEach((lvl, idx) => {
-      const row = levels[lvl]
+      const row = levels[lvl] || []
       row.forEach((node, i) => {
         const x = (i + 1) * (width / (row.length + 1))
         const y = (idx + 1) * 140
@@ -766,17 +778,16 @@ function renderPipelineDag() {
       return `translate(${pos?.x ?? 0},${pos?.y ?? 0})`
     })
     .style('cursor', 'pointer')
-    .on('mouseover', (event, d) => {
+    .on('mouseenter', (event, d) => {
+      isHoveringDagNode.value = true
       selectedPipelineNode.value = d
       tooltipVisible.value = true
-      updateTooltipPosition(event)
+      updateTooltipPositionFromNode(event)
       d3.select(event.currentTarget).select('rect').style('stroke', '#3b82f6').style('stroke-width', 2)
     })
-    .on('mousemove', (event) => {
-      updateTooltipPosition(event)
-    })
-    .on('mouseout', (event, d) => {
-      tooltipVisible.value = false
+    .on('mouseleave', (event) => {
+      isHoveringDagNode.value = false
+      scheduleHideTooltip()
       d3.select(event.currentTarget).select('rect').style('stroke', '#e2e8f0').style('stroke-width', 1)
     })
 
@@ -829,14 +840,61 @@ function renderPipelineDag() {
     .text(d => `R:${d.readColumns?.length ?? 0} W:${d.writeColumns?.length ?? 0}`)
 }
 
-function updateTooltipPosition(event: MouseEvent) {
+function clampTooltipToContainer(nextX: number, nextY: number, rect: DOMRect) {
+  // Keep tooltip inside container bounds (matches tooltip size in CSS).
+  // Tooltip is 320px wide; height is capped by 520px and also by container height.
+  const tooltipW = 320
+  const tooltipH = Math.min(520, Math.max(120, rect.height - 24))
+  const padding = 12
+
+  const maxX = Math.max(padding, rect.width - tooltipW - padding)
+  const maxY = Math.max(padding, rect.height - tooltipH - padding)
+  tooltipX.value = Math.min(Math.max(nextX, padding), maxX)
+  tooltipY.value = Math.min(Math.max(nextY, padding), maxY)
+}
+
+function updateTooltipPositionFromNode(event: MouseEvent) {
   const container = pipelineDagContainer.value
   if (!container) return
   const rect = container.getBoundingClientRect()
-  const nextX = event.clientX - rect.left + 16
-  const nextY = event.clientY - rect.top + 16
-  tooltipX.value = Math.min(Math.max(nextX, 12), rect.width - 340)
-  tooltipY.value = Math.min(Math.max(nextY, 12), rect.height - 260)
+
+  // Anchor tooltip to the node's actual DOM box so it doesn't follow the mouse.
+  const target = event.currentTarget as Element | null
+  const nodeRect = target?.getBoundingClientRect?.()
+  if (!nodeRect) return
+
+  // Slight overlap with node area so user can move from node to tooltip easily.
+  const overlapX = Math.max(10, nodeRect.width * 0.15)
+  const overlapY = Math.max(10, nodeRect.height * 0.15)
+  const nextX = nodeRect.left - rect.left + overlapX
+  const nextY = nodeRect.top - rect.top + overlapY
+  clampTooltipToContainer(nextX, nextY, rect)
+}
+
+function scheduleHideTooltip() {
+  if (tooltipHideTimer) {
+    window.clearTimeout(tooltipHideTimer)
+    tooltipHideTimer = null
+  }
+  // Small delay allows crossing the overlap gap without flicker.
+  tooltipHideTimer = window.setTimeout(() => {
+    if (!isHoveringDagNode.value && !isHoveringTooltip.value) {
+      tooltipVisible.value = false
+    }
+  }, 120)
+}
+
+function onTooltipMouseEnter() {
+  isHoveringTooltip.value = true
+  if (tooltipHideTimer) {
+    window.clearTimeout(tooltipHideTimer)
+    tooltipHideTimer = null
+  }
+}
+
+function onTooltipMouseLeave() {
+  isHoveringTooltip.value = false
+  scheduleHideTooltip()
 }
 
 function compactCols(cols?: string[]) {
@@ -1089,15 +1147,15 @@ onMounted(() => {
   position: absolute;
   z-index: 10;
   width: 320px;
-  max-height: 520px;
-  overflow: hidden;
+  max-height: min(520px, calc(100% - 24px));
+  overflow: auto;
   border-radius: 14px;
   background: #0b1224;
   color: #e2e8f0;
   border: 1px solid rgba(148, 163, 184, 0.4);
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.4);
   padding: 12px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .tooltip-title {
@@ -1123,8 +1181,8 @@ onMounted(() => {
   padding: 8px;
   font-size: 11px;
   line-height: 1.4;
-  max-height: 120px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   white-space: pre-wrap;
 }
 
