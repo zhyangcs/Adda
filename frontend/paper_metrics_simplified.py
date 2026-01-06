@@ -72,7 +72,7 @@ class PaperMetricsCalculatorSimplified:
 
             # 3. 计算指标
             metrics_results = self._calculate_importance_metrics(
-                complete_data, task_name, all_features, methods
+                complete_data, task_name, all_features, methods, top_k
             )
 
             # 4. 分析Top-K特征
@@ -350,7 +350,7 @@ class PaperMetricsCalculatorSimplified:
                 'target': 'unknown'
             }
 
-    def _calculate_importance_metrics(self, data: pd.DataFrame, task_name: str, all_features: dict, methods: list):
+    def _calculate_importance_metrics(self, data: pd.DataFrame, task_name: str, all_features: dict, methods: list, top_k: int = 7):
         """
         计算特征重要性指标
 
@@ -359,6 +359,7 @@ class PaperMetricsCalculatorSimplified:
             task_name: 任务名称
             all_features: 特征分类信息
             methods: 评估方法列表
+            top_k: RFE计算所需的Top-K参数
 
         Returns:
             重要性指标结果
@@ -389,7 +390,7 @@ class PaperMetricsCalculatorSimplified:
                 metrics_results['ig'] = self._calculate_ig_importance(X, y)
 
             if 'rfe' in methods:
-                metrics_results['rfe'] = self._calculate_rfe_importance(X, y)
+                metrics_results['rfe'] = self._calculate_rfe_importance(X, y, top_k)
 
             if 'fi' in methods:
                 metrics_results['fi'] = self._calculate_fi_importance(X, y)
@@ -458,16 +459,60 @@ class PaperMetricsCalculatorSimplified:
             print(f"IG calculation failed: {str(e)}")
             return {'error': str(e), 'method': 'information_gain'}
 
-    def _calculate_rfe_importance(self, X, y):
-        """计算RFE重要性"""
+    def _calculate_rfe_importance(self, X, y, top_k=7):
+        """
+        计算RFE重要性 - 模拟calculate_rfe_new.py的逻辑
+        1. 使用RFE选出Top-K特征
+        2. 仅使用Top-K特征训练模型，获取真实的Feature Importance
+        3. 非Top-K特征给予极小的占位值（基于排名递减），以保证排序正确
+        """
         try:
-            # 使用简单的模型
+            feature_importance = {}
+            
+            # 1. 使用RFE选出Top-K
+            # 使用简单的模型进行快速筛选
             estimator = RandomForestClassifier(n_estimators=20, random_state=42, n_jobs=2)
-            rfe = RFE(estimator=estimator, n_features_to_select=1)
-            rfe.fit(X, y)
-
-            # RFE排名（1是最好的）
-            feature_importance = {feature: len(X.columns) - rank for feature, rank in zip(X.columns, rfe.ranking_)}
+            selector = RFE(estimator, n_features_to_select=top_k, step=1)
+            selector.fit(X, y)
+            
+            # 获取RFE排名 (1是最好的)
+            ranking = selector.ranking_
+            
+            # 识别Top-K特征 (ranking == 1的特征)
+            # 注意：如果特征数 < top_k，ranking=1的特征数可能小于top_k，但这没关系
+            top_features_mask = (ranking == 1)
+            top_features_names = X.columns[top_features_mask]
+            
+            # 2. 在Top-K子集上重新训练以获取真实Importance
+            if len(top_features_names) > 0:
+                X_selected = X[top_features_names]
+                # 使用稍强的模型配置以获得更稳定的Importance
+                final_estimator = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=2)
+                final_estimator.fit(X_selected, y)
+                
+                # 记录Top-K特征的真实Importance
+                for feat, imp in zip(top_features_names, final_estimator.feature_importances_):
+                    feature_importance[feat] = float(imp)
+                    
+            # 找到Top-K中的最小值，用于后续非Top-K特征的缩放
+            min_top_imp = min(feature_importance.values()) if feature_importance else 0.0
+            
+            # 3. 处理非Top-K特征
+            # 为了保证它们排在Top-K之后，且保持RFE的相对顺序
+            # 我们可以给它们赋予比 min_top_imp 更小的值
+            # 简单的策略：值 = min_top_imp * (1 / ranking) * 0.9
+            # 这样 ranking 越大的（越差的），值越小
+            for feat, rank in zip(X.columns, ranking):
+                if rank > 1: # 非Top-K
+                    # 使用一个递减函数，确保比所有Top-K都小
+                    # rank 最小是 2
+                    decay_factor = 1.0 / (rank * rank) # 平方衰减让其迅速变小，与真实Importance拉开差距
+                    # 确保不超过最小值的一半，形成明显的断层，方便区分
+                    assigned_val = min_top_imp * decay_factor * 0.5
+                    feature_importance[feat] = float(assigned_val)
+                elif feat not in feature_importance:
+                    # 理论上不应该到这里，防止遗漏
+                    feature_importance[feat] = float(min_top_imp)
 
             return {
                 'feature_importance': feature_importance,
