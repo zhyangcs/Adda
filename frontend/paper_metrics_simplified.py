@@ -39,7 +39,7 @@ class PaperMetricsCalculatorSimplified:
         self.generated_feature_count = 0
         self.total_feature_count = 0
 
-    def calculate_paper_metrics(self, task_name: str, top_k: int = 7, methods: list = None):
+    def calculate_paper_metrics(self, task_name: str, top_k: int = 7, methods: list = None, rfe_use_placeholder: bool = False):
         """
         计算论文指标的主要方法
 
@@ -72,7 +72,7 @@ class PaperMetricsCalculatorSimplified:
 
             # 3. 计算指标
             metrics_results = self._calculate_importance_metrics(
-                complete_data, task_name, all_features, methods, top_k
+                complete_data, task_name, all_features, methods, top_k, rfe_use_placeholder
             )
 
             # 4. 分析Top-K特征
@@ -350,7 +350,7 @@ class PaperMetricsCalculatorSimplified:
                 'target': 'unknown'
             }
 
-    def _calculate_importance_metrics(self, data: pd.DataFrame, task_name: str, all_features: dict, methods: list, top_k: int = 7):
+    def _calculate_importance_metrics(self, data: pd.DataFrame, task_name: str, all_features: dict, methods: list, top_k: int = 7, rfe_use_placeholder: bool = False):
         """
         计算特征重要性指标
 
@@ -390,7 +390,7 @@ class PaperMetricsCalculatorSimplified:
                 metrics_results['ig'] = self._calculate_ig_importance(X, y)
 
             if 'rfe' in methods:
-                metrics_results['rfe'] = self._calculate_rfe_importance(X, y, top_k)
+                metrics_results['rfe'] = self._calculate_rfe_importance(X, y, top_k, rfe_use_placeholder)
 
             if 'fi' in methods:
                 metrics_results['fi'] = self._calculate_fi_importance(X, y)
@@ -459,7 +459,7 @@ class PaperMetricsCalculatorSimplified:
             print(f"IG calculation failed: {str(e)}")
             return {'error': str(e), 'method': 'information_gain'}
 
-    def _calculate_rfe_importance(self, X, y, top_k=7):
+    def _calculate_rfe_importance(self, X, y, top_k=7, use_placeholder=False):
         """
         计算RFE重要性 - 模拟calculate_rfe_new.py的逻辑
         1. 使用RFE选出Top-K特征
@@ -504,12 +504,14 @@ class PaperMetricsCalculatorSimplified:
             # 这样 ranking 越大的（越差的），值越小
             for feat, rank in zip(X.columns, ranking):
                 if rank > 1: # 非Top-K
-                    # 使用一个递减函数，确保比所有Top-K都小
-                    # rank 最小是 2
-                    decay_factor = 1.0 / (rank * rank) # 平方衰减让其迅速变小，与真实Importance拉开差距
-                    # 确保不超过最小值的一半，形成明显的断层，方便区分
-                    assigned_val = min_top_imp * decay_factor * 0.5
-                    feature_importance[feat] = float(assigned_val)
+                    if use_placeholder:
+                        # 使用一个递减函数，确保比所有Top-K都小
+                        # rank 最小是 2
+                        decay_factor = 1.0 / (rank * rank) # 平方衰减让其迅速变小，与真实Importance拉开差距
+                        # 确保不超过最小值的一半，形成明显的断层，方便区分
+                        assigned_val = min_top_imp * decay_factor * 0.5
+                        feature_importance[feat] = float(assigned_val)
+                    # else: 不返回非Top-K特征
                 elif feat not in feature_importance:
                     # 理论上不应该到这里，防止遗漏
                     feature_importance[feat] = float(min_top_imp)
@@ -633,7 +635,7 @@ class PaperMetricsCalculatorSimplified:
             return {}
 
 
-def calculate_simplified_paper_metrics(task_name: str, top_k: int = 7, methods: list = None):
+def calculate_simplified_paper_metrics(task_name: str, top_k: int = 7, methods: list = None, rfe_use_placeholder: bool = False):
     """
     简化的论文指标计算主函数
 
@@ -649,7 +651,7 @@ def calculate_simplified_paper_metrics(task_name: str, top_k: int = 7, methods: 
         methods = ['shap', 'ig', 'rfe', 'fi']
 
     calculator = PaperMetricsCalculatorSimplified()
-    return calculator.calculate_paper_metrics(task_name, top_k, methods)
+    return calculator.calculate_paper_metrics(task_name, top_k, methods, rfe_use_placeholder)
 
 
 # 测试代码

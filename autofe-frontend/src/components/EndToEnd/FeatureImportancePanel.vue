@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div class="panel-title">
         <i class="bi bi-bar-chart"></i>
-        Feature Importance Analysis
+        Feature Explainability
       </div>
       <div class="panel-actions">
         <div class="importance-tabs header-tabs">
@@ -43,24 +43,6 @@
           </div>
 
           <div v-else class="paper-content modern-paper">
-            <!-- 顶部摘要 -->
-            <div class="top-summary">
-              <div class="summary-item">
-                <span class="summary-label">Original Features:</span>
-                <span class="summary-value">{{ paperMetrics?.original_feature_count || 0 }}</span>
-              </div>
-              <div class="summary-separator">|</div>
-              <div class="summary-item">
-                <span class="summary-label">New Features:</span>
-                <span class="summary-value new">{{ paperMetrics?.generated_feature_count || 0 }}</span>
-              </div>
-              <div class="summary-separator">|</div>
-              <div class="summary-item">
-                <span class="summary-label">Total Features:</span>
-                <span class="summary-value total">{{ paperMetrics?.total_feature_count || 0 }}</span>
-              </div>
-            </div>
-
             <!-- 方法卡片 -->
             <div class="method-grid modern">
               <div
@@ -188,13 +170,12 @@ const props = defineProps<{
 
 const barChartRef = ref<HTMLElement>()
 
-type ImportanceMethod = 'shap' | 'ig' | 'rfe' | 'fi'
+type ImportanceMethod = 'shap' | 'ig' | 'fi'
 
 const importanceTabs = [
   { key: 'paper', label: 'Top-7', icon: 'bi bi-journal-text' },
   { key: 'shap', label: 'SHAP', icon: 'bi bi-lightning' },
   { key: 'ig', label: 'IG', icon: 'bi bi-graph-up' },
-  { key: 'rfe', label: 'RFE', icon: 'bi bi-arrow-repeat' },
   { key: 'fi', label: 'FI', icon: 'bi bi-star' }
 ] as const
 
@@ -281,7 +262,7 @@ const bestPerformingMethod = computed(() => {
 
 const topKValue = computed(() => paperMetrics.value?.top_k || 7)
 
-const methodOrder: ImportanceMethod[] = ['shap', 'ig', 'rfe', 'fi']
+const methodOrder: ImportanceMethod[] = ['shap', 'ig', 'fi']
 
 const methodCards = computed(() => {
   return methodOrder.map(method => {
@@ -992,11 +973,11 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 .paper-content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
 .modern-paper {
-  gap: 10px;
+  gap: 14px;
 }
 
 .top-summary {
@@ -1042,19 +1023,20 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .method-grid.modern {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .modern-method-card {
   background: white;
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 8px 12px 8px;
+  padding: 12px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   box-shadow: none;
+  min-height: 240px;
 }
 
 .card-header-row {
@@ -1220,9 +1202,19 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   }
 }
 
+@media (max-width: 1024px) {
+  .modern-method-card {
+    min-height: 220px;
+  }
+}
+
 @media (max-width: 900px) {
   .method-grid.modern {
     grid-template-columns: 1fr;
+  }
+
+  .modern-method-card {
+    min-height: 200px;
   }
 }
 

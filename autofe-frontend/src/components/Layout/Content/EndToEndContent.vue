@@ -4,7 +4,8 @@
     <div class="main-grid">
       <!-- 左上：特征信息展示 -->
       <div class="grid-section feature-info-section">
-        <FeatureInfoPanel :feature-data="currentFeatureInfo" />
+        <!-- <FeatureInfoPanel :feature-data="currentFeatureInfo" /> -->
+        <RFEImportancePanel :rfe-data="rfeImportanceData" />
       </div>
 
       <!-- 右上：性能对比图表 -->
@@ -58,12 +59,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useTaskStore } from '@/stores/task'
-import FeatureInfoPanel from '../../EndToEnd/FeatureInfoPanel.vue'
 import PerformanceComparisonChart from '../../EndToEnd/PerformanceComparisonChart.vue'
 import TimeComparisonChart from '../../EndToEnd/TimeComparisonChart.vue'
 import FeatureImportancePanel from '../../EndToEnd/FeatureImportancePanel.vue'
+import RFEImportancePanel from '../../EndToEnd/RFEImportancePanel.vue'
 import type {
-  FeatureInfo,
   PerformanceData,
   TimeData,
   ImportanceData,
@@ -74,17 +74,6 @@ import type {
 const taskStore = useTaskStore()
 
 // 从auto-step获取的真实数据（直接使用简化后的数据结构）
-const realFeatureInfo = computed(() => {
-  const data = taskStore.autoStepData?.featureInfo
-  if (!data) return null
-
-  return {
-    description: data.description || 'No description available',
-    pythonCode: data.pythonCode || '# No Python code available',
-    sqlCode: data.sqlCode || '-- No SQL code available'
-  } as FeatureInfo
-})
-
 const realPerformanceData = computed(() => {
   const data = taskStore.autoStepData?.performanceData
   if (!data) return null
@@ -176,6 +165,7 @@ const realImportanceData = computed(() => {
         console.log('Paper metrics:', paperMetrics)
 
       const metrics = paperMetrics.metrics as any
+      const generatedFeatures = paperMetrics?.all_features?.generated || []
 
       // 转换每个方法的特征重要性数据
       const convertMethodData = (method: keyof typeof metrics): FeatureImportance[] => {
@@ -188,6 +178,7 @@ const realImportanceData = computed(() => {
           .map(([feature, importance]) => {
             // 数据验证和清理
             let numImportance: number
+            const isGenerated = Array.isArray(generatedFeatures) && generatedFeatures.includes(feature)
 
             // 处理各种类型的importance值
             if (Array.isArray(importance)) {
@@ -216,7 +207,8 @@ const realImportanceData = computed(() => {
 
             return {
               feature,
-              importance: numImportance
+              importance: numImportance,
+              isGenerated
             }
           })
           .filter(feature => feature !== null) // 过滤掉无效数据
@@ -323,10 +315,10 @@ const executionStatus = computed(() => {
 })
 
 // 计算属性 - 直接使用简化后的数据结构
-const currentFeatureInfo = computed(() => realFeatureInfo.value)
 const currentPerformanceData = computed(() => realPerformanceData.value)
 const currentTimeData = computed(() => realTimeData.value)
 const currentImportanceData = computed(() => realImportanceData.value)
+const rfeImportanceData = computed(() => currentImportanceData.value?.rfe || [])
 
 const getStatusText = () => {
   switch (executionStatus.value) {

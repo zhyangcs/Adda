@@ -23,6 +23,7 @@ export interface FeatureImportance {
   importance: number
   rawImportance?: number  // 保存原始值用于显示
   scalingFactor?: number  // 记录缩放因子
+  isGenerated?: boolean   // 标记是否为新生成特征
 }
 
 // Paper Metrics 相关类型定义
