@@ -1,16 +1,12 @@
 <template>
-  <div class="main-layout">
-    <!-- 顶部导航栏 -->
-    <TopNavigation />
+  <div class="main-layout" :class="{ 'plain-layout': hideChrome }">
+    <TopNavigation v-if="!hideChrome" />
 
-    <div class="content-area">
-      <!-- 左侧栏：任务配置与控制 -->
-      <AppSidebar />
+    <div class="content-area" :class="{ plain: hideChrome }">
+      <AppSidebar v-if="!hideChrome" />
 
-      <!-- 中间栏：Agent思考过程与特征生成 -->
-      <div class="center-content">
-        <!-- 路由视图内容 -->
-        <div class="content-wrapper">
+      <div class="center-content" :class="{ plain: hideChrome }">
+        <div class="content-wrapper" :class="{ plain: hideChrome }">
           <router-view />
         </div>
       </div>
@@ -19,8 +15,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppSidebar from './Sidebar/AppSidebar.vue'
 import TopNavigation from '../Navigation/TopNavigation.vue'
+
+const route = useRoute()
+const hideChrome = computed(() => route.meta.hideChrome === true)
 </script>
 
 <style scoped>
@@ -32,12 +33,21 @@ import TopNavigation from '../Navigation/TopNavigation.vue'
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
+.main-layout.plain-layout {
+  background-color: transparent;
+}
+
 .content-area {
   display: flex;
   flex: 1;
   height: calc(100vh - 4rem);
   position: relative;
   overflow: visible;
+}
+
+.content-area.plain {
+  height: auto;
+  min-height: 100vh;
 }
 
 .center-content {
@@ -50,6 +60,10 @@ import TopNavigation from '../Navigation/TopNavigation.vue'
   background-color: #f8fafc;
 }
 
+.center-content.plain {
+  background-color: transparent;
+}
+
 .content-wrapper {
   flex: 1;
   /* allow routed content (e.g. InDatabaseContent) to scroll vertically */
@@ -57,6 +71,10 @@ import TopNavigation from '../Navigation/TopNavigation.vue'
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.content-wrapper.plain {
+  padding: 0;
 }
 
 /* 响应式设计 */

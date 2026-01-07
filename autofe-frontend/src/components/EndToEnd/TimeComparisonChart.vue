@@ -177,7 +177,7 @@ const createChart = () => {
     .attr('height', height)
 
   // 调整边距：给顶部留出空间放图例，避免与柱体重叠
-  const margin = { top: 60, right: 32, bottom: 25, left: 96 }
+  const margin = { top: 56, right: 36, bottom: 44, left: 160 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -203,156 +203,143 @@ const createChart = () => {
   const timeScale = timeUnit.value === 'minutes' ? 60 : 1
 
   // 安全的数值计算
-  const maxTimeValue = Math.max(...chartData.value.map(d => d.totalTime / timeScale), 1)
+  const maxTimeValue = Math.max(...validData.map(d => (d.totalTime || 0) / timeScale), 1)
 
-  // 比例尺
-  const xScale = d3.scaleBand()
-    .domain(chartData.value.map(d => d.method))
-    .range([0, innerWidth])
-    .padding(0.2)
-
-  const yScale = d3.scaleLinear()
+  // 比例尺（横向柱状图）
+  const xScale = d3.scaleLinear()
     .domain([0, maxTimeValue])
     .nice()
-    .range([innerHeight, 0])
+    .range([0, innerWidth])
 
-  // X轴
+  const yScale = d3.scaleBand()
+    .domain(validData.map(d => d.method))
+    .range([0, innerHeight])
+    .padding(0.22)
+
+  // 竖向网格线（若干条竖线表示标度）
+  const grid = g.append('g')
+    .attr('class', 'x-grid')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(
+      d3.axisBottom(xScale)
+        .ticks(6)
+        .tickSize(-innerHeight)
+        .tickFormat(() => '')
+    )
+  grid.selectAll('.domain').remove()
+  grid.selectAll('line')
+    .attr('stroke', '#dfe3eb')
+    .attr('stroke-width', 1)
+    .attr('shape-rendering', 'crispEdges')
+
+  // Y轴（方法名）
+  g.append('g')
+    .call(d3.axisLeft(yScale).tickSize(0).tickPadding(10))
+    .selectAll('text')
+    .style('text-anchor', 'end')
+
+  // X轴（时间刻度）
   g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale))
-    .selectAll('text')
-    .style('text-anchor', 'middle')
-    .attr('dx', '0')
-    .attr('dy', '0.75em')
-    .attr('transform', 'rotate(0)')
-
-  // Y轴
-  g.append('g')
     .call(
-      d3.axisLeft(yScale)
+      d3.axisBottom(xScale)
         .ticks(6)
-        .tickPadding(6)
+        .tickPadding(8)
         .tickFormat(d => {
           const value = Number(d)
           if (timeUnit.value === 'minutes') {
             const minutes = value
             return minutes >= 1 ? `${minutes.toFixed(1)} min` : `${(minutes * 60).toFixed(0)} s`
           }
-          // Seconds 模式下始终显示秒，不再转为分钟
           return `${value.toFixed(0)} s`
         })
     )
 
-  // Y轴标签
+  // X轴标签
   g.append('text')
-    .attr('transform', 'rotate(-90)')
-    .attr('y', -margin.left + 18)
-    .attr('x', -innerHeight / 2)
-    .attr('dy', '0')
+    .attr('x', innerWidth / 2)
+    .attr('y', innerHeight + margin.bottom - 8)
     .style('text-anchor', 'middle')
-    .style('dominant-baseline', 'middle')
     .style('font-size', '16px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
     .text(`Time (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
-  // 堆叠柱状图数据
-  const stackedData = validData.map(d => ({
+  // 分组柱数据（不堆叠）：Training + Feature Generation 分开显示
+  const groupedData = validData.map(d => ({
     method: d.method,
     isAdda: d.isAdda,
-    training: d.trainingTime / timeScale,
-    other: d.otherTime / timeScale
+    total: Math.max(0, d.totalTime / timeScale),
+    training: Math.max(0, d.trainingTime / timeScale),
+    other: Math.max(0, d.otherTime / timeScale)
   }))
 
-  // 堆叠生成器
-  const stack = d3.stack<any>()
-    .keys(['training', 'other'])
-
-  const series = stack(stackedData as unknown as Array<{ training: number; other: number }>)
-
-  // 颜色比例尺
+  // 颜色：Feature Generation=橙色，Training=灰色
   const colorScale = d3.scaleOrdinal<string, string>()
     .domain(['training', 'other'])
-    .range(['#1d4ed8', '#f59e0b']) // training: blue, feature generation: yellow
+    .range(['#9ca3af', '#f59e0b'])
 
-  // 绘制堆叠柱状图
+  const subScale = d3.scaleBand()
+    .domain(['training', 'other'])
+    .range([0, yScale.bandwidth()])
+    .padding(0.18)
+
+  // 每个方法一个分组
   const groups = g.selectAll('.method-group')
-    .data(stackedData)
-    .enter().append('g')
+    .data(groupedData)
+    .enter()
+    .append('g')
     .attr('class', 'method-group')
+    .attr('transform', (d: any) => `translate(0,${yScale(d.method) || 0})`)
 
-  // 绘制每个柱子的分段
-  const bars = groups.selectAll('rect')
-    .data((d: any, groupIndex: number) => series.map(s => {
-      const seriesData = s[groupIndex]
-      return {
-        method: d.method,
-        isAdda: d.isAdda,
-        key: s.key,
-        value: d[s.key] || 0,
-        start: seriesData?.[0] || 0,
-        end: seriesData?.[1] || 0
-      }
-    }))
-    .enter().append('rect')
+  const barRows = groups.selectAll('rect')
+    .data((d: any) => ([
+      { method: d.method, isAdda: d.isAdda, key: 'training', value: d.training },
+      { method: d.method, isAdda: d.isAdda, key: 'other', value: d.other }
+    ]))
+    .enter()
+    .append('rect')
     .attr('class', 'stacked-bar')
-    .attr('x', (d: any) => xScale(d.method) || 0)
-    .attr('width', xScale.bandwidth())
-    .attr('y', (d: any) => {
-      const endValue = isNaN(d.end) || d.end < 0 ? 0 : d.end
-      return yScale(endValue)
-    })
-    .attr('height', (d: any) => {
-      const startValue = isNaN(d.start) || d.start < 0 ? 0 : d.start
-      const endValue = isNaN(d.end) || d.end < 0 ? 0 : d.end
-      return yScale(startValue) - yScale(endValue)
-    })
-    .attr('fill', (d: any) => colorScale(d.key as string) || '#1d4ed8')
-    .attr('rx', 2)
+    .attr('x', 0)
+    .attr('y', (d: any) => subScale(d.key) || 0)
+    .attr('height', subScale.bandwidth())
+    .attr('width', 0)
+    .attr('fill', (d: any) => colorScale(d.key as string) || '#9ca3af')
+    .attr('rx', 3)
     .style('cursor', 'pointer')
-    .attr('opacity', 0)
 
-  // 动画
-  bars.transition()
+  barRows.transition()
     .duration(800)
-    .delay((d, i) => i * 50)
-    .attr('opacity', 1)
+    .delay((_d, i) => i * 30)
+    .attr('width', (d: any) => xScale(d.value))
 
-  // 添加边框（为Adda方法）
+  // Adda 高亮边框（围绕总时间标尺宽度）
   groups
     .filter((d: any) => d.isAdda)
     .append('rect')
-    .attr('x', (d: any) => (xScale(d.method) || 0) - 2)
-    .attr('width', xScale.bandwidth() + 4)
-    .attr('y', (d: any) => {
-      const value = d.totalTime / timeScale
-      return isNaN(value) || value < 0 ? innerHeight : yScale(value)
-    })
-    .attr('height', (d: any) => {
-      const value = d.totalTime / timeScale
-      const yPos = isNaN(value) || value < 0 ? innerHeight : yScale(value)
-      return innerHeight - yPos
-    })
+    .attr('x', -2)
+    .attr('y', -2)
+    .attr('height', yScale.bandwidth() + 4)
+    .attr('width', (d: any) => xScale(d.total) + 4)
     .attr('fill', 'none')
     .attr('stroke', '#007bff')
     .attr('stroke-width', 2)
     .attr('stroke-dasharray', '5,3')
-    .attr('rx', 4)
+    .attr('rx', 6)
     .style('opacity', 0)
     .transition()
     .duration(800)
-    .delay(1000)
+    .delay(800)
     .style('opacity', 1)
 
   // 鼠标事件
   groups
-    .on('mouseover', function(event, d) {
+    .on('mouseover', function(event, d: any) {
       d3.select(this).selectAll('.stacked-bar')
         .transition()
         .duration(200)
-        .attr('opacity', 0.8)
+        .attr('opacity', 0.85)
 
-      // 从原始数据中获取完整信息
       const originalData = chartData.value.find(item => item.method === d.method)
       if (originalData) {
         showTooltip(event, {
@@ -372,11 +359,10 @@ const createChart = () => {
         .transition()
         .duration(200)
         .attr('opacity', 1)
-
       hideTooltip()
     })
 
-  currentChart = { svg, g, xScale, yScale, bars }
+  currentChart = { svg, g, xScale, yScale, bars: barRows }
 }
 
 const updateChart = () => {
@@ -552,6 +538,7 @@ watch(() => props.timeData, () => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .panel-header {
@@ -572,7 +559,7 @@ watch(() => props.timeData, () => {
   gap: 10px;
   font-weight: 700;
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .panel-actions {
@@ -663,7 +650,7 @@ watch(() => props.timeData, () => {
   box-shadow: var(--shadow-md, 0 4px 8px rgba(0,0,0,0.08));
   z-index: 5;
   color: #1f2937;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -682,7 +669,7 @@ watch(() => props.timeData, () => {
 }
 
 .training-segment {
-  background: #1d4ed8;
+  background: #9ca3af;
 }
 
 .other-segment {
@@ -766,18 +753,18 @@ watch(() => props.timeData, () => {
 
 :deep(.domain) {
   stroke: #cbd5e1;
-  stroke-width: 1.2;
+  stroke-width: 1;
 }
 
 :deep(.tick line) {
   stroke: #cbd5e1;
-  stroke-width: 1.2;
+  stroke-width: 1;
 }
 
 :deep(.tick text) {
   fill: #1f2937;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 :deep(.method-group text) {
