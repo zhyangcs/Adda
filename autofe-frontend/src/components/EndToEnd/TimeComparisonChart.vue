@@ -42,8 +42,8 @@
           <span>Training Time</span>
         </div>
         <div class="legend-item">
-          <div class="legend-segment other-segment"></div>
-          <span>Feature Generation</span>
+          <div class="legend-segment latency-segment"></div>
+          <span>End-to-End Latency</span>
         </div>
       </div>
 
@@ -64,14 +64,6 @@
         <div class="tooltip-row">
           <span>Training:</span>
           <strong>{{ formatTime(tooltip.data.trainingTime) }}</strong>
-        </div>
-        <div class="tooltip-row">
-          <span>Feature Generation:</span>
-          <strong>{{ formatTime(tooltip.data.otherTime) }}</strong>
-        </div>
-        <div class="tooltip-row">
-          <span>Training Ratio:</span>
-          <strong>{{ tooltip.data.trainingRatio }}%</strong>
         </div>
       </div>
     </div>
@@ -95,9 +87,7 @@ const tooltip = ref({
   data: {
     method: '',
     totalTime: 0,
-    trainingTime: 0,
-    otherTime: 0,
-    trainingRatio: 0
+    trainingTime: 0
   },
   style: {
     left: '0px',
@@ -113,17 +103,19 @@ const chartData = computed(() => {
   if (!data) return []
 
   return data.methods.map((method, index) => {
-    const totalTime = data.totalTime?.[index] || 0
     const trainingTime = data.trainingTime?.[index] || 0
-    const otherTime = totalTime - trainingTime
-    const trainingRatio = totalTime > 0 ? Math.round((trainingTime / totalTime) * 100) : 0
+    // Prefer backend featureGenerationTime; fallback to legacy totalTime-trainingTime
+    const featureGenTimeRaw = data.featureGenerationTime?.[index]
+    const legacyTotal = data.totalTime?.[index] || 0
+    const featureGenerationTime = typeof featureGenTimeRaw === 'number'
+      ? featureGenTimeRaw
+      : Math.max(0, legacyTotal - trainingTime)
+    const endToEndLatency = Math.max(0, trainingTime + featureGenerationTime)
 
     return {
       method,
-      totalTime,
+      totalTime: endToEndLatency,
       trainingTime,
-      otherTime,
-      trainingRatio,
       isAdda: method === 'Adda'
     }
   }).sort((a, b) => (a.totalTime || 0) - (b.totalTime || 0)) // 按总时间升序排序
@@ -159,7 +151,7 @@ const createChart = () => {
   const height = (() => {
     const rectHeight = container.getBoundingClientRect().height
     const h = rectHeight && rectHeight > 0 ? rectHeight : container.clientHeight
-    return Math.max(h || 0, 320) // 保留较高最小值，但为下方图例腾出空间
+    return Math.max(h || 0, 360) // 保留较高最小值，但为下方图例腾出空间
   })()
 
   // 如果容器当前不可见或尺寸为0，延迟到下一帧再尝试，避免缓存/切换后刻度错位
@@ -176,8 +168,8 @@ const createChart = () => {
     .attr('width', width)
     .attr('height', height)
 
-  // 调整边距：给顶部留出空间放图例，避免与柱体重叠
-  const margin = { top: 56, right: 36, bottom: 44, left: 160 }
+  // 调整边距：减少顶部留白，使图表充满组件，图例将覆盖在图表右上角
+  const margin = { top: 20, right: 20, bottom: 60, left: 75 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -203,7 +195,8 @@ const createChart = () => {
   const timeScale = timeUnit.value === 'minutes' ? 60 : 1
 
   // 安全的数值计算
-  const maxTimeValue = Math.max(...validData.map(d => (d.totalTime || 0) / timeScale), 1)
+  // 增加 15% 上限空间，以容纳右侧数据标签
+  const maxTimeValue = Math.max(...validData.map(d => (d.totalTime || 0) / timeScale), 1) * 1.15
 
   // 比例尺（横向柱状图）
   const xScale = d3.scaleLinear()
@@ -239,7 +232,7 @@ const createChart = () => {
     .style('text-anchor', 'end')
 
   // X轴（时间刻度）
-  g.append('g')
+  const xAxis = g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
     .call(
       d3.axisBottom(xScale)
@@ -254,33 +247,33 @@ const createChart = () => {
           return `${value.toFixed(0)} s`
         })
     )
+  xAxis.select('.domain').remove()
 
   // X轴标签
   g.append('text')
     .attr('x', innerWidth / 2)
-    .attr('y', innerHeight + margin.bottom - 8)
+    .attr('y', innerHeight + margin.bottom - 10)
     .style('text-anchor', 'middle')
     .style('font-size', '16px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
     .text(`Time (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
-  // 分组柱数据（不堆叠）：Training + Feature Generation 分开显示
+  // 分组柱数据（不堆叠）：Training + End-to-End Latency 分开显示
   const groupedData = validData.map(d => ({
     method: d.method,
     isAdda: d.isAdda,
     total: Math.max(0, d.totalTime / timeScale),
-    training: Math.max(0, d.trainingTime / timeScale),
-    other: Math.max(0, d.otherTime / timeScale)
+    training: Math.max(0, d.trainingTime / timeScale)
   }))
 
-  // 颜色：Feature Generation=橙色，Training=灰色
+  // 颜色：End-to-End Latency=橙色，Training=灰色
   const colorScale = d3.scaleOrdinal<string, string>()
-    .domain(['training', 'other'])
+    .domain(['training', 'endToEnd'])
     .range(['#9ca3af', '#f59e0b'])
 
   const subScale = d3.scaleBand()
-    .domain(['training', 'other'])
+    .domain(['training', 'endToEnd'])
     .range([0, yScale.bandwidth()])
     .padding(0.18)
 
@@ -295,7 +288,7 @@ const createChart = () => {
   const barRows = groups.selectAll('rect')
     .data((d: any) => ([
       { method: d.method, isAdda: d.isAdda, key: 'training', value: d.training },
-      { method: d.method, isAdda: d.isAdda, key: 'other', value: d.other }
+      { method: d.method, isAdda: d.isAdda, key: 'endToEnd', value: d.total }
     ]))
     .enter()
     .append('rect')
@@ -312,6 +305,35 @@ const createChart = () => {
     .duration(800)
     .delay((_d, i) => i * 30)
     .attr('width', (d: any) => xScale(d.value))
+
+  // 添加数值标签
+  groups.selectAll('.value-label')
+    .data((d: any) => ([
+      { method: d.method, key: 'training', value: d.training },
+      { method: d.method, key: 'endToEnd', value: d.total }
+    ]))
+    .enter()
+    .append('text')
+    .attr('class', 'value-label')
+    .attr('x', (d: any) => xScale(d.value) + 6)
+    .attr('y', (d: any) => (subScale(d.key) || 0) + subScale.bandwidth() / 2)
+    .attr('dy', '0.35em')
+    .text((d: any) => {
+      const val = d.value
+      if (val <= 0) return ''
+      // 若是 minutes 模式，显示小数；若是 seconds 模式，显示整数
+      if (timeUnit.value === 'minutes') {
+        return `${val.toFixed(1)} min`
+      }
+      return `${val.toFixed(0)} s`
+    })
+    .style('font-size', '11px')
+    .style('fill', '#6b7280')
+    .style('opacity', 0)
+    .transition()
+    .duration(800)
+    .delay((_d, i) => i * 30 + 300)
+    .style('opacity', 1)
 
   // Adda 高亮边框（围绕总时间标尺宽度）
   groups
@@ -345,9 +367,7 @@ const createChart = () => {
         showTooltip(event, {
           method: originalData.method,
           totalTime: originalData.totalTime,
-          trainingTime: originalData.trainingTime,
-          otherTime: originalData.otherTime,
-          trainingRatio: originalData.trainingRatio
+          trainingTime: originalData.trainingTime
         })
       }
     })
@@ -621,7 +641,7 @@ watch(() => props.timeData, () => {
 .chart-container {
   position: relative;
   flex: 1;
-  padding: 14px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -638,20 +658,21 @@ watch(() => props.timeData, () => {
 
 .chart-legend {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 25px;
+  right: 8px;
   display: flex;
   gap: 14px;
   align-items: center;
-  padding: 10px 14px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: var(--shadow-md, 0 4px 8px rgba(0,0,0,0.08));
+  padding: 8px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   z-index: 5;
-  color: #1f2937;
-  font-size: 13px;
-  font-weight: 600;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .legend-item {
@@ -671,8 +692,7 @@ watch(() => props.timeData, () => {
 .training-segment {
   background: #9ca3af;
 }
-
-.other-segment {
+.latency-segment {
   background: #f59e0b;
 }
 
