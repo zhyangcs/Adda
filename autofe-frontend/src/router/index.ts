@@ -3,6 +3,7 @@ import MainContent from '@/components/Layout/Content/MainContent.vue'
 import EndToEndContent from '@/components/Layout/Content/EndToEndContent.vue'
 import InDatabaseContent from '@/components/Layout/Content/InDatabaseContent.vue'
 import FeatureImportanceSnapshot from '@/components/FeatureImportanceSnapshot.vue'
+import PerformanceSnapshotPage from '@/components/PerformanceSnapshot/PerformanceSnapshotPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -30,6 +31,12 @@ const router = createRouter({
       path: '/feature-importance-snapshot',
       name: 'feature-importance-snapshot',
       component: FeatureImportanceSnapshot,
+      meta: { hideChrome: true }
+    },
+    {
+      path: '/performance-snapshot',
+      name: 'performance-snapshot',
+      component: PerformanceSnapshotPage,
       meta: { hideChrome: true }
     }
   ],
