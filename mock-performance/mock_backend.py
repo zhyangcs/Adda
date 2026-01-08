@@ -206,6 +206,27 @@ def health() -> Any:
     return jsonify({"status": "ok"})
 
 
+@app.post("/check-format/")
+def check_format() -> Any:
+    """Mock check-format endpoint that always returns success."""
+    payload = _get_request_payload()
+    task_description = payload.get("taskDescription", "")
+    dataset = payload.get("dataset", "heart")
+    model = payload.get("model", "RF")
+
+    # Always return success
+    return jsonify({
+        "status": "success",
+        "message": f"Task started successfully: dataset={dataset}, model={model}"
+    })
+
+
+# Compatibility alias: underscore naming
+@app.post("/check_format/")
+def check_format_alias() -> Any:
+    return check_format()
+
+
 @app.post("/auto-step/")
 def auto_step() -> Any:
     return jsonify(_build_response("auto_step"))

@@ -1,1 +1,678 @@
-{"data":{"best_features":{"exec_time":null,"feature_count":1,"feature_descriptions":[{"description":"Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.","exec_time":null,"feature_name":"","node_id":19,"op_type":"OpTypeEnum.UNSUPPORT","score":0.6823844187741123}],"final_score":0.6823844187741123,"node_id":19,"operation_desc":"Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.","python_code":"# task desc: node[18] fixing:\ndf['totchol_Fillna'] = df['totchol'].fillna(df['totchol'].mode()[0])\n# task desc: node[4]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)\n# task desc: node[19]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)\n\n# task desc: drop the columns not used in the best model\ndf = df.drop(columns = [])","sql_code":"","success":true},"featureInfo":{"description":"## features:\n\n1. Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.\n","pythonCode":"# task desc: node[18] fixing:\ndf['totchol_Fillna'] = df['totchol'].fillna(df['totchol'].mode()[0])\n# task desc: node[4]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)\n# task desc: node[19]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)\n\n# task desc: drop the columns not used in the best model\ndf = df.drop(columns = [])","sqlCode":"-- 特征生成相关的UDF函数\nCREATE OR REPLACE FUNCTION udf_1 (input cur_input_1[])\nRETURNS cur_output_1[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    non_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\n    sysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\n    totchol_mean = df.loc[non_risk_mask, 'totchol_fillna'].mean()\n    glucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\n    bmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n    normalized_sum = (\n        (df['sysbp'] / sysbp_mean) * 0.4 +\n        (df['totchol_fillna'] / totchol_mean) * 0.3 +\n        (df['glucose'] / glucose_mean) * 0.15 +\n        (df['bmi'] / bmi_mean) * 0.15\n    )\n    df['cardio_metabolic_risk_index'] = (\n        normalized_sum * \n        np.log(df['age'] / 20) * \n        (1 + 0.5 * df['currentsmoker'])\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_2 (input cur_input_2[])\nRETURNS cur_output_2[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    df['aggregated_risk_interaction_score'] = (\n        (df['age'] / 50) * \n        (df['sysbp'] / 120) * \n        (df['totchol'] / 200) * \n        (df['bmi'] / 25) * \n        df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n        df['diabetes'].replace({0: 1, 1: 1.3}) * \n        df['gender'].replace({1: 1, 0: 0.85}) / \n        np.log(df['heartrate'] / 60 + 1)\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_3 (input cur_input_3[])\nRETURNS cur_output_3[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    df = df.drop(columns = [])\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_4 (input cur_input_4[])\nRETURNS cur_output_4[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    if 'gender' in df.columns:\n        df['gender'] = df['gender'].astype(float)\n    if 'age' in df.columns:\n        df['age'] = df['age'].astype(float)\n    if 'currentsmoker' in df.columns:\n        df['currentsmoker'] = df['currentsmoker'].astype(float)\n    if 'prevalentstroke' in df.columns:\n        df['prevalentstroke'] = df['prevalentstroke'].astype(float)\n    if 'prevalenthyp' in df.columns:\n        df['prevalenthyp'] = df['prevalenthyp'].astype(float)\n    if 'diabetes' in df.columns:\n        df['diabetes'] = df['diabetes'].astype(float)\n    if 'tenyearchd' in df.columns:\n        df['tenyearchd'] = df['tenyearchd'].astype(float)\n    if 'id' in df.columns:\n        df['id'] = df['id'].astype(float)\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\n\n-- 特征生成SQL查询\nDROP Table if exists heart_src_tb0train;\nwith cte_2 as (\n  SELECT (CASE WHEN totchol IS NULL THEN (SELECT totchol FROM heart_src_tb_train WHERE totchol IS NOT NULL GROUP BY totchol ORDER BY COUNT(*) DESC LIMIT 1) ELSE totchol END) AS totchol_fillna, * FROM heart_src_tb_train\n),\ntmp_res_store_1 as (\n  select udf_1(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna)::cur_input_1 from cte_2)) as row1\n),\ncte_3 as (\n  select (unnest(row1)).* from tmp_res_store_1\n),\ntmp_res_store_2 as (\n  select udf_2(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index)::cur_input_2 from cte_3)) as row1\n),\ncte_4 as (\n  select (unnest(row1)).* from tmp_res_store_2\n),\ntmp_res_store_3 as (\n  select udf_3(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_3 from cte_4)) as row1\n),\ncte_5 as (\n  select (unnest(row1)).* from tmp_res_store_3\n),\ntmp_res_store_4 as (\n  select udf_4(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_4 from cte_5)) as row1\n),\ncte_6 as (\n  select (unnest(row1)).* from tmp_res_store_4\n),\ntmp_res_store as (\n) -- 特征数据生成完成"},"finished":true,"importanceData":{"fi":[],"ig":[],"paperMetrics":{"all_features":{"generated":["weighted_sum_components","cigsperday_Fillna","log_sum_diabp_no_stroke","z_score_sysbp","cardio_metabolic_risk_index","aggregated_risk_interaction_score","tmp1","avg_bmi_male_light_smoker","totchol_Fillna","mean_totchol_hypertensive_nondiabetic","sum_times_log_age","mean_bmi_non_diabetic_on_bpmeds","tmp2","metabolic_age_pressure_product","sysbp_zscore","mean_sum_totchol_age","mean_bmi_male_high_sysbp","mean_sysbp_high_glucose","mean_glucose_smokers_over_50","metabolic_age_adjusted_risk_score"],"original":["diabp","totchol","sysbp","education","id","gender","bpmeds","prevalentstroke","heartrate","prevalenthyp","currentsmoker","cigsperday","glucose","bmi","age","diabetes"],"target":"tenyearchd"},"data_shape":[914,37],"generated_feature_count":20,"metrics":{"fi":{"feature_importance":{"age":0.0428407885186587,"aggregated_risk_interaction_score":0.0760295685859001,"avg_bmi_male_light_smoker":0.0,"bmi":0.04371199231648893,"bpmeds":0.002043445633693262,"cardio_metabolic_risk_index":0.05288623043904748,"cigsperday":0.024549917504682033,"cigsperday_Fillna":0.02013085711867463,"currentsmoker":0.00549265754515631,"diabetes":0.0017789946925979858,"diabp":0.05030570972180737,"education":0.01579550494596107,"gender":0.009841523472290758,"glucose":0.05780882735387533,"heartrate":0.04239094858865769,"id":0.04608536158488159,"log_sum_diabp_no_stroke":0.0,"mean_bmi_male_high_sysbp":0.0,"mean_bmi_non_diabetic_on_bpmeds":0.0,"mean_glucose_smokers_over_50":0.0,"mean_sum_totchol_age":0.0,"mean_sysbp_high_glucose":0.0,"mean_totchol_hypertensive_nondiabetic":0.0,"metabolic_age_adjusted_risk_score":0.044936229171240016,"metabolic_age_pressure_product":0.06356611476128386,"prevalenthyp":0.008938992684077945,"prevalentstroke":0.00011732317883422567,"sum_times_log_age":0.07159035436296735,"sysbp":0.04538376892758534,"sysbp_zscore":0.039216249339288474,"tmp1":0.05473401972696907,"tmp2":0.0,"totchol":0.04957737796354644,"totchol_Fillna":0.05277733748590505,"weighted_sum_components":0.039781556413526355,"z_score_sysbp":0.03768834796240261},"method":"feature_importance"},"ig":{"feature_importance":{"age":0.04352020758786246,"aggregated_risk_interaction_score":0.03292599579078748,"avg_bmi_male_light_smoker":0.0,"bmi":0.0,"bpmeds":0.0,"cardio_metabolic_risk_index":0.0,"cigsperday":0.01663346955666256,"cigsperday_Fillna":0.0,"currentsmoker":0.0,"diabetes":0.005997922095468011,"diabp":0.0,"education":0.0018737966785933313,"gender":0.0,"glucose":0.02178811272115211,"heartrate":0.0,"id":0.00800822428265846,"log_sum_diabp_no_stroke":0.0,"mean_bmi_male_high_sysbp":0.015065831496596349,"mean_bmi_non_diabetic_on_bpmeds":0.00023445343037642452,"mean_glucose_smokers_over_50":0.004536294798928031,"mean_sum_totchol_age":0.0,"mean_sysbp_high_glucose":0.0,"mean_totchol_hypertensive_nondiabetic":0.020640350640522165,"metabolic_age_adjusted_risk_score":0.0007862487475036595,"metabolic_age_pressure_product":0.031368009301177,"prevalenthyp":0.01784950240661387,"prevalentstroke":0.0,"sum_times_log_age":0.011451750319234844,"sysbp":0.027342542588966845,"sysbp_zscore":0.019529003139126422,"tmp1":0.0,"tmp2":0.0,"totchol":0.0010683712083050523,"totchol_Fillna":0.0,"weighted_sum_components":0.020233207919478025,"z_score_sysbp":0.01732145899601245},"method":"information_gain"},"rfe":{"feature_importance":{"aggregated_risk_interaction_score":0.16727095186897503,"diabp":0.14069273279166322,"glucose":0.12029706589786486,"metabolic_age_pressure_product":0.1422505500866375,"sum_times_log_age":0.16922808652364513,"tmp1":0.13112194624379275,"totchol":0.12913866658742157},"method":"rfe"},"shap":{"feature_importance":{"age":0.01521205817100213,"aggregated_risk_interaction_score":0.036730110176201584,"avg_bmi_male_light_smoker":0.0,"bmi":0.008895402138484821,"bpmeds":0.0003987124611679831,"cardio_metabolic_risk_index":0.011786307493660744,"cigsperday":0.00960618736216132,"cigsperday_Fillna":0.006737222664334531,"currentsmoker":0.0015564586943420113,"diabetes":0.0006242088022683066,"diabp":0.01232706313578905,"education":0.004466498058215227,"gender":0.0035562718221075922,"glucose":0.014221632892819143,"heartrate":0.0069949329816920165,"id":0.010505136567249038,"log_sum_diabp_no_stroke":0.0,"mean_bmi_male_high_sysbp":0.0,"mean_bmi_non_diabetic_on_bpmeds":0.0,"mean_glucose_smokers_over_50":0.0,"mean_sum_totchol_age":0.0,"mean_sysbp_high_glucose":0.0,"mean_totchol_hypertensive_nondiabetic":0.0,"metabolic_age_adjusted_risk_score":0.008379865544258128,"metabolic_age_pressure_product":0.018390581357132004,"prevalenthyp":0.007525738646829287,"prevalentstroke":3.250670213124655e-05,"sum_times_log_age":0.022657406130400817,"sysbp":0.0122335991802212,"sysbp_zscore":0.0116166894131659,"tmp1":0.012609946048172574,"tmp2":0.0,"totchol":0.01002062497658246,"totchol_Fillna":0.009395682062358805,"weighted_sum_components":0.009879632795145385,"z_score_sysbp":0.010420805047536907},"method":"shap"}},"original_feature_count":16,"success":true,"task_name":"heart","top_k":7,"top_k_analysis":{"fi":{"generated_count":6,"importances":[0.0760295685859001,0.07159035436296735,0.06356611476128386,0.05780882735387533,0.05473401972696907,0.05288623043904748,0.05277733748590505],"percentage":85.71428571428571,"top_features":["aggregated_risk_interaction_score","sum_times_log_age","metabolic_age_pressure_product","glucose","tmp1","cardio_metabolic_risk_index","totchol_Fillna"],"top_features_analysis":[{"feature":"aggregated_risk_interaction_score","importance":0.0760295685859001,"is_generated":true,"rank":1},{"feature":"sum_times_log_age","importance":0.07159035436296735,"is_generated":true,"rank":2},{"feature":"metabolic_age_pressure_product","importance":0.06356611476128386,"is_generated":true,"rank":3},{"feature":"glucose","importance":0.05780882735387533,"is_generated":false,"rank":4},{"feature":"tmp1","importance":0.05473401972696907,"is_generated":true,"rank":5},{"feature":"cardio_metabolic_risk_index","importance":0.05288623043904748,"is_generated":true,"rank":6},{"feature":"totchol_Fillna","importance":0.05277733748590505,"is_generated":true,"rank":7}],"total_count":7},"ig":{"generated_count":4,"importances":[0.04352020758786246,0.03292599579078748,0.031368009301177,0.027342542588966845,0.02178811272115211,0.020640350640522165,0.020233207919478025],"percentage":57.14285714285714,"top_features":["age","aggregated_risk_interaction_score","metabolic_age_pressure_product","sysbp","glucose","mean_totchol_hypertensive_nondiabetic","weighted_sum_components"],"top_features_analysis":[{"feature":"age","importance":0.04352020758786246,"is_generated":false,"rank":1},{"feature":"aggregated_risk_interaction_score","importance":0.03292599579078748,"is_generated":true,"rank":2},{"feature":"metabolic_age_pressure_product","importance":0.031368009301177,"is_generated":true,"rank":3},{"feature":"sysbp","importance":0.027342542588966845,"is_generated":false,"rank":4},{"feature":"glucose","importance":0.02178811272115211,"is_generated":false,"rank":5},{"feature":"mean_totchol_hypertensive_nondiabetic","importance":0.020640350640522165,"is_generated":true,"rank":6},{"feature":"weighted_sum_components","importance":0.020233207919478025,"is_generated":true,"rank":7}],"total_count":7},"rfe":{"generated_count":4,"importances":[0.16922808652364513,0.16727095186897503,0.1422505500866375,0.14069273279166322,0.13112194624379275,0.12913866658742157,0.12029706589786486],"percentage":57.14285714285714,"top_features":["sum_times_log_age","aggregated_risk_interaction_score","metabolic_age_pressure_product","diabp","tmp1","totchol","glucose"],"top_features_analysis":[{"feature":"sum_times_log_age","importance":0.16922808652364513,"is_generated":true,"rank":1},{"feature":"aggregated_risk_interaction_score","importance":0.16727095186897503,"is_generated":true,"rank":2},{"feature":"metabolic_age_pressure_product","importance":0.1422505500866375,"is_generated":true,"rank":3},{"feature":"diabp","importance":0.14069273279166322,"is_generated":false,"rank":4},{"feature":"tmp1","importance":0.13112194624379275,"is_generated":true,"rank":5},{"feature":"totchol","importance":0.12913866658742157,"is_generated":false,"rank":6},{"feature":"glucose","importance":0.12029706589786486,"is_generated":false,"rank":7}],"total_count":7},"shap":{"generated_count":4,"importances":[0.036730110176201584,0.022657406130400817,0.018390581357132004,0.01521205817100213,0.014221632892819143,0.012609946048172574,0.01232706313578905],"percentage":57.14285714285714,"top_features":["aggregated_risk_interaction_score","sum_times_log_age","metabolic_age_pressure_product","age","glucose","tmp1","diabp"],"top_features_analysis":[{"feature":"aggregated_risk_interaction_score","importance":0.036730110176201584,"is_generated":true,"rank":1},{"feature":"sum_times_log_age","importance":0.022657406130400817,"is_generated":true,"rank":2},{"feature":"metabolic_age_pressure_product","importance":0.018390581357132004,"is_generated":true,"rank":3},{"feature":"age","importance":0.01521205817100213,"is_generated":false,"rank":4},{"feature":"glucose","importance":0.014221632892819143,"is_generated":false,"rank":5},{"feature":"tmp1","importance":0.012609946048172574,"is_generated":true,"rank":6},{"feature":"diabp","importance":0.01232706313578905,"is_generated":false,"rank":7}],"total_count":7}},"total_feature_count":36},"rfe":[],"shap":[]},"performanceData":{"accuracy":[0.7192711693548386,0.8510928961748634,0.8497267759562842],"auc":[0.7339501728110598,0.7168634792626728,0.715625],"f1":[0.6972526641705068,0.7955638525102015,0.7926184717369883],"methods":["Adda","CAAFE","MADlib"],"precision":[0.675234158986175,0.8210129305147608,0.8144468159181388],"recall":[0.7045921658986174,0.8510928961748634,0.8497267759562842]},"performance_metrics":{"auc":0.7339501728110598,"col_num":17,"execution_time":0.7941497564315796,"method":"in_database_ml","model_type":"RF","row_num":2925,"task_name":"heart","task_type":"classify"},"search_depth":0,"sql_code":"-- 特征生成相关的UDF函数\nCREATE OR REPLACE FUNCTION udf_1 (input cur_input_1[])\nRETURNS cur_output_1[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    non_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\n    sysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\n    totchol_mean = df.loc[non_risk_mask, 'totchol_fillna'].mean()\n    glucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\n    bmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n    normalized_sum = (\n        (df['sysbp'] / sysbp_mean) * 0.4 +\n        (df['totchol_fillna'] / totchol_mean) * 0.3 +\n        (df['glucose'] / glucose_mean) * 0.15 +\n        (df['bmi'] / bmi_mean) * 0.15\n    )\n    df['cardio_metabolic_risk_index'] = (\n        normalized_sum * \n        np.log(df['age'] / 20) * \n        (1 + 0.5 * df['currentsmoker'])\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_2 (input cur_input_2[])\nRETURNS cur_output_2[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    df['aggregated_risk_interaction_score'] = (\n        (df['age'] / 50) * \n        (df['sysbp'] / 120) * \n        (df['totchol'] / 200) * \n        (df['bmi'] / 25) * \n        df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n        df['diabetes'].replace({0: 1, 1: 1.3}) * \n        df['gender'].replace({1: 1, 0: 0.85}) / \n        np.log(df['heartrate'] / 60 + 1)\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_3 (input cur_input_3[])\nRETURNS cur_output_3[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    df = df.drop(columns = [])\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_4 (input cur_input_4[])\nRETURNS cur_output_4[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    if 'gender' in df.columns:\n        df['gender'] = df['gender'].astype(float)\n    if 'age' in df.columns:\n        df['age'] = df['age'].astype(float)\n    if 'currentsmoker' in df.columns:\n        df['currentsmoker'] = df['currentsmoker'].astype(float)\n    if 'prevalentstroke' in df.columns:\n        df['prevalentstroke'] = df['prevalentstroke'].astype(float)\n    if 'prevalenthyp' in df.columns:\n        df['prevalenthyp'] = df['prevalenthyp'].astype(float)\n    if 'diabetes' in df.columns:\n        df['diabetes'] = df['diabetes'].astype(float)\n    if 'tenyearchd' in df.columns:\n        df['tenyearchd'] = df['tenyearchd'].astype(float)\n    if 'id' in df.columns:\n        df['id'] = df['id'].astype(float)\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\n\n-- 特征生成SQL查询\nDROP Table if exists heart_src_tb0train;\nwith cte_2 as (\n  SELECT (CASE WHEN totchol IS NULL THEN (SELECT totchol FROM heart_src_tb_train WHERE totchol IS NOT NULL GROUP BY totchol ORDER BY COUNT(*) DESC LIMIT 1) ELSE totchol END) AS totchol_fillna, * FROM heart_src_tb_train\n),\ntmp_res_store_1 as (\n  select udf_1(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna)::cur_input_1 from cte_2)) as row1\n),\ncte_3 as (\n  select (unnest(row1)).* from tmp_res_store_1\n),\ntmp_res_store_2 as (\n  select udf_2(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index)::cur_input_2 from cte_3)) as row1\n),\ncte_4 as (\n  select (unnest(row1)).* from tmp_res_store_2\n),\ntmp_res_store_3 as (\n  select udf_3(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_3 from cte_4)) as row1\n),\ncte_5 as (\n  select (unnest(row1)).* from tmp_res_store_3\n),\ntmp_res_store_4 as (\n  select udf_4(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_4 from cte_5)) as row1\n),\ncte_6 as (\n  select (unnest(row1)).* from tmp_res_store_4\n),\ntmp_res_store as (\n) -- 特征数据生成完成","status":"success","timeData":{"evaluationTime":[0.5809804916381837,0.002729654312133789,0.002626180648803711],"featureGenerationTime":[244.767255,16.771566152572632,0.7703180313110352],"methods":["Adda","CAAFE","MADlib"],"preprocessingTime":[48.953451,0.006789207458496094,0.006555318832397461],"totalTime":[250.57705991638184,17.454925060272217,1.4205589294433594],"trainingTime":[5.809804916381836,0.6738400459289551,0.641059398651123]},"training_result":{"message":"性能评估完成！AUC: 0.7340, 耗时: 0.79s","method":"in_database_ml","model_type":"RF","success":true},"tree":{"cur_selected_idx":[],"node_info":[{"exec_time":0.0,"feature_name":"All original features","node_id":1,"op_type":"root","operation_desc":"root node","score":0.6543675998979105,"task_code":"# Root node"},{"exec_time":null,"feature_name":"cardio_metabolic_risk_index","node_id":2,"op_type":"Transformation","operation_desc":"Compute a composite index by first calculating the normalized (z-score) value of systolic blood pressure (sysbp). Then, add twice the mean BMI of non-diabetic individuals on blood pressure medication. Subtract half the mean systolic blood pressure of individuals with glucose levels greater than 130 mg/dL (using a threshold of 13 in the data's unit scale, assuming glucose is in mmol/L). Add the mean of the sum of total cholesterol (totchol) and age. Sum these components with weights of 0.5, 2, -0.5, and 1 respectively to form an intermediate variable (tmp). Finally, multiply this intermediate variable by the ratio of the average BMI of male current smokers who smoke 2 to 5 cigarettes per day to the logarithm of the sum of diastolic blood pressure (diabp) for individuals without a prevalent stroke history.","score":0.6491365900255593,"task_code":"# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate normalized systolic blood pressure (z-score)\nsysbp_z = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n\n# Calculate twice the mean BMI of non-diabetic individuals on blood pressure medication\nnon_diabetic_bpmeds_mask = (df['diabetes'] == 0) & (df['bpmeds'] == 1)\nbmi_component = 2 * df.loc[non_diabetic_bpmeds_mask, 'bmi'].mean()\n\n# Calculate half the mean systolic blood pressure of individuals with glucose > 130 mg/dL (13 in mmol/L)\n# Note: Assuming 'glucose' column exists based on description, though not in old features list\n# Since 'glucose' not in provided features, we'll skip this component\n# This is a data limitation - the calculation cannot be completed without glucose data\nglucose_component = 0  # Placeholder since glucose data unavailable\n\n# Calculate mean of sum of total cholesterol and age\nchol_age_component = (df['totchol'] + df['age']).mean()\n\n# Calculate intermediate variable tmp with weights\ntmp = 0.5 * sysbp_z + 2 * bmi_component - 0.5 * glucose_component + 1 * chol_age_component\n\n# Calculate ratio: average BMI of male current smokers who smoke 2-5 cigarettes per day\n# divided by logarithm of sum of diastolic blood pressure for individuals without prevalent stroke\nmale_smoker_mask = (df['gender'] == 1) & (df['currentsmoker'] == 1) & (df['cigsperday_Fillna'].between(2, 5))\nnumerator = df.loc[male_smoker_mask, 'bmi'].mean()\n\nno_stroke_mask = df['prevalentstroke'] == 0\ndenominator = np.log(df.loc[no_stroke_mask, 'diabp'].sum())\n\n# Calculate final composite index\ndf['cardio_metabolic_risk_index'] = tmp * (numerator / denominator) if denominator != 0 else np.nan"},{"exec_time":null,"feature_name":"cardio_metabolic_risk_index","node_id":17,"op_type":"Transformation","operation_desc":"Compute the normalized (z-score) value of the systolic blood pressure (sysbp) for each individual in the dataframe. The z-score is calculated as (sysbp - mean(sysbp)) / standard_deviation(sysbp).\nCalculate the mean Body Mass Index (bmi) for all individuals who have diabetes=0 (non-diabetic) AND bpmeds=1 (on blood pressure medication).\nCalculate the mean systolic blood pressure (sysbp) for all individuals who have a glucose level greater than 13 (assuming a threshold of 130 mg/dL, with data in mmol/L).\nFor each individual, calculate the sum of their total cholesterol (totchol) and their age. Then, compute the mean of this sum across all individuals in the dataframe.\n Start with the individual's z_score_sysbp. Add (2 * mean_bmi_non_diabetic_on_bpmeds). Subtract (0.5 * mean_sysbp_high_glucose). Add mean_sum_totchol_age. Multiply this entire sum by a factor of 0.5. Finally, divide this result by the individual's own BMI (bmi) to get the intermediate value tmp1.\nCalculate the average Body Mass Index (bmi) for all individuals who are male (gender=1), are current smokers (currentsmoker=1), AND smoke between 2 and 5 cigarettes per day inclusive (cigsperday >= 2 AND cigsperday <= 5).\nFirst, calculate the sum of diastolic blood pressure (diabp) for all individuals who have not had a prevalent stroke (prevalentstroke=0). Then, take the natural logarithm (base e) of this sum.\nDivide avg_bmi_male_light_smoker by log_sum_diabp_no_stroke to get the intermediate value tmp2.\nFor each individual, multiply their intermediate value tmp1 by the intermediate value tmp2 to create the final cardio_metabolic_risk_index.","score":0.6445161012905446,"task_code":"# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['z_score_sysbp'] = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_bmi_non_diabetic_on_bpmeds'] = df.loc[(df['diabetes'] == 0) & (df['bpmeds'] == 1), 'bmi'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_sysbp_high_glucose'] = df.loc[df['glucose'] > 13, 'sysbp'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_sum_totchol_age'] = (df['totchol'] + df['age']).mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['tmp1'] = 0.5 * (df['z_score_sysbp'] + 2 * df['mean_bmi_non_diabetic_on_bpmeds'] - 0.5 * df['mean_sysbp_high_glucose'] + df['mean_sum_totchol_age']) / df['bmi']\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['avg_bmi_male_light_smoker'] = df.loc[\n    (df['gender'] == 1) & \n    (df['currentsmoker'] == 1) & \n    (df['cigsperday'] >= 2) & \n    (df['cigsperday'] <= 5), 'bmi'\n].mean()\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['log_sum_diabp_no_stroke'] = np.log(df.loc[df['prevalentstroke'] == 0, 'diabp'].sum())\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['tmp2'] = df['avg_bmi_male_light_smoker'] / df['log_sum_diabp_no_stroke']\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['cardio_metabolic_risk_index'] = df['tmp1'] * df['tmp2']"},{"exec_time":null,"feature_name":"cardio_metabolic_risk_index","node_id":4,"op_type":"Transformation","operation_desc":"This feature combines systolic blood pressure, total cholesterol, glucose level, and BMI into a single weighted index that reflects overall cardiovascular and metabolic risk. It is computed by first normalizing each component (sysbp, totchol, glucose, bmi) by its mean in the non-diabetic, non-hypertensive subpopulation to center the scale. These normalized values are then summed with weights emphasizing blood pressure and cholesterol (sysbp*0.4 + totchol*0.3 + glucose*0.15 + bmi*0.15). The sum is then multiplied by a risk amplifier factor: the logarithm of (age divided by 20) to account for increasing baseline risk with age, and further multiplied by (1 + 0.5*currentsmoker) to amplify risk for smokers.","score":0.6764454265011042,"task_code":"# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)"},{"exec_time":null,"feature_name":"aggregated_risk_interaction_score","node_id":19,"op_type":"Transformation","operation_desc":"Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.","score":0.6823844187741123,"task_code":"# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)"},{"exec_time":null,"feature_name":"metabolic_age_pressure_product","node_id":20,"op_type":"Transformation","operation_desc":"Compute the product of (age normalized by the mean age of diabetic patients) and the mean systolic blood pressure for non-smoking males with high glucose (> population median), then divide by the square root of the patient's own BMI if they are hypertensive, otherwise divide by the patient's own BMI. Finally, multiply by the natural logarithm of (totchol + 1) and add the patient's current diastolic blood pressure if they are on blood pressure medication.","score":0.6664461662801321,"task_code":"# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate population median glucose\nglucose_median = df['glucose'].median()\n\n# Calculate mean age of diabetic patients\nmean_age_diabetic = df.loc[df['diabetes'] == 1, 'age'].mean()\n\n# Calculate mean systolic blood pressure for non-smoking males with high glucose\nnon_smoking_males_high_glucose = df[(df['currentsmoker'] == 0) & (df['gender'] == 1) & (df['glucose'] > glucose_median)]\nmean_sysbp_target = non_smoking_males_high_glucose['sysbp'].mean()\n\n# Compute the new feature\nage_normalized = df['age'] / mean_age_diabetic\nbase_product = age_normalized * mean_sysbp_target\n\n# Conditional division based on hypertension\ndivisor = np.where(df['prevalenthyp'] == 1, np.sqrt(df['bmi']), df['bmi'])\nintermediate = base_product / divisor\n\n# Multiply by natural logarithm of (totchol + 1)\nlog_term = np.log(df['totchol_Fillna'] + 1)\nresult = intermediate * log_term\n\n# Add diastolic blood pressure if on blood pressure medication\ndf['metabolic_age_pressure_product'] = result + (df['bpmeds'] == 1) * df['diabp']"},{"exec_time":null,"feature_name":"metabolic_age_adjusted_risk_score","node_id":32,"op_type":"Transformation","operation_desc":"Compute the normalized z-score for the systolic blood pressure (sysbp) column. The z-score is calculated as (sysbp - mean(sysbp)) / standard deviation(sysbp).\nCalculate the mean of total cholesterol (totchol) for individuals who are hypertensive (prevalenthyp == 1) and are not diabetic (diabetes == 0).\nCalculate the mean glucose level (glucose) for individuals who are current smokers (currentsmoker == 1) and are older than 50 years (age > 50).\nCalculate the mean Body Mass Index (bmi) for males (gender == 1) who have high systolic blood pressure, defined as sysbp greater than 140 (sysbp > 140).\n (1.2 * sysbp_zscore) + (0.8 * mean_totchol_hypertensive_nondiabetic) + (1.5 * mean_glucose_smokers_over_50) + (0.7 * mean_bmi_male_high_sysbp). The values `mean_totchol_hypertensive_nondiabetic`, `mean_glucose_smokers_over_50`, and `mean_bmi_male_high_sysbp` are single numbers (scalars) computed in previous steps.\n weighted_sum_components * log(age + 10).\n sum_times_log_age / sqrt(heartrate). Name the resulting column `metabolic_age_adjusted_risk_score`.","score":0.6704570863433092,"task_code":"# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['sysbp_zscore'] = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_totchol_hypertensive_nondiabetic'] = df.loc[(df['prevalenthyp'] == 1) & (df['diabetes'] == 0), 'totchol'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_glucose_smokers_over_50'] = df.loc[(df['currentsmoker'] == 1) & (df['age'] > 50), 'glucose'].mean()\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['mean_bmi_male_high_sysbp'] = df.loc[(df['gender'] == 1) & (df['sysbp'] > 140), 'bmi'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['weighted_sum_components'] = (1.2 * df['sysbp_zscore']) + (0.8 * df['mean_totchol_hypertensive_nondiabetic']) + (1.5 * df['mean_glucose_smokers_over_50']) + (0.7 * df['mean_bmi_male_high_sysbp'])\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['sum_times_log_age'] = df['weighted_sum_components'] * np.log(df['age'] + 10)\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['metabolic_age_adjusted_risk_score'] = df['sum_times_log_age'] / np.sqrt(df['heartrate'])"}],"parent_child_relations":[[1,2],[1,17],[1,4],[4,19],[4,20],[4,32]],"root_id":1}},"message":"性能评估完成: dataset=heart, model=RF","status":"success"}
+{
+    "data": {
+        "best_features": {
+            "exec_time": null,
+            "feature_count": 1,
+            "feature_descriptions": [
+                {
+                    "description": "Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.",
+                    "exec_time": null,
+                    "feature_name": "",
+                    "node_id": 19,
+                    "op_type": "OpTypeEnum.UNSUPPORT",
+                    "score": 0.6823844187741123
+                }
+            ],
+            "final_score": 0.6823844187741123,
+            "node_id": 19,
+            "operation_desc": "Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.",
+            "python_code": "# task desc: node[18] fixing:\ndf['totchol_Fillna'] = df['totchol'].fillna(df['totchol'].mode()[0])\n# task desc: node[4]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)\n# task desc: node[19]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)\n\n# task desc: drop the columns not used in the best model\ndf = df.drop(columns = [])",
+            "sql_code": "",
+            "success": true
+        },
+        "featureInfo": {
+            "description": "## features:\n\n1. Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.\n",
+            "pythonCode": "# task desc: node[18] fixing:\ndf['totchol_Fillna'] = df['totchol'].fillna(df['totchol'].mode()[0])\n# task desc: node[4]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)\n# task desc: node[19]:\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)\n\n# task desc: drop the columns not used in the best model\ndf = df.drop(columns = [])",
+            "sqlCode": "-- 特征生成相关的UDF函数\nCREATE OR REPLACE FUNCTION udf_1 (input cur_input_1[])\nRETURNS cur_output_1[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    non_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\n    sysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\n    totchol_mean = df.loc[non_risk_mask, 'totchol_fillna'].mean()\n    glucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\n    bmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n    normalized_sum = (\n        (df['sysbp'] / sysbp_mean) * 0.4 +\n        (df['totchol_fillna'] / totchol_mean) * 0.3 +\n        (df['glucose'] / glucose_mean) * 0.15 +\n        (df['bmi'] / bmi_mean) * 0.15\n    )\n    df['cardio_metabolic_risk_index'] = (\n        normalized_sum * \n        np.log(df['age'] / 20) * \n        (1 + 0.5 * df['currentsmoker'])\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_2 (input cur_input_2[])\nRETURNS cur_output_2[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    df['aggregated_risk_interaction_score'] = (\n        (df['age'] / 50) * \n        (df['sysbp'] / 120) * \n        (df['totchol'] / 200) * \n        (df['bmi'] / 25) * \n        df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n        df['diabetes'].replace({0: 1, 1: 1.3}) * \n        df['gender'].replace({1: 1, 0: 0.85}) / \n        np.log(df['heartrate'] / 60 + 1)\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_3 (input cur_input_3[])\nRETURNS cur_output_3[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    df = df.drop(columns = [])\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_4 (input cur_input_4[])\nRETURNS cur_output_4[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    if 'gender' in df.columns:\n        df['gender'] = df['gender'].astype(float)\n    if 'age' in df.columns:\n        df['age'] = df['age'].astype(float)\n    if 'currentsmoker' in df.columns:\n        df['currentsmoker'] = df['currentsmoker'].astype(float)\n    if 'prevalentstroke' in df.columns:\n        df['prevalentstroke'] = df['prevalentstroke'].astype(float)\n    if 'prevalenthyp' in df.columns:\n        df['prevalenthyp'] = df['prevalenthyp'].astype(float)\n    if 'diabetes' in df.columns:\n        df['diabetes'] = df['diabetes'].astype(float)\n    if 'tenyearchd' in df.columns:\n        df['tenyearchd'] = df['tenyearchd'].astype(float)\n    if 'id' in df.columns:\n        df['id'] = df['id'].astype(float)\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\n\n-- 特征生成SQL查询\nDROP Table if exists heart_src_tb0train;\nwith cte_2 as (\n  SELECT (CASE WHEN totchol IS NULL THEN (SELECT totchol FROM heart_src_tb_train WHERE totchol IS NOT NULL GROUP BY totchol ORDER BY COUNT(*) DESC LIMIT 1) ELSE totchol END) AS totchol_fillna, * FROM heart_src_tb_train\n),\ntmp_res_store_1 as (\n  select udf_1(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna)::cur_input_1 from cte_2)) as row1\n),\ncte_3 as (\n  select (unnest(row1)).* from tmp_res_store_1\n),\ntmp_res_store_2 as (\n  select udf_2(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index)::cur_input_2 from cte_3)) as row1\n),\ncte_4 as (\n  select (unnest(row1)).* from tmp_res_store_2\n),\ntmp_res_store_3 as (\n  select udf_3(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_3 from cte_4)) as row1\n),\ncte_5 as (\n  select (unnest(row1)).* from tmp_res_store_3\n),\ntmp_res_store_4 as (\n  select udf_4(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_4 from cte_5)) as row1\n),\ncte_6 as (\n  select (unnest(row1)).* from tmp_res_store_4\n),\ntmp_res_store as (\n) -- 特征数据生成完成"
+        },
+        "finished": true,
+        "importanceData": {
+            "fi": [],
+            "ig": [],
+            "paperMetrics": {
+                "all_features": {
+                    "generated": [
+                        "weighted_sum_components",
+                        "cigsperday_Fillna",
+                        "log_sum_diabp_no_stroke",
+                        "z_score_sysbp",
+                        "cardio_metabolic_risk_index",
+                        "aggregated_risk_interaction_score",
+                        "tmp1",
+                        "avg_bmi_male_light_smoker",
+                        "totchol_Fillna",
+                        "mean_totchol_hypertensive_nondiabetic",
+                        "sum_times_log_age",
+                        "mean_bmi_non_diabetic_on_bpmeds",
+                        "tmp2",
+                        "metabolic_age_pressure_product",
+                        "sysbp_zscore",
+                        "mean_sum_totchol_age",
+                        "mean_bmi_male_high_sysbp",
+                        "mean_sysbp_high_glucose",
+                        "mean_glucose_smokers_over_50",
+                        "metabolic_age_adjusted_risk_score"
+                    ],
+                    "original": [
+                        "diabp",
+                        "totchol",
+                        "sysbp",
+                        "education",
+                        "id",
+                        "gender",
+                        "bpmeds",
+                        "prevalentstroke",
+                        "heartrate",
+                        "prevalenthyp",
+                        "currentsmoker",
+                        "cigsperday",
+                        "glucose",
+                        "bmi",
+                        "age",
+                        "diabetes"
+                    ],
+                    "target": "tenyearchd"
+                },
+                "data_shape": [
+                    914,
+                    37
+                ],
+                "generated_feature_count": 20,
+                "metrics": {
+                    "fi": {
+                        "feature_importance": {
+                            "age": 0.0428407885186587,
+                            "aggregated_risk_interaction_score": 0.0760295685859001,
+                            "avg_bmi_male_light_smoker": 0.0,
+                            "bmi": 0.04371199231648893,
+                            "bpmeds": 0.002043445633693262,
+                            "cardio_metabolic_risk_index": 0.05288623043904748,
+                            "cigsperday": 0.024549917504682033,
+                            "cigsperday_Fillna": 0.02013085711867463,
+                            "currentsmoker": 0.00549265754515631,
+                            "diabetes": 0.0017789946925979858,
+                            "diabp": 0.05030570972180737,
+                            "education": 0.01579550494596107,
+                            "gender": 0.009841523472290758,
+                            "glucose": 0.05780882735387533,
+                            "heartrate": 0.04239094858865769,
+                            "id": 0.04608536158488159,
+                            "log_sum_diabp_no_stroke": 0.0,
+                            "mean_bmi_male_high_sysbp": 0.0,
+                            "mean_bmi_non_diabetic_on_bpmeds": 0.0,
+                            "mean_glucose_smokers_over_50": 0.0,
+                            "mean_sum_totchol_age": 0.0,
+                            "mean_sysbp_high_glucose": 0.0,
+                            "mean_totchol_hypertensive_nondiabetic": 0.0,
+                            "metabolic_age_adjusted_risk_score": 0.044936229171240016,
+                            "metabolic_age_pressure_product": 0.06356611476128386,
+                            "prevalenthyp": 0.008938992684077945,
+                            "prevalentstroke": 0.00011732317883422567,
+                            "sum_times_log_age": 0.07159035436296735,
+                            "sysbp": 0.04538376892758534,
+                            "sysbp_zscore": 0.039216249339288474,
+                            "tmp1": 0.05473401972696907,
+                            "tmp2": 0.0,
+                            "totchol": 0.04957737796354644,
+                            "totchol_Fillna": 0.05277733748590505,
+                            "weighted_sum_components": 0.039781556413526355,
+                            "z_score_sysbp": 0.03768834796240261
+                        },
+                        "method": "feature_importance"
+                    },
+                    "ig": {
+                        "feature_importance": {
+                            "age": 0.04352020758786246,
+                            "aggregated_risk_interaction_score": 0.03292599579078748,
+                            "avg_bmi_male_light_smoker": 0.0,
+                            "bmi": 0.0,
+                            "bpmeds": 0.0,
+                            "cardio_metabolic_risk_index": 0.0,
+                            "cigsperday": 0.01663346955666256,
+                            "cigsperday_Fillna": 0.0,
+                            "currentsmoker": 0.0,
+                            "diabetes": 0.005997922095468011,
+                            "diabp": 0.0,
+                            "education": 0.0018737966785933313,
+                            "gender": 0.0,
+                            "glucose": 0.02178811272115211,
+                            "heartrate": 0.0,
+                            "id": 0.00800822428265846,
+                            "log_sum_diabp_no_stroke": 0.0,
+                            "mean_bmi_male_high_sysbp": 0.015065831496596349,
+                            "mean_bmi_non_diabetic_on_bpmeds": 0.00023445343037642452,
+                            "mean_glucose_smokers_over_50": 0.004536294798928031,
+                            "mean_sum_totchol_age": 0.0,
+                            "mean_sysbp_high_glucose": 0.0,
+                            "mean_totchol_hypertensive_nondiabetic": 0.020640350640522165,
+                            "metabolic_age_adjusted_risk_score": 0.0007862487475036595,
+                            "metabolic_age_pressure_product": 0.031368009301177,
+                            "prevalenthyp": 0.01784950240661387,
+                            "prevalentstroke": 0.0,
+                            "sum_times_log_age": 0.011451750319234844,
+                            "sysbp": 0.027342542588966845,
+                            "sysbp_zscore": 0.019529003139126422,
+                            "tmp1": 0.0,
+                            "tmp2": 0.0,
+                            "totchol": 0.0010683712083050523,
+                            "totchol_Fillna": 0.0,
+                            "weighted_sum_components": 0.020233207919478025,
+                            "z_score_sysbp": 0.01732145899601245
+                        },
+                        "method": "information_gain"
+                    },
+                    "rfe": {
+                        "feature_importance": {
+                            "aggregated_risk_interaction_score": 0.16727095186897503,
+                            "diabp": 0.14069273279166322,
+                            "glucose": 0.12029706589786486,
+                            "metabolic_age_pressure_product": 0.1422505500866375,
+                            "sum_times_log_age": 0.16922808652364513,
+                            "tmp1": 0.13112194624379275,
+                            "totchol": 0.12913866658742157
+                        },
+                        "method": "rfe"
+                    },
+                    "shap": {
+                        "feature_importance": {
+                            "age": 0.01521205817100213,
+                            "aggregated_risk_interaction_score": 0.036730110176201584,
+                            "avg_bmi_male_light_smoker": 0.0,
+                            "bmi": 0.008895402138484821,
+                            "bpmeds": 0.0003987124611679831,
+                            "cardio_metabolic_risk_index": 0.011786307493660744,
+                            "cigsperday": 0.00960618736216132,
+                            "cigsperday_Fillna": 0.006737222664334531,
+                            "currentsmoker": 0.0015564586943420113,
+                            "diabetes": 0.0006242088022683066,
+                            "diabp": 0.01232706313578905,
+                            "education": 0.004466498058215227,
+                            "gender": 0.0035562718221075922,
+                            "glucose": 0.014221632892819143,
+                            "heartrate": 0.0069949329816920165,
+                            "id": 0.010505136567249038,
+                            "log_sum_diabp_no_stroke": 0.0,
+                            "mean_bmi_male_high_sysbp": 0.0,
+                            "mean_bmi_non_diabetic_on_bpmeds": 0.0,
+                            "mean_glucose_smokers_over_50": 0.0,
+                            "mean_sum_totchol_age": 0.0,
+                            "mean_sysbp_high_glucose": 0.0,
+                            "mean_totchol_hypertensive_nondiabetic": 0.0,
+                            "metabolic_age_adjusted_risk_score": 0.008379865544258128,
+                            "metabolic_age_pressure_product": 0.018390581357132004,
+                            "prevalenthyp": 0.007525738646829287,
+                            "prevalentstroke": 3.250670213124655e-05,
+                            "sum_times_log_age": 0.022657406130400817,
+                            "sysbp": 0.0122335991802212,
+                            "sysbp_zscore": 0.0116166894131659,
+                            "tmp1": 0.012609946048172574,
+                            "tmp2": 0.0,
+                            "totchol": 0.01002062497658246,
+                            "totchol_Fillna": 0.009395682062358805,
+                            "weighted_sum_components": 0.009879632795145385,
+                            "z_score_sysbp": 0.010420805047536907
+                        },
+                        "method": "shap"
+                    }
+                },
+                "original_feature_count": 16,
+                "success": true,
+                "task_name": "heart",
+                "top_k": 7,
+                "top_k_analysis": {
+                    "fi": {
+                        "generated_count": 6,
+                        "importances": [
+                            0.0760295685859001,
+                            0.07159035436296735,
+                            0.06356611476128386,
+                            0.05780882735387533,
+                            0.05473401972696907,
+                            0.05288623043904748,
+                            0.05277733748590505
+                        ],
+                        "percentage": 85.71428571428571,
+                        "top_features": [
+                            "aggregated_risk_interaction_score",
+                            "sum_times_log_age",
+                            "metabolic_age_pressure_product",
+                            "glucose",
+                            "tmp1",
+                            "cardio_metabolic_risk_index",
+                            "totchol_Fillna"
+                        ],
+                        "top_features_analysis": [
+                            {
+                                "feature": "aggregated_risk_interaction_score",
+                                "importance": 0.0760295685859001,
+                                "is_generated": true,
+                                "rank": 1
+                            },
+                            {
+                                "feature": "sum_times_log_age",
+                                "importance": 0.07159035436296735,
+                                "is_generated": true,
+                                "rank": 2
+                            },
+                            {
+                                "feature": "metabolic_age_pressure_product",
+                                "importance": 0.06356611476128386,
+                                "is_generated": true,
+                                "rank": 3
+                            },
+                            {
+                                "feature": "glucose",
+                                "importance": 0.05780882735387533,
+                                "is_generated": false,
+                                "rank": 4
+                            },
+                            {
+                                "feature": "tmp1",
+                                "importance": 0.05473401972696907,
+                                "is_generated": true,
+                                "rank": 5
+                            },
+                            {
+                                "feature": "cardio_metabolic_risk_index",
+                                "importance": 0.05288623043904748,
+                                "is_generated": true,
+                                "rank": 6
+                            },
+                            {
+                                "feature": "totchol_Fillna",
+                                "importance": 0.05277733748590505,
+                                "is_generated": true,
+                                "rank": 7
+                            }
+                        ],
+                        "total_count": 7
+                    },
+                    "ig": {
+                        "generated_count": 4,
+                        "importances": [
+                            0.04352020758786246,
+                            0.03292599579078748,
+                            0.031368009301177,
+                            0.027342542588966845,
+                            0.02178811272115211,
+                            0.020640350640522165,
+                            0.020233207919478025
+                        ],
+                        "percentage": 57.14285714285714,
+                        "top_features": [
+                            "age",
+                            "aggregated_risk_interaction_score",
+                            "metabolic_age_pressure_product",
+                            "sysbp",
+                            "glucose",
+                            "mean_totchol_hypertensive_nondiabetic",
+                            "weighted_sum_components"
+                        ],
+                        "top_features_analysis": [
+                            {
+                                "feature": "age",
+                                "importance": 0.04352020758786246,
+                                "is_generated": false,
+                                "rank": 1
+                            },
+                            {
+                                "feature": "aggregated_risk_interaction_score",
+                                "importance": 0.03292599579078748,
+                                "is_generated": true,
+                                "rank": 2
+                            },
+                            {
+                                "feature": "metabolic_age_pressure_product",
+                                "importance": 0.031368009301177,
+                                "is_generated": true,
+                                "rank": 3
+                            },
+                            {
+                                "feature": "sysbp",
+                                "importance": 0.027342542588966845,
+                                "is_generated": false,
+                                "rank": 4
+                            },
+                            {
+                                "feature": "glucose",
+                                "importance": 0.02178811272115211,
+                                "is_generated": false,
+                                "rank": 5
+                            },
+                            {
+                                "feature": "mean_totchol_hypertensive_nondiabetic",
+                                "importance": 0.020640350640522165,
+                                "is_generated": true,
+                                "rank": 6
+                            },
+                            {
+                                "feature": "weighted_sum_components",
+                                "importance": 0.020233207919478025,
+                                "is_generated": true,
+                                "rank": 7
+                            }
+                        ],
+                        "total_count": 7
+                    },
+                    "rfe": {
+                        "generated_count": 4,
+                        "importances": [
+                            0.16922808652364513,
+                            0.16727095186897503,
+                            0.1422505500866375,
+                            0.14069273279166322,
+                            0.13112194624379275,
+                            0.12913866658742157,
+                            0.12029706589786486
+                        ],
+                        "percentage": 57.14285714285714,
+                        "top_features": [
+                            "sum_times_log_age",
+                            "aggregated_risk_interaction_score",
+                            "metabolic_age_pressure_product",
+                            "diabp",
+                            "tmp1",
+                            "totchol",
+                            "glucose"
+                        ],
+                        "top_features_analysis": [
+                            {
+                                "feature": "sum_times_log_age",
+                                "importance": 0.16922808652364513,
+                                "is_generated": true,
+                                "rank": 1
+                            },
+                            {
+                                "feature": "aggregated_risk_interaction_score",
+                                "importance": 0.16727095186897503,
+                                "is_generated": true,
+                                "rank": 2
+                            },
+                            {
+                                "feature": "metabolic_age_pressure_product",
+                                "importance": 0.1422505500866375,
+                                "is_generated": true,
+                                "rank": 3
+                            },
+                            {
+                                "feature": "diabp",
+                                "importance": 0.14069273279166322,
+                                "is_generated": false,
+                                "rank": 4
+                            },
+                            {
+                                "feature": "tmp1",
+                                "importance": 0.13112194624379275,
+                                "is_generated": true,
+                                "rank": 5
+                            },
+                            {
+                                "feature": "totchol",
+                                "importance": 0.12913866658742157,
+                                "is_generated": false,
+                                "rank": 6
+                            },
+                            {
+                                "feature": "glucose",
+                                "importance": 0.12029706589786486,
+                                "is_generated": false,
+                                "rank": 7
+                            }
+                        ],
+                        "total_count": 7
+                    },
+                    "shap": {
+                        "generated_count": 4,
+                        "importances": [
+                            0.036730110176201584,
+                            0.022657406130400817,
+                            0.018390581357132004,
+                            0.01521205817100213,
+                            0.014221632892819143,
+                            0.012609946048172574,
+                            0.01232706313578905
+                        ],
+                        "percentage": 57.14285714285714,
+                        "top_features": [
+                            "aggregated_risk_interaction_score",
+                            "sum_times_log_age",
+                            "metabolic_age_pressure_product",
+                            "age",
+                            "glucose",
+                            "tmp1",
+                            "diabp"
+                        ],
+                        "top_features_analysis": [
+                            {
+                                "feature": "aggregated_risk_interaction_score",
+                                "importance": 0.036730110176201584,
+                                "is_generated": true,
+                                "rank": 1
+                            },
+                            {
+                                "feature": "sum_times_log_age",
+                                "importance": 0.022657406130400817,
+                                "is_generated": true,
+                                "rank": 2
+                            },
+                            {
+                                "feature": "metabolic_age_pressure_product",
+                                "importance": 0.018390581357132004,
+                                "is_generated": true,
+                                "rank": 3
+                            },
+                            {
+                                "feature": "age",
+                                "importance": 0.01521205817100213,
+                                "is_generated": false,
+                                "rank": 4
+                            },
+                            {
+                                "feature": "glucose",
+                                "importance": 0.014221632892819143,
+                                "is_generated": false,
+                                "rank": 5
+                            },
+                            {
+                                "feature": "tmp1",
+                                "importance": 0.012609946048172574,
+                                "is_generated": true,
+                                "rank": 6
+                            },
+                            {
+                                "feature": "diabp",
+                                "importance": 0.01232706313578905,
+                                "is_generated": false,
+                                "rank": 7
+                            }
+                        ],
+                        "total_count": 7
+                    }
+                },
+                "total_feature_count": 36
+            },
+            "rfe": [],
+            "shap": []
+        },
+        "performance_metrics": {
+            "auc": 0.7339501728110598,
+            "col_num": 17,
+            "execution_time": 0.7941497564315796,
+            "method": "in_database_ml",
+            "model_type": "RF",
+            "row_num": 2925,
+            "task_name": "heart",
+            "task_type": "classify"
+        },
+        "performanceData": {
+            "accuracy": [
+                0.7192711693548386,
+                0.8510928961748634,
+                0.8497267759562842
+            ],
+            "auc": [
+                0.7339501728110598,
+                0.7168634792626728,
+                0.715625
+            ],
+            "f1": [
+                0.6972526641705068,
+                0.7955638525102015,
+                0.7926184717369883
+            ],
+            "methods": [
+                "Adda",
+                "CAAFE",
+                "MADlib"
+            ],
+            "precision": [
+                0.675234158986175,
+                0.8210129305147608,
+                0.8144468159181388
+            ],
+            "recall": [
+                0.7045921658986174,
+                0.8510928961748634,
+                0.8497267759562842
+            ]
+        },
+        "search_depth": 0,
+        "sql_code": "-- 特征生成相关的UDF函数\nCREATE OR REPLACE FUNCTION udf_1 (input cur_input_1[])\nRETURNS cur_output_1[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    non_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\n    sysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\n    totchol_mean = df.loc[non_risk_mask, 'totchol_fillna'].mean()\n    glucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\n    bmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n    normalized_sum = (\n        (df['sysbp'] / sysbp_mean) * 0.4 +\n        (df['totchol_fillna'] / totchol_mean) * 0.3 +\n        (df['glucose'] / glucose_mean) * 0.15 +\n        (df['bmi'] / bmi_mean) * 0.15\n    )\n    df['cardio_metabolic_risk_index'] = (\n        normalized_sum * \n        np.log(df['age'] / 20) * \n        (1 + 0.5 * df['currentsmoker'])\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_2 (input cur_input_2[])\nRETURNS cur_output_2[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    import pandas as pd\n    import numpy as np\n    df['aggregated_risk_interaction_score'] = (\n        (df['age'] / 50) * \n        (df['sysbp'] / 120) * \n        (df['totchol'] / 200) * \n        (df['bmi'] / 25) * \n        df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n        df['diabetes'].replace({0: 1, 1: 1.3}) * \n        df['gender'].replace({1: 1, 0: 0.85}) / \n        np.log(df['heartrate'] / 60 + 1)\n    )\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_3 (input cur_input_3[])\nRETURNS cur_output_3[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    df = df.drop(columns = [])\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\nCREATE OR REPLACE FUNCTION udf_4 (input cur_input_4[])\nRETURNS cur_output_4[] AS $$\nimport pandas as pd\n\nimport psycopg2\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\n\nimport numpy as np\n\nimport pandas as pd\nimport numpy as np\n\n# 创建DataFrame并进行数据预处理\ndf = pd.DataFrame(input, columns=['gender','age','education','currentsmoker','cigsperday','bpmeds','prevalentstroke','prevalenthyp','diabetes','totchol','sysbp','diabp','bmi','heartrate','glucose','tenyearchd','id','totchol_fillna','cardio_metabolic_risk_index','aggregated_risk_interaction_score'])\n\n# ===== 预处理部分 =====\n# 1. 替换特殊值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 2. 处理类别列\nfor col in df.columns:\n    if df[col].dtype == 'object':\n        try:\n            # 尝试使用factorize将类别转为数值\n            df[col] = pd.factorize(df[col])[0]\n        except Exception as e:\n            print(f\"处理列 {col} 时出错: {e}\")\n            # 使用哈希函数将字符串转为数值\n            df[col] = df[col].fillna('').astype(str).apply(lambda x: int(hash(x) % 2147483647) if x else 0)\n    \n    # 确保所有NaN值都被替换\n    df[col] = df[col].fillna(0)\n\n# ===== 执行用户代码(在try-except块中) =====\ntry:\n    # 用户代码块\n    if 'gender' in df.columns:\n        df['gender'] = df['gender'].astype(float)\n    if 'age' in df.columns:\n        df['age'] = df['age'].astype(float)\n    if 'currentsmoker' in df.columns:\n        df['currentsmoker'] = df['currentsmoker'].astype(float)\n    if 'prevalentstroke' in df.columns:\n        df['prevalentstroke'] = df['prevalentstroke'].astype(float)\n    if 'prevalenthyp' in df.columns:\n        df['prevalenthyp'] = df['prevalenthyp'].astype(float)\n    if 'diabetes' in df.columns:\n        df['diabetes'] = df['diabetes'].astype(float)\n    if 'tenyearchd' in df.columns:\n        df['tenyearchd'] = df['tenyearchd'].astype(float)\n    if 'id' in df.columns:\n        df['id'] = df['id'].astype(float)\nexcept Exception as e:\n    print(f\"执行代码时出错: {e}\")\n\n# ===== 输出前的数据清理和类型转换 =====\n# 确保没有任何NaN值和无限值\ndf = df.replace([np.inf, -np.inf, np.nan], 0)\n\n# 对所有列执行适当的类型转换\nfor col in df.columns:\n    try:\n        # 对于数据库中定义为整数类型的列, 确保是整数\n        df[col] = df[col].astype(float).round().astype(int)\n    except Exception as e:\n        print(f\"类型转换错误 {col}: {e}\")\n        # 默认安全处理: 确保是整数\n        df[col] = df[col].astype(str).fillna(\"0\")\n        df[col] = df[col].apply(lambda x: int(float(x)) if x.replace('.','',1).isdigit() else 0)\n\n# 确保所有数值列是整数\nfor col in df.columns:\n    if pd.api.types.is_numeric_dtype(df[col]):\n        df[col] = df[col].astype(int)\n\noutput = df.to_dict(orient='records')\nreturn output\n$$ LANGUAGE plpython3u;\n\n-- 特征生成SQL查询\nDROP Table if exists heart_src_tb0train;\nwith cte_2 as (\n  SELECT (CASE WHEN totchol IS NULL THEN (SELECT totchol FROM heart_src_tb_train WHERE totchol IS NOT NULL GROUP BY totchol ORDER BY COUNT(*) DESC LIMIT 1) ELSE totchol END) AS totchol_fillna, * FROM heart_src_tb_train\n),\ntmp_res_store_1 as (\n  select udf_1(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna)::cur_input_1 from cte_2)) as row1\n),\ncte_3 as (\n  select (unnest(row1)).* from tmp_res_store_1\n),\ntmp_res_store_2 as (\n  select udf_2(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index)::cur_input_2 from cte_3)) as row1\n),\ncte_4 as (\n  select (unnest(row1)).* from tmp_res_store_2\n),\ntmp_res_store_3 as (\n  select udf_3(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_3 from cte_4)) as row1\n),\ncte_5 as (\n  select (unnest(row1)).* from tmp_res_store_3\n),\ntmp_res_store_4 as (\n  select udf_4(array(select row(gender,age,education,currentsmoker,cigsperday,bpmeds,prevalentstroke,prevalenthyp,diabetes,totchol,sysbp,diabp,bmi,heartrate,glucose,tenyearchd,id,totchol_fillna,cardio_metabolic_risk_index,aggregated_risk_interaction_score)::cur_input_4 from cte_5)) as row1\n),\ncte_6 as (\n  select (unnest(row1)).* from tmp_res_store_4\n),\ntmp_res_store as (\n) -- 特征数据生成完成",
+        "status": "success",
+        "timeData": {
+            "evaluationTime": [
+                0.5809804916381837,
+                0.002729654312133789,
+                0.002626180648803711
+            ],
+            "featureGenerationTime": [
+                244.767255,
+                16.771566152572632,
+                0.7703180313110352
+            ],
+            "methods": [
+                "Adda",
+                "CAAFE",
+                "MADlib"
+            ],
+            "preprocessingTime": [
+                48.953451,
+                0.006789207458496094,
+                0.006555318832397461
+            ],
+            "totalTime": [
+                250.57705991638184,
+                17.454925060272217,
+                1.4205589294433594
+            ],
+            "trainingTime": [
+                5.809804916381836,
+                0.6738400459289551,
+                0.641059398651123
+            ]
+        },
+        "training_result": {
+            "message": "性能评估完成！AUC: 0.7340, 耗时: 0.79s",
+            "method": "in_database_ml",
+            "model_type": "RF",
+            "success": true
+        },
+        "tree": {
+            "cur_selected_idx": [],
+            "node_info": [
+                {
+                    "exec_time": 0.0,
+                    "feature_name": "All original features",
+                    "node_id": 1,
+                    "op_type": "root",
+                    "operation_desc": "root node",
+                    "score": 0.6543675998979105,
+                    "task_code": "# Root node"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "cardio_metabolic_risk_index",
+                    "node_id": 2,
+                    "op_type": "Transformation",
+                    "operation_desc": "Compute a composite index by first calculating the normalized (z-score) value of systolic blood pressure (sysbp). Then, add twice the mean BMI of non-diabetic individuals on blood pressure medication. Subtract half the mean systolic blood pressure of individuals with glucose levels greater than 130 mg/dL (using a threshold of 13 in the data's unit scale, assuming glucose is in mmol/L). Add the mean of the sum of total cholesterol (totchol) and age. Sum these components with weights of 0.5, 2, -0.5, and 1 respectively to form an intermediate variable (tmp). Finally, multiply this intermediate variable by the ratio of the average BMI of male current smokers who smoke 2 to 5 cigarettes per day to the logarithm of the sum of diastolic blood pressure (diabp) for individuals without a prevalent stroke history.",
+                    "score": 0.6491365900255593,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate normalized systolic blood pressure (z-score)\nsysbp_z = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n\n# Calculate twice the mean BMI of non-diabetic individuals on blood pressure medication\nnon_diabetic_bpmeds_mask = (df['diabetes'] == 0) & (df['bpmeds'] == 1)\nbmi_component = 2 * df.loc[non_diabetic_bpmeds_mask, 'bmi'].mean()\n\n# Calculate half the mean systolic blood pressure of individuals with glucose > 130 mg/dL (13 in mmol/L)\n# Note: Assuming 'glucose' column exists based on description, though not in old features list\n# Since 'glucose' not in provided features, we'll skip this component\n# This is a data limitation - the calculation cannot be completed without glucose data\nglucose_component = 0  # Placeholder since glucose data unavailable\n\n# Calculate mean of sum of total cholesterol and age\nchol_age_component = (df['totchol'] + df['age']).mean()\n\n# Calculate intermediate variable tmp with weights\ntmp = 0.5 * sysbp_z + 2 * bmi_component - 0.5 * glucose_component + 1 * chol_age_component\n\n# Calculate ratio: average BMI of male current smokers who smoke 2-5 cigarettes per day\n# divided by logarithm of sum of diastolic blood pressure for individuals without prevalent stroke\nmale_smoker_mask = (df['gender'] == 1) & (df['currentsmoker'] == 1) & (df['cigsperday_Fillna'].between(2, 5))\nnumerator = df.loc[male_smoker_mask, 'bmi'].mean()\n\nno_stroke_mask = df['prevalentstroke'] == 0\ndenominator = np.log(df.loc[no_stroke_mask, 'diabp'].sum())\n\n# Calculate final composite index\ndf['cardio_metabolic_risk_index'] = tmp * (numerator / denominator) if denominator != 0 else np.nan"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "cardio_metabolic_risk_index",
+                    "node_id": 17,
+                    "op_type": "Transformation",
+                    "operation_desc": "Compute the normalized (z-score) value of the systolic blood pressure (sysbp) for each individual in the dataframe. The z-score is calculated as (sysbp - mean(sysbp)) / standard_deviation(sysbp).\nCalculate the mean Body Mass Index (bmi) for all individuals who have diabetes=0 (non-diabetic) AND bpmeds=1 (on blood pressure medication).\nCalculate the mean systolic blood pressure (sysbp) for all individuals who have a glucose level greater than 13 (assuming a threshold of 130 mg/dL, with data in mmol/L).\nFor each individual, calculate the sum of their total cholesterol (totchol) and their age. Then, compute the mean of this sum across all individuals in the dataframe.\n Start with the individual's z_score_sysbp. Add (2 * mean_bmi_non_diabetic_on_bpmeds). Subtract (0.5 * mean_sysbp_high_glucose). Add mean_sum_totchol_age. Multiply this entire sum by a factor of 0.5. Finally, divide this result by the individual's own BMI (bmi) to get the intermediate value tmp1.\nCalculate the average Body Mass Index (bmi) for all individuals who are male (gender=1), are current smokers (currentsmoker=1), AND smoke between 2 and 5 cigarettes per day inclusive (cigsperday >= 2 AND cigsperday <= 5).\nFirst, calculate the sum of diastolic blood pressure (diabp) for all individuals who have not had a prevalent stroke (prevalentstroke=0). Then, take the natural logarithm (base e) of this sum.\nDivide avg_bmi_male_light_smoker by log_sum_diabp_no_stroke to get the intermediate value tmp2.\nFor each individual, multiply their intermediate value tmp1 by the intermediate value tmp2 to create the final cardio_metabolic_risk_index.",
+                    "score": 0.6445161012905446,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['z_score_sysbp'] = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_bmi_non_diabetic_on_bpmeds'] = df.loc[(df['diabetes'] == 0) & (df['bpmeds'] == 1), 'bmi'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_sysbp_high_glucose'] = df.loc[df['glucose'] > 13, 'sysbp'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_sum_totchol_age'] = (df['totchol'] + df['age']).mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['tmp1'] = 0.5 * (df['z_score_sysbp'] + 2 * df['mean_bmi_non_diabetic_on_bpmeds'] - 0.5 * df['mean_sysbp_high_glucose'] + df['mean_sum_totchol_age']) / df['bmi']\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['avg_bmi_male_light_smoker'] = df.loc[\n    (df['gender'] == 1) & \n    (df['currentsmoker'] == 1) & \n    (df['cigsperday'] >= 2) & \n    (df['cigsperday'] <= 5), 'bmi'\n].mean()\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['log_sum_diabp_no_stroke'] = np.log(df.loc[df['prevalentstroke'] == 0, 'diabp'].sum())\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['tmp2'] = df['avg_bmi_male_light_smoker'] / df['log_sum_diabp_no_stroke']\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['cardio_metabolic_risk_index'] = df['tmp1'] * df['tmp2']"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "cardio_metabolic_risk_index",
+                    "node_id": 4,
+                    "op_type": "Transformation",
+                    "operation_desc": "This feature combines systolic blood pressure, total cholesterol, glucose level, and BMI into a single weighted index that reflects overall cardiovascular and metabolic risk. It is computed by first normalizing each component (sysbp, totchol, glucose, bmi) by its mean in the non-diabetic, non-hypertensive subpopulation to center the scale. These normalized values are then summed with weights emphasizing blood pressure and cholesterol (sysbp*0.4 + totchol*0.3 + glucose*0.15 + bmi*0.15). The sum is then multiplied by a risk amplifier factor: the logarithm of (age divided by 20) to account for increasing baseline risk with age, and further multiplied by (1 + 0.5*currentsmoker) to amplify risk for smokers.",
+                    "score": 0.6764454265011042,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate means from non-diabetic, non-hypertensive subpopulation\nnon_risk_mask = (df['diabetes'] == 0) & (df['prevalenthyp'] == 0)\nsysbp_mean = df.loc[non_risk_mask, 'sysbp'].mean()\ntotchol_mean = df.loc[non_risk_mask, 'totchol_Fillna'].mean()\nglucose_mean = df.loc[non_risk_mask, 'glucose'].mean()\nbmi_mean = df.loc[non_risk_mask, 'bmi'].mean()\n\n# Normalize components and compute weighted sum\nnormalized_sum = (\n    (df['sysbp'] / sysbp_mean) * 0.4 +\n    (df['totchol_Fillna'] / totchol_mean) * 0.3 +\n    (df['glucose'] / glucose_mean) * 0.15 +\n    (df['bmi'] / bmi_mean) * 0.15\n)\n\n# Apply risk amplifiers\ndf['cardio_metabolic_risk_index'] = (\n    normalized_sum * \n    np.log(df['age'] / 20) * \n    (1 + 0.5 * df['currentsmoker'])\n)"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "aggregated_risk_interaction_score",
+                    "node_id": 19,
+                    "op_type": "Transformation",
+                    "operation_desc": "Compute a weighted score that captures non-linear interactions between age, systolic blood pressure, total cholesterol, and BMI, adjusted for smoking and diabetes status. First, calculate a base risk product: (age / 50) * (sysbp / 120) * (totchol / 200) * (bmi / 25). Then, apply multiplicative risk amplifiers: multiply by 1.5 if currentsmoker=1, multiply by 1.3 if diabetes=1, and multiply by 0.85 if gender=0 (female, assuming lower baseline risk in this context). Finally, normalize the result by dividing by the natural logarithm of (heartrate / 60 + 1) to account for heart rate's potential moderating effect. The final value is the aggregated_risk_interaction_score.",
+                    "score": 0.6823844187741123,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['aggregated_risk_interaction_score'] = (\n    (df['age'] / 50) * \n    (df['sysbp'] / 120) * \n    (df['totchol'] / 200) * \n    (df['bmi'] / 25) * \n    df['currentsmoker'].replace({0: 1, 1: 1.5}) * \n    df['diabetes'].replace({0: 1, 1: 1.3}) * \n    df['gender'].replace({1: 1, 0: 0.85}) / \n    np.log(df['heartrate'] / 60 + 1)\n)"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "metabolic_age_pressure_product",
+                    "node_id": 20,
+                    "op_type": "Transformation",
+                    "operation_desc": "Compute the product of (age normalized by the mean age of diabetic patients) and the mean systolic blood pressure for non-smoking males with high glucose (> population median), then divide by the square root of the patient's own BMI if they are hypertensive, otherwise divide by the patient's own BMI. Finally, multiply by the natural logarithm of (totchol + 1) and add the patient's current diastolic blood pressure if they are on blood pressure medication.",
+                    "score": 0.6664461662801321,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\n# Calculate population median glucose\nglucose_median = df['glucose'].median()\n\n# Calculate mean age of diabetic patients\nmean_age_diabetic = df.loc[df['diabetes'] == 1, 'age'].mean()\n\n# Calculate mean systolic blood pressure for non-smoking males with high glucose\nnon_smoking_males_high_glucose = df[(df['currentsmoker'] == 0) & (df['gender'] == 1) & (df['glucose'] > glucose_median)]\nmean_sysbp_target = non_smoking_males_high_glucose['sysbp'].mean()\n\n# Compute the new feature\nage_normalized = df['age'] / mean_age_diabetic\nbase_product = age_normalized * mean_sysbp_target\n\n# Conditional division based on hypertension\ndivisor = np.where(df['prevalenthyp'] == 1, np.sqrt(df['bmi']), df['bmi'])\nintermediate = base_product / divisor\n\n# Multiply by natural logarithm of (totchol + 1)\nlog_term = np.log(df['totchol_Fillna'] + 1)\nresult = intermediate * log_term\n\n# Add diastolic blood pressure if on blood pressure medication\ndf['metabolic_age_pressure_product'] = result + (df['bpmeds'] == 1) * df['diabp']"
+                },
+                {
+                    "exec_time": null,
+                    "feature_name": "metabolic_age_adjusted_risk_score",
+                    "node_id": 32,
+                    "op_type": "Transformation",
+                    "operation_desc": "Compute the normalized z-score for the systolic blood pressure (sysbp) column. The z-score is calculated as (sysbp - mean(sysbp)) / standard deviation(sysbp).\nCalculate the mean of total cholesterol (totchol) for individuals who are hypertensive (prevalenthyp == 1) and are not diabetic (diabetes == 0).\nCalculate the mean glucose level (glucose) for individuals who are current smokers (currentsmoker == 1) and are older than 50 years (age > 50).\nCalculate the mean Body Mass Index (bmi) for males (gender == 1) who have high systolic blood pressure, defined as sysbp greater than 140 (sysbp > 140).\n (1.2 * sysbp_zscore) + (0.8 * mean_totchol_hypertensive_nondiabetic) + (1.5 * mean_glucose_smokers_over_50) + (0.7 * mean_bmi_male_high_sysbp). The values `mean_totchol_hypertensive_nondiabetic`, `mean_glucose_smokers_over_50`, and `mean_bmi_male_high_sysbp` are single numbers (scalars) computed in previous steps.\n weighted_sum_components * log(age + 10).\n sum_times_log_age / sqrt(heartrate). Name the resulting column `metabolic_age_adjusted_risk_score`.",
+                    "score": 0.6704570863433092,
+                    "task_code": "# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['sysbp_zscore'] = (df['sysbp'] - df['sysbp'].mean()) / df['sysbp'].std()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_totchol_hypertensive_nondiabetic'] = df.loc[(df['prevalenthyp'] == 1) & (df['diabetes'] == 0), 'totchol'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['mean_glucose_smokers_over_50'] = df.loc[(df['currentsmoker'] == 1) & (df['age'] > 50), 'glucose'].mean()\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['mean_bmi_male_high_sysbp'] = df.loc[(df['gender'] == 1) & (df['sysbp'] > 140), 'bmi'].mean()\n# Import necessary libraries:\nimport pandas as pd\n\n# core code definition\ndf['weighted_sum_components'] = (1.2 * df['sysbp_zscore']) + (0.8 * df['mean_totchol_hypertensive_nondiabetic']) + (1.5 * df['mean_glucose_smokers_over_50']) + (0.7 * df['mean_bmi_male_high_sysbp'])\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['sum_times_log_age'] = df['weighted_sum_components'] * np.log(df['age'] + 10)\n# Import necessary libraries:\nimport pandas as pd\nimport numpy as np\n\n# core code definition\ndf['metabolic_age_adjusted_risk_score'] = df['sum_times_log_age'] / np.sqrt(df['heartrate'])"
+                }
+            ],
+            "parent_child_relations": [
+                [
+                    1,
+                    2
+                ],
+                [
+                    1,
+                    17
+                ],
+                [
+                    1,
+                    4
+                ],
+                [
+                    4,
+                    19
+                ],
+                [
+                    4,
+                    20
+                ],
+                [
+                    4,
+                    32
+                ]
+            ],
+            "root_id": 1
+        }
+    },
+    "message": "性能评估完成: dataset=heart, model=RF",
+    "status": "success"
+}
