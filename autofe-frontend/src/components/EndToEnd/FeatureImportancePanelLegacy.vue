@@ -19,6 +19,23 @@
           </button>
         </div>
         <div class="action-buttons">
+          <div v-if="selectedMethod === 'paper'" class="top7-controls">
+            <label class="toggle-control" title="Toggle showing RFE card">
+              <input type="checkbox" v-model="showRfeInTop7" />
+              <span class="toggle-text">RFE</span>
+            </label>
+            <label class="slider-control" title="Adjust Top-7 card width">
+              <span class="slider-label">Width</span>
+              <input
+                type="range"
+                min="80"
+                max="360"
+                step="5"
+                v-model.number="top7CardWidth"
+              />
+              <span class="slider-value">{{ top7CardWidth }}px</span>
+            </label>
+          </div>
           <button
             class="btn-icon"
             @click="toggleFullscreen"
@@ -27,6 +44,27 @@
             <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'"></i>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Snapshot page has no header; render controls in the top-right corner -->
+    <div v-if="isSnapshot && selectedMethod === 'paper'" class="snapshot-top-right-controls">
+      <div class="top7-controls">
+        <label class="toggle-control" title="Toggle showing RFE card">
+          <input type="checkbox" v-model="showRfeInTop7" />
+          <span class="toggle-text">RFE</span>
+        </label>
+        <label class="slider-control" title="Adjust Top-7 card width">
+          <span class="slider-label">Width</span>
+          <input
+            type="range"
+            min="80"
+            max="360"
+            step="5"
+            v-model.number="top7CardWidth"
+          />
+          <span class="slider-value">{{ top7CardWidth }}px</span>
+        </label>
       </div>
     </div>
 
@@ -62,9 +100,9 @@
             </div>
 
             <!-- 方法卡片 -->
-            <div class="method-grid modern">
+            <div class="method-grid modern" :style="top7GridStyle">
               <div
-                v-for="card in methodCards"
+                v-for="card in visibleMethodCards"
                 :key="card.key"
                 class="modern-method-card"
               >
@@ -205,6 +243,12 @@ type ImportanceTabKey = ImportanceTab['key']
 const selectedMethod = ref<ImportanceTabKey>('paper')
 const isFullscreen = ref(false)
 
+const isSnapshotMode = computed(() => !!props.isSnapshot)
+
+// Top-7 (paper view) controls
+const showRfeInTop7 = ref(true)
+const top7CardWidth = ref<number>(isSnapshotMode.value ? 230 : 100)
+
 let barSvg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 
 const getFeatures = (method: ImportanceMethod): FeatureImportance[] => {
@@ -307,6 +351,18 @@ const methodCards = computed(() => {
       maxImportance: maxImportance || 1
     }
   })
+})
+
+const visibleMethodCards = computed(() => {
+  if (showRfeInTop7.value) return methodCards.value
+  return methodCards.value.filter(c => c.key !== 'rfe')
+})
+
+const top7GridStyle = computed<Record<string, string>>(() => {
+  return {
+    '--top7-card-width': `${top7CardWidth.value}px`,
+    '--top7-card-count': `${visibleMethodCards.value.length}`
+  }
 })
 
 const formatPercentage = (value?: number | null) => {
@@ -480,6 +536,10 @@ watch(() => props.importanceData, () => {
   })
 }, { deep: true })
 
+watch(isSnapshotMode, (next) => {
+  top7CardWidth.value = next ? 230 : 100
+})
+
 // 空图表显示函数
 const showEmptyBarChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, width: number, height: number) => {
   // 绘制空的坐标轴
@@ -590,6 +650,13 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   margin: 0 auto;
 }
 
+.snapshot-top-right-controls {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1100;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -621,6 +688,59 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.top7-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #f7f9fc;
+}
+
+.toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toggle-control input {
+  cursor: pointer;
+}
+
+.toggle-text {
+  color: var(--text-secondary);
+}
+
+.slider-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slider-control input[type='range'] {
+  width: 140px;
+}
+
+.slider-label {
+  color: var(--text-secondary);
+}
+
+.slider-value {
+  min-width: 52px;
+  text-align: right;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-primary);
 }
 
 .btn-icon {
@@ -1048,7 +1168,7 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 
 .method-grid.modern {
   display: grid;
-  grid-template-columns: repeat(4, 100px);
+  grid-template-columns: repeat(var(--top7-card-count, 4), var(--top7-card-width, 100px));
   gap: 3px;
   justify-content: center;
 }
@@ -1515,9 +1635,18 @@ const showEmptyRadarChart = (g: d3.Selection<SVGGElement, unknown, null, undefin
 }
 
 .snapshot-mode .method-grid.modern {
-  grid-template-columns: repeat(4, 240px) !important;
+  --top7-card-width: 230px;
+  --top7-card-count: 4;
   gap: 8px !important;
   justify-content: center !important;
+}
+
+.snapshot-mode .modern-method-card .method-name {
+  font-size: 18px;
+}
+
+.snapshot-mode .feature-row .feature-name {
+  font-size: 16px;
 }
 
 .snapshot-mode .modern-method-card {

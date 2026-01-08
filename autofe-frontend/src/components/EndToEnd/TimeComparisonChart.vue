@@ -23,9 +23,9 @@
           </button>
         </div>
         <button
-          class="btn-icon"
+          class="btn-icon export-btn"
           @click="exportChart"
-          title="Export chart"
+          title="Export HD chart"
         >
           <i class="bi bi-download"></i>
         </button>
@@ -34,19 +34,6 @@
 
     <div class="chart-container">
       <div ref="chartRef" class="time-chart"></div>
-
-      <!-- 图表说明 -->
-      <div class="chart-legend">
-        <div class="legend-item">
-          <div class="legend-segment training-segment"></div>
-          <span>Training Time</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-segment latency-segment"></div>
-          <span>End-to-End Latency</span>
-        </div>
-      </div>
-
     </div>
 
     <!-- 鼠标悬停提示 -->
@@ -147,12 +134,14 @@ const createChart = () => {
 
   const container = chartRef.value
   // 动态使用可用空间高度，避免固定 320px 导致在 100% 缩放时图表被裁切
-  const width = container.clientWidth
-  const height = (() => {
-    const rectHeight = container.getBoundingClientRect().height
-    const h = rectHeight && rectHeight > 0 ? rectHeight : container.clientHeight
-    return Math.max(h || 0, 360) // 保留较高最小值，但为下方图例腾出空间
-  })()
+  const rect = container.getBoundingClientRect()
+  const availableHeight = rect.height && rect.height > 0 ? rect.height : (container.clientHeight || 360)
+  const height = Math.max(availableHeight, 360) // 保留较高最小值，但为下方图例腾出空间
+
+  // 计算目标宽度为高度的1.5倍（长宽比约1.5:1）
+  const targetWidth = height * 1.5
+  // 但不能超过容器宽度
+  const width = Math.min(container.clientWidth, targetWidth)
 
   // 如果容器当前不可见或尺寸为0，延迟到下一帧再尝试，避免缓存/切换后刻度错位
   if (width === 0 || height === 0) {
@@ -167,9 +156,24 @@ const createChart = () => {
     .append('svg')
     .attr('width', width)
     .attr('height', height)
+    .style('display', 'block')
+    .style('margin', '0 auto') // 居中显示
+    .style('background', '#fff')
+
+  // 内置边框矩形 (确保导出时可见，内缩1px防止描边被裁剪)
+  svg.append('rect')
+    .attr('x', 1)
+    .attr('y', 1)
+    .attr('width', width - 2)
+    .attr('height', height - 2)
+    .attr('rx', 12)
+    .attr('ry', 12)
+    .attr('fill', 'none')
+    .attr('stroke', '#dee2e6')
+    .attr('stroke-width', 2)
 
   // 调整边距：减少顶部留白，使图表充满组件，图例将覆盖在图表右上角
-  const margin = { top: 20, right: 20, bottom: 60, left: 75 }
+  const margin = { top: 20, right: 20, bottom: 60, left: 90 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -226,10 +230,15 @@ const createChart = () => {
     .attr('shape-rendering', 'crispEdges')
 
   // Y轴（方法名）
-  g.append('g')
+  const yAxis = g.append('g')
     .call(d3.axisLeft(yScale).tickSize(0).tickPadding(10))
-    .selectAll('text')
+  
+  yAxis.select('.domain').remove() // 移除左侧黑色竖线
+  yAxis.selectAll('text')
     .style('text-anchor', 'end')
+    .style('font-size', '16px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
 
   // X轴（时间刻度）
   const xAxis = g.append('g')
@@ -248,16 +257,20 @@ const createChart = () => {
         })
     )
   xAxis.select('.domain').remove()
+  xAxis.selectAll('line').attr('stroke', '#cbd5e1') // 浅灰色刻度线
+  xAxis.selectAll('text')
+    .style('font-size', '14px')
+    .style('fill', '#1f2937')
 
   // X轴标签
   g.append('text')
     .attr('x', innerWidth / 2)
     .attr('y', innerHeight + margin.bottom - 10)
     .style('text-anchor', 'middle')
-    .style('font-size', '16px')
+    .style('font-size', '20px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
-    .text(`Time (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
+    .text(`Latency (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
   // 分组柱数据（不堆叠）：Training + End-to-End Latency 分开显示
   const groupedData = validData.map(d => ({
@@ -327,8 +340,8 @@ const createChart = () => {
       }
       return `${val.toFixed(0)} s`
     })
-    .style('font-size', '11px')
-    .style('fill', '#6b7280')
+    .style('font-size', '20px')
+    .style('fill', '#000000')
     .style('opacity', 0)
     .transition()
     .duration(800)
@@ -381,6 +394,51 @@ const createChart = () => {
         .attr('opacity', 1)
       hideTooltip()
     })
+
+  // 绘制内置图例 (D3) - 放在最后以确保覆盖在图表上层
+  const legendGroup = svg.append('g')
+    .attr('class', 'chart-legend-d3')
+    .attr('transform', `translate(${width - margin.right - 240}, ${margin.top + 10})`) // 右上角定位
+  
+  // 图例背景
+  legendGroup.append('rect')
+    .attr('width', 230)
+    .attr('height', 74)
+    .attr('fill', 'rgba(255, 255, 255, 0.95)')
+    .attr('stroke', '#cbd5e1')
+    .attr('stroke-width', 1)
+    .attr('rx', 8)
+    .style('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.05))')
+
+  // 图例项 1: Training Time
+  const legendItem1 = legendGroup.append('g').attr('transform', 'translate(16, 18)')
+  legendItem1.append('rect')
+    .attr('width', 18)
+    .attr('height', 14)
+    .attr('fill', '#9ca3af')
+    .attr('rx', 2)
+  legendItem1.append('text')
+    .attr('x', 26)
+    .attr('y', 12)
+    .style('font-size', '18px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
+    .text('Training Time')
+  
+  // 图例项 2: End-to-End Latency
+  const legendItem2 = legendGroup.append('g').attr('transform', 'translate(16, 50)')
+  legendItem2.append('rect')
+    .attr('width', 18)
+    .attr('height', 14)
+    .attr('fill', '#f59e0b')
+    .attr('rx', 2)
+  legendItem2.append('text')
+    .attr('x', 26)
+    .attr('y', 12)
+    .style('font-size', '18px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
+    .text('End-to-End Latency')
 
   currentChart = { svg, g, xScale, yScale, bars: barRows }
 }
@@ -488,23 +546,39 @@ const showNoDataMessage = (container: HTMLElement) => {
 const exportChart = () => {
   if (!svg) return
 
-  const svgData = new XMLSerializer().serializeToString(svg.node()!)
+  const svgNode = svg.node()!
+  const svgData = new XMLSerializer().serializeToString(svgNode)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
   const img = new Image()
+  
+  // 获取当前 SVG 尺寸
+  const width = +svg.attr('width')
+  const height = +svg.attr('height')
+  
+  // 设置高清导出的缩放倍数
+  const scale = 3
 
   img.onload = () => {
-    canvas.width = img.width
-    canvas.height = img.height
+    canvas.width = width * scale
+    canvas.height = height * scale
+    
+    // 缩放绘图上下文
+    ctx.scale(scale, scale)
+    
+    // 填充白色背景
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    
     ctx.drawImage(img, 0, 0)
 
     const link = document.createElement('a')
     link.download = `time-comparison-${timeUnit.value}-${Date.now()}.png`
-    link.href = canvas.toDataURL()
+    link.href = canvas.toDataURL('image/png')
     link.click()
   }
 
-  img.src = 'data:image/svg+xml;base64,' + btoa(svgData)
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
 }
 
 // 响应式处理
@@ -579,7 +653,7 @@ watch(() => props.timeData, () => {
   gap: 10px;
   font-weight: 700;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 27px;
 }
 
 .panel-actions {
@@ -604,7 +678,7 @@ watch(() => props.timeData, () => {
   border: none;
   padding: 6px 12px;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 21px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
@@ -638,6 +712,18 @@ watch(() => props.timeData, () => {
   color: var(--accent-blue, #2a7de1);
 }
 
+.export-btn {
+  margin-left: 8px;
+  background-color: #f1f5f9;
+  color: #2a7de1;
+  border: 1px solid #e2e8f0;
+}
+
+.export-btn:hover {
+  background-color: #e2e8f0;
+  color: #1a60c0;
+}
+
 .chart-container {
   position: relative;
   flex: 1;
@@ -658,27 +744,28 @@ watch(() => props.timeData, () => {
 
 .chart-legend {
   position: absolute;
-  top: 25px;
+  top: 48px;
   right: 8px;
   display: flex;
-  gap: 14px;
-  align-items: center;
-  padding: 8px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 8px;
   border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(2px);
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   z-index: 5;
   color: #4b5563;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 500;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .legend-segment {
@@ -702,7 +789,7 @@ watch(() => props.timeData, () => {
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 21px;
   pointer-events: none;
   z-index: 1000;
   box-shadow: none;
@@ -783,7 +870,7 @@ watch(() => props.timeData, () => {
 
 :deep(.tick text) {
   fill: #1f2937;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 500;
 }
 

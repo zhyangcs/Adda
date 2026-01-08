@@ -23,11 +23,12 @@
           </button>
         </div>
         <button
-          class="btn-icon"
+          class="export-btn"
           @click="exportChart"
-          title="Export chart"
+          title="Export HD chart"
         >
           <i class="bi bi-download"></i>
+          Export HD
         </button>
       </div>
     </div>
@@ -36,16 +37,8 @@
       <div ref="chartRef" class="performance-chart"></div>
 
       <!-- 图表说明 -->
-      <div class="chart-legend">
-        <div class="legend-item">
-          <div class="legend-color adda-color"></div>
-          <span>Adda (Our Method)</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-color baseline-color"></div>
-          <span>Baseline Methods</span>
-        </div>
-      </div>
+      <!-- Legend removed as each bar has a distinct color -->
+
     </div>
 
     <!-- 鼠标悬停提示 -->
@@ -153,49 +146,35 @@ const setMetric = (metric: 'auc' | 'f1') => {
   updateChart()
 }
 
-const createChart = () => {
-  if (!chartRef.value) return
-
-  const container = chartRef.value
-  const width = container.clientWidth
-  const height = (() => {
-    const rectHeight = container.getBoundingClientRect().height
-    const h = rectHeight && rectHeight > 0 ? rectHeight : container.clientHeight
-    return Math.max(h || 0, 320)
-  })()
-
-  if (width === 0 || height === 0) {
-    requestAnimationFrame(() => createChart())
-    return
-  }
-
-  // 清除现有图表
+const drawChart = (container: HTMLElement, width: number, height: number, animate: boolean = true) => {
   d3.select(container).selectAll('*').remove()
 
-  svg = d3.select(container)
+  const newSvg = d3.select(container)
     .append('svg')
     .attr('width', width)
     .attr('height', height)
+    // Add white background for export
+    .style('background-color', '#ffffff')
 
   // 为右上角图例预留顶部空间
-  const margin = { top: 60, right: 36, bottom: 25, left: 76 }
+  // Reduce left margin to bring AUC label closer
+  const margin = { top: 60, right: 36, bottom: 40, left: 90 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
-  const g = svg.append('g')
+  const g = newSvg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
 
   if (validData.value.length === 0) {
-    // 显示空图表
     showEmptyChart(g, innerWidth, innerHeight)
-    return
+    return { svg: newSvg, g }
   }
 
   // 比例尺
   const xScale = d3.scaleBand()
     .domain(validData.value.map((d: any) => d.method))
     .range([0, innerWidth])
-    .padding(0.2)
+    .padding(0.47)
 
   const yScale = d3.scaleLinear()
     .domain([0, d3.max(validData.value, (d: any) => d.value) || 1])
@@ -208,6 +187,7 @@ const createChart = () => {
     .attr('transform', `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale))
     .selectAll('text')
+    .style('font-size', '16px')
     .style('text-anchor', 'middle')
     .attr('dx', '0')
     .attr('dy', '0.75em')
@@ -218,18 +198,20 @@ const createChart = () => {
     .call(d3.axisLeft(yScale)
       .tickFormat(d3.format('.2f'))
     )
+    .selectAll('text')
+    .style('font-size', '16px')
 
   // Y轴标签
   g.append('text')
     .attr('transform', 'rotate(-90)')
-    .attr('y', 0 - margin.left)
+    .attr('y', 0 - margin.left + 20) // Moves text closer to center of margin
     .attr('x', 0 - (innerHeight / 2))
     .attr('dy', '1em')
     .style('text-anchor', 'middle')
     .style('font-size', '16px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
-    .text(selectedMetric.value.toUpperCase())
+    .text(`Performance (${selectedMetric.value.toUpperCase()})`)
 
   // 柱状图
   const bars = g.selectAll('.bar')
@@ -238,18 +220,23 @@ const createChart = () => {
     .attr('class', 'bar')
     .attr('x', (d: any) => xScale(d.method) || 0)
     .attr('width', xScale.bandwidth())
-    .attr('y', innerHeight)
-    .attr('height', 0)
-    .attr('fill', (d: any) => d.isAdda ? '#007bff' : '#4b5563')
+    .attr('y', animate ? innerHeight : (d: any) => yScale(d.value))
+    .attr('height', animate ? 0 : (d: any) => innerHeight - yScale(d.value))
+    .attr('fill', (d: any, i: number) => {
+      // Darker Academic/Scientific color palette
+      const colors = ['#2c4b74', '#a8560d', '#96282b', '#316a66', '#2d5e2e', '#947814', '#63405c', '#a3525b', '#5c4031', '#6e6662']
+      return colors[i % colors.length]
+    })
     .attr('rx', 4)
     .style('cursor', 'pointer')
 
-  // 动画
-  bars.transition()
-    .duration(800)
-    .delay((_: any, i: number) => i * 100)
-    .attr('y', (d: any) => yScale(d.value))
-    .attr('height', (d: any) => innerHeight - yScale(d.value))
+  if (animate) {
+    bars.transition()
+      .duration(800)
+      .delay((_: any, i: number) => i * 100)
+      .attr('y', (d: any) => yScale(d.value))
+      .attr('height', (d: any) => innerHeight - yScale(d.value))
+  }
 
   // 鼠标事件
   bars
@@ -279,7 +266,7 @@ const createChart = () => {
     })
 
   // 数值标签
-  g.selectAll('.label')
+  const labels = g.selectAll('.label')
     .data(validData.value)
     .enter().append('text')
     .attr('class', 'label')
@@ -288,15 +275,54 @@ const createChart = () => {
     .attr('text-anchor', 'middle')
     .style('font-size', '16px')
     .style('font-weight', 'bold')
-    .style('fill', (d: any) => d.isAdda ? '#007bff' : '#4b5563')
-    .style('opacity', 0)
+    .style('fill', (d: any, i: number) => {
+      // Darker Academic/Scientific color palette
+      const colors = ['#2c4b74', '#a8560d', '#96282b', '#316a66', '#2d5e2e', '#947814', '#63405c', '#a3525b', '#5c4031', '#6e6662']
+      return colors[i % colors.length]
+    })
+    .style('opacity', animate ? 0 : 1)
     .text((d: any) => d.value.toFixed(3))
-    .transition()
-    .duration(800)
-    .delay((_: any, i: number) => i * 100 + 400)
-    .style('opacity', 1)
+  
+  if (animate) {
+    labels.transition()
+      .duration(800)
+      .delay((_: any, i: number) => i * 100 + 400)
+      .style('opacity', 1)
+  }
 
-  currentChart = { svg, g, xScale, yScale, bars }
+  return { svg: newSvg, g, xScale, yScale, bars }
+}
+
+const createChart = () => {
+  if (!chartRef.value) return
+
+  const container = chartRef.value
+  
+  // 动态使用可用空间高度，避免固定 320px
+  const rect = container.getBoundingClientRect()
+  const availableHeight = rect.height && rect.height > 0 ? rect.height : (container.clientHeight || 360)
+  const height = Math.max(availableHeight, 360) 
+
+  // 计算目标宽度为高度的1.5倍（长宽比约1.5:1）
+  const targetWidth = height * 1.5
+  // 但不能超过容器宽度
+  const width = Math.min(container.clientWidth, targetWidth)
+
+  if (width === 0 || height === 0) {
+    requestAnimationFrame(() => createChart())
+    return
+  }
+
+  const result = drawChart(container, width, height, true)
+  svg = result.svg
+  
+  // 让图表居中
+  if (svg) {
+    svg.style('display', 'block')
+       .style('margin', '0 auto')
+  }
+
+  currentChart = result
 }
 
 const updateChart = () => {
@@ -382,23 +408,39 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
 const exportChart = () => {
   if (!svg) return
 
-  const svgData = new XMLSerializer().serializeToString(svg.node()!)
+  const svgNode = svg.node()!
+  const svgData = new XMLSerializer().serializeToString(svgNode)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
   const img = new Image()
+  
+  // 获取当前 SVG 尺寸
+  const width = +svg.attr('width')
+  const height = +svg.attr('height')
+  
+  // 设置高清导出的缩放倍数
+  const scale = 3
 
   img.onload = () => {
-    canvas.width = img.width
-    canvas.height = img.height
+    canvas.width = width * scale
+    canvas.height = height * scale
+    
+    // 缩放绘图上下文
+    ctx.scale(scale, scale)
+    
+    // 填充白色背景
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    
     ctx.drawImage(img, 0, 0)
 
     const link = document.createElement('a')
     link.download = `performance-comparison-${selectedMetric.value}-${Date.now()}.png`
-    link.href = canvas.toDataURL()
+    link.href = canvas.toDataURL('image/png')
     link.click()
   }
 
-  img.src = 'data:image/svg+xml;base64,' + btoa(svgData)
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
 }
 
 // 响应式处理
@@ -509,6 +551,28 @@ watch(() => props.performanceData, () => {
 .btn-icon:hover {
   background: rgba(42, 125, 225, 0.08);
   color: var(--accent-blue, #2a7de1);
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+.export-btn:hover {
+  background: #f8fafc;
+  color: #2a7de1;
+  border-color: #2a7de1;
 }
 
 .chart-container {
