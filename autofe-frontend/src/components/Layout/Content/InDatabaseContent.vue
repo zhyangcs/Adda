@@ -783,61 +783,210 @@ function renderPipelineDag() {
       selectedPipelineNode.value = d
       tooltipVisible.value = true
       updateTooltipPositionFromNode(event)
-      d3.select(event.currentTarget).select('rect').style('stroke', '#3b82f6').style('stroke-width', 2)
+      d3.select(event.currentTarget).selectAll('.node-stroke').style('stroke', '#3b82f6').style('stroke-width', 2)
     })
     .on('mouseleave', (event) => {
       isHoveringDagNode.value = false
       scheduleHideTooltip()
-      d3.select(event.currentTarget).select('rect').style('stroke', '#e2e8f0').style('stroke-width', 1)
+      d3.select(event.currentTarget).selectAll('.node-stroke').style('stroke', '#94a3b8').style('stroke-width', 1)
     })
 
-  // Main Card
-  nodeGroup.append('rect')
-    .attr('width', nodeWidth)
-    .attr('height', nodeHeight)
-    .attr('x', -nodeWidth / 2)
-    .attr('y', -nodeHeight / 2)
-    .attr('rx', 8)
-    .attr('ry', 8)
-    .style('fill', '#ffffff')
-    .style('stroke', '#e2e8f0')
-    .style('stroke-width', 1)
-    .style('filter', 'url(#drop-shadow)')
+  nodeGroup.each(function(d) {
+    const g = d3.select(this)
+    const isUdf = (d.udfSnippets && d.udfSnippets.length > 0) || d.opType === 'UDF' || d.opType === 'APPLY'
 
-  // Left colored strip
-  nodeGroup.append('path')
-    .attr('d', `M ${-nodeWidth/2} ${-nodeHeight/2+8} Q ${-nodeWidth/2} ${-nodeHeight/2} ${-nodeWidth/2+8} ${-nodeHeight/2} L ${-nodeWidth/2+6} ${-nodeHeight/2} L ${-nodeWidth/2+6} ${nodeHeight/2} L ${-nodeWidth/2+8} ${nodeHeight/2} Q ${-nodeWidth/2} ${nodeHeight/2} ${-nodeWidth/2} ${nodeHeight/2-8} Z`)
-    .style('fill', d => opTypeColor(d.opType))
+    if (d.opType === 'START') {
+      // Figure 1: Database Icon (Cylinder Stack)
+      const r = 24
+      const h = 16
+      const stackH = 14
+      // Bottom layer
+      g.append('path')
+        .attr('class', 'node-stroke')
+        .attr('d', `M ${-r} ${stackH} v ${stackH} c 0 ${h} ${2*r} ${h} ${2*r} 0 v ${-stackH}`)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+      
+      g.append('ellipse')
+        .attr('class', 'node-stroke')
+        .attr('cx', 0).attr('cy', stackH)
+        .attr('rx', r).attr('ry', h/2)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+        
+      // Middle layer
+      g.append('path')
+        .attr('class', 'node-stroke')
+        .attr('d', `M ${-r} 0 v ${stackH} c 0 ${h} ${2*r} ${h} ${2*r} 0 v ${-stackH}`)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
 
-  // Primary label (feature or op)
-  nodeGroup.append('text')
-    .attr('x', -nodeWidth / 2 + 16)
-    .attr('y', -nodeHeight / 2 + 20)
-    .style('font-weight', '700')
-    .style('font-size', '13px')
-    .style('fill', '#1e293b')
-    .style('pointer-events', 'none')
-    .text(d => nodePrimaryLabel(d))
+      g.append('ellipse')
+        .attr('class', 'node-stroke')
+        .attr('cx', 0).attr('cy', 0)
+        .attr('rx', r).attr('ry', h/2)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+        
+      // Top layer
+      g.append('path')
+        .attr('class', 'node-stroke')
+        .attr('d', `M ${-r} ${-stackH} v ${stackH} c 0 ${h} ${2*r} ${h} ${2*r} 0 v ${-stackH}`)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
 
-  // Secondary label (op type)
-  nodeGroup.append('text')
-    .attr('x', -nodeWidth / 2 + 16)
-    .attr('y', -nodeHeight / 2 + 40)
-    .style('font-size', '11px')
-    .style('fill', '#64748b')
-    .style('pointer-events', 'none')
-    .text(d => d.opType || 'NODE')
-
-  // R/W Counts
-  nodeGroup.append('text')
-    .attr('x', nodeWidth / 2 - 12)
-    .attr('y', -nodeHeight / 2 + 36)
-    .attr('text-anchor', 'end')
-    .style('font-size', '10px')
-    .style('font-weight', '600')
-    .style('fill', '#64748b')
-    .style('pointer-events', 'none')
-    .text(d => `R:${d.readColumns?.length ?? 0} W:${d.writeColumns?.length ?? 0}`)
+      g.append('ellipse')
+        .attr('class', 'node-stroke')
+        .attr('cx', 0).attr('cy', -stackH)
+        .attr('rx', r).attr('ry', h/2)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+        
+      // Decor bits (small heavy squares)
+      const bitSz = 4
+      const bitX = r - 8
+      const bitY1 = -stackH + 4
+      const bitY2 = 4
+      const bitY3 = stackH + 4
+      
+      const drawBits = (y: number) => {
+        g.append('rect').attr('x', bitX).attr('y', y).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
+        g.append('rect').attr('x', bitX - 6).attr('y', y).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
+        g.append('rect').attr('x', bitX).attr('y', y + 6).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
+        g.append('rect').attr('x', bitX - 6).attr('y', y + 6).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
+      }
+      drawBits(bitY1)
+      drawBits(bitY2)
+      drawBits(bitY3)
+      
+    } else if (d.opType === 'END') {
+      // Figure 2: Table Icon
+      const w = 60
+      const h = 50
+      const x = -w/2
+      const y = -h/2
+      
+      // Main BG
+      g.append('rect')
+        .attr('class', 'node-stroke')
+        .attr('x', x).attr('y', y)
+        .attr('width', w).attr('height', h)
+        .attr('rx', 2)
+        .style('fill', '#ffffff')
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+        
+      // Header
+      g.append('rect')
+        .attr('x', x).attr('y', y)
+        .attr('width', w).attr('height', 12)
+        .attr('rx', 2) // rounded top
+        .style('fill', '#1e40af') // Dark Blue
+      
+      // Fix rounded corners at bottom of header by putting a rect over it? 
+      // Actually simple rect is fine.
+      
+      // Rows grid
+      // Columns
+      g.append('line').attr('x1', x + w/4).attr('y1', y+12).attr('x2', x + w/4).attr('y2', y+h).style('stroke', '#cbd5e1').style('stroke-width', 1)
+      g.append('line').attr('x1', x + w/2).attr('y1', y+12).attr('x2', x + w/2).attr('y2', y+h).style('stroke', '#cbd5e1').style('stroke-width', 1)
+      g.append('line').attr('x1', x + 3*w/4).attr('y1', y+12).attr('x2', x + 3*w/4).attr('y2', y+h).style('stroke', '#cbd5e1').style('stroke-width', 1)
+      
+      // Rows
+      const rowH = (h - 12) / 4
+      for(let i=1; i<4; i++) {
+        g.append('line')
+          .attr('x1', x).attr('y1', y+12 + i*rowH)
+          .attr('x2', x+w).attr('y2', y+12 + i*rowH)
+          .style('stroke', '#cbd5e1').style('stroke-width', 1)
+      }
+      
+      // Some cells filled light grey
+      g.append('rect').attr('x', x).attr('y', y+12).attr('width', w/4).attr('height', rowH).style('fill', '#f1f5f9')
+      g.append('rect').attr('x', x).attr('y', y+12+2*rowH).attr('width', w/4).attr('height', rowH).style('fill', '#f1f5f9')
+      
+    } else {
+      // General Node (Fig 3) & UDF Node (Fig 4)
+      // Colors
+      const isOrange = isUdf
+      const headerColor = isOrange ? '#ea580c' : '#3b82f6' // Orange-600 or Blue-500
+      const headerText = d.opType || 'NODE'
+      const bodyColor = isOrange ? '#ffedd5' : '#ffffff' // Orange-100 or White
+      const labelText = nodePrimaryLabel(d) || 'feature'
+      
+      // Shadow via filter
+      g.style('filter', 'url(#drop-shadow)')
+      
+      // Container Body (Full rounded rect)
+      g.append('rect')
+        .attr('class', 'node-stroke')
+        .attr('x', -nodeWidth/2).attr('y', -nodeHeight/2)
+        .attr('width', nodeWidth).attr('height', nodeHeight)
+        .attr('rx', 8).attr('ry', 8)
+        .style('fill', bodyColor)
+        .style('stroke', '#94a3b8')
+        .style('stroke-width', 1)
+        
+      // Header (Clipping needed for rounded corners? Or just path)
+      // Top rounded rect
+      const headerH = 26
+      // Draw path for top half with rounded corners
+      g.append('path')
+        .attr('d', `M ${-nodeWidth/2} ${-nodeHeight/2 + headerH} L ${-nodeWidth/2} ${-nodeHeight/2 + 8} Q ${-nodeWidth/2} ${-nodeHeight/2} ${-nodeWidth/2 + 8} ${-nodeHeight/2} L ${nodeWidth/2 - 8} ${-nodeHeight/2} Q ${nodeWidth/2} ${-nodeHeight/2} ${nodeWidth/2} ${-nodeHeight/2 + 8} L ${nodeWidth/2} ${-nodeHeight/2 + headerH} Z`)
+        .style('fill', headerColor)
+      
+      // Header Text (OpType)
+      g.append('text')
+        .attr('x', 0)
+        .attr('y', -nodeHeight/2 + 18)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .style('font-weight', '700')
+        .style('fill', '#ffffff')
+        .style('pointer-events', 'none')
+        .text(headerText.toUpperCase())
+        
+      // Body Text (Feature Label)
+      g.append('text')
+        .attr('x', 0)
+        .attr('y', 10) // Centered in bottom part roughly
+        .attr('text-anchor', 'middle')
+        .style('font-family', 'monospace')
+        .style('font-size', '14px')
+        .style('font-weight', '600')
+        .style('fill', '#1e293b')
+        .style('pointer-events', 'none')
+        .text(labelText)
+      
+      // UDF Icon (Python)
+      if (isUdf) {
+        const iconSize = 20
+        // Position top-right, overlapping? Or inside header?
+        // Figure 4 shows it floating top-right.
+        const iconX = nodeWidth/2 - 10
+        const iconY = -nodeHeight/2 - 10
+        
+        const pyGroup = g.append('g').attr('transform', `translate(${iconX}, ${iconY}) scale(0.8)`)
+        
+        // Python Logo simplified (Two snakes)
+        // Blue Snake
+        pyGroup.append('path')
+           .attr('d', 'M 10 0 Q 20 0 20 10 L 20 12 L 12 12 L 12 18 L 22 18 Q 28 18 28 8 L 28 5 Q 28 0 20 0 L 10 0 Z') // Rough shape
+           .attr('d', 'M 9.9 0 C 4.5 0 2.5 3 2.5 3 L 2.5 5.5 L 6 5.5 C 6 5.5 6 3 9.9 3 C 13.8 3 13.8 5.7 13.8 5.7 L 13.8 7.3 L 5.5 7.3 C 1 7.3 0 11.5 0 11.5 L 0 16.5 C 0 21 5.5 21 5.5 21 L 9.5 21 L 9.5 17.5 C 9.5 14.5 9.5 13.5 12.5 13.5 L 18.5 13.5 C 18.5 13.5 18.5 10 18.5 5.5 C 18.5 0 9.9 0 9.9 0 Z M 7 1.5 C 7.8 1.5 8.5 2.2 8.5 3 C 8.5 3.8 7.8 4.5 7 4.5 C 6.2 4.5 5.5 3.8 5.5 3 C 5.5 2.2 6.2 1.5 7 1.5 Z')
+           .style('fill', '#3776ab')
+        // Yellow Snake (Rotated)
+        pyGroup.append('path')
+           .attr('d', 'M 12.3 22 C 17.7 22 19.7 19 19.7 19 L 19.7 16.5 L 16.2 16.5 C 16.2 16.5 16.2 19 12.3 19 C 8.4 19 8.4 16.3 8.4 16.3 L 8.4 14.7 L 16.7 14.7 C 21.2 14.7 22.2 10.5 22.2 10.5 L 22.2 5.5 C 22.2 1 16.7 1 16.7 1 L 12.7 1 L 12.7 4.5 C 12.7 7.5 12.7 8.5 9.7 8.5 L 3.7 8.5 C 3.7 8.5 3.7 12 3.7 16.5 C 3.7 22 12.3 22 12.3 22 Z M 15.2 20.5 C 14.4 20.5 13.7 19.8 13.7 19 C 13.7 18.2 14.4 17.5 15.2 17.5 C 16 17.5 16.7 18.2 16.7 19 C 16.7 19.8 16 20.5 15.2 20.5 Z')
+           .style('fill', '#ffd343')
+      }
+    }
+  })
 }
 
 function clampTooltipToContainer(nextX: number, nextY: number, rect: DOMRect) {

@@ -16,6 +16,8 @@ export interface TimeData {
   methods: string[]
   totalTime: number[]  // 秒
   trainingTime: number[]  // 秒
+  /** Optional: seconds; if provided, end-to-end latency = training + feature generation */
+  featureGenerationTime?: number[]
 }
 
 export interface FeatureImportance {

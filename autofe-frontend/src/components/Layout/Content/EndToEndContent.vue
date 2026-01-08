@@ -96,7 +96,8 @@ const realTimeData = computed(() => {
   return {
     methods: data.methods || [],
     totalTime: toNumberArray(data.totalTime),
-    trainingTime: toNumberArray(data.trainingTime)
+    trainingTime: toNumberArray(data.trainingTime),
+    featureGenerationTime: toNumberArray(data.featureGenerationTime)
   } as TimeData
 })
 
