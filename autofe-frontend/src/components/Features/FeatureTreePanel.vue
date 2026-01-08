@@ -70,7 +70,7 @@ function renderTree(treeStructure: any) {
   zoomBehavior = null
   svgRootSelection = null
 
-  let { root_id, parent_child_relations, node_info } = treeStructure
+  const { root_id, parent_child_relations, node_info } = treeStructure
   const selectedNodeId = featureTreeStore.selectedNode?.node_id
 
   // 将节点信息转换为字典

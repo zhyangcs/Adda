@@ -82,7 +82,13 @@
         <PerformanceSnapshotPerformanceComparisonChart :performance-data="filteredPerformanceData" />
       </div>
       <div class="chart-card">
+        <PerformanceSnapshotPerformanceComparisonChartHorizontal :performance-data="filteredPerformanceData" />
+      </div>
+      <div class="chart-card">
         <PerformanceSnapshotTimeComparisonChart :time-data="filteredTimeData" />
+      </div>
+      <div class="chart-card">
+        <PerformanceSnapshotTimeComparisonChartVertical :time-data="filteredTimeData" />
       </div>
     </section>
   </div>
@@ -92,7 +98,9 @@
 import { computed, onMounted, ref } from 'vue'
 import type { PerformanceData, TimeData } from '@/types'
 import PerformanceSnapshotPerformanceComparisonChart from './PerformanceSnapshotPerformanceComparisonChart.vue'
+import PerformanceSnapshotPerformanceComparisonChartHorizontal from './PerformanceSnapshotPerformanceComparisonChartHorizontal.vue'
 import PerformanceSnapshotTimeComparisonChart from './PerformanceSnapshotTimeComparisonChart.vue'
+import PerformanceSnapshotTimeComparisonChartVertical from './PerformanceSnapshotTimeComparisonChartVertical.vue'
 
 type PerformanceEvaluationApiResponse = {
   status?: 'success' | 'fail' | string
@@ -480,7 +488,7 @@ select:focus {
 
 .charts-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 14px;
   align-items: stretch;
 }
@@ -494,12 +502,14 @@ select:focus {
 }
 
 @media (max-width: 1100px) {
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
   .method-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .charts-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

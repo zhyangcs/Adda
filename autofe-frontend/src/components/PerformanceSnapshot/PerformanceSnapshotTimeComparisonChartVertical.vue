@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div class="panel-title">
         <i class="bi bi-clock-history"></i>
-        Time Comparison
+        Time Comparison (Vertical)
       </div>
       <div class="panel-actions">
         <div class="unit-toggle">
@@ -153,7 +153,7 @@ const createChart = () => {
     .style('margin', '0 auto')
     .style('background', '#fff')
 
-  const margin = { top: 20, right: 20, bottom: 60, left: 90 }
+  const margin = { top: 20, right: 20, bottom: 90, left: 90 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -176,65 +176,66 @@ const createChart = () => {
   const timeScale = timeUnit.value === 'minutes' ? 60 : 1
   const maxTimeValue = Math.max(...validData.map(d => (d.totalTime || 0) / timeScale), 1) * 1.15
 
-  const xScale = d3.scaleLinear()
-    .domain([0, maxTimeValue])
-    .nice()
-    .range([0, innerWidth])
-
-  const yScale = d3.scaleBand()
+  const xScale = d3.scaleBand()
     .domain(validData.map(d => d.method))
-    .range([0, innerHeight])
+    .range([0, innerWidth])
     .padding(0.22)
 
-  const grid = g.append('g')
-    .attr('class', 'x-grid')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(
-      d3.axisBottom(xScale)
-        .ticks(6)
-        .tickSize(-innerHeight)
-        .tickFormat(() => '')
-    )
-  grid.selectAll('.domain').remove()
-  grid.selectAll('line')
+  const yScale = d3.scaleLinear()
+    .domain([0, maxTimeValue])
+    .nice()
+    .range([innerHeight, 0])
+
+  const yGrid = g.append('g')
+    .attr('class', 'y-grid')
+    .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerWidth).tickFormat(() => ''))
+  yGrid.selectAll('.domain').remove()
+  yGrid.selectAll('line')
     .attr('stroke', '#dfe3eb')
     .attr('stroke-width', 1)
     .attr('shape-rendering', 'crispEdges')
 
   const yAxis = g.append('g')
-    .call(d3.axisLeft(yScale).tickSize(0).tickPadding(10))
-
-  yAxis.select('.domain').remove()
-  yAxis.selectAll('text')
-    .style('text-anchor', 'end')
-    .style('font-size', '16px')
-    .style('font-weight', '600')
-    .style('fill', '#374151')
-
-  const xAxis = g.append('g')
-    .attr('transform', `translate(0,${innerHeight})`)
     .call(
-      d3.axisBottom(xScale)
+      d3.axisLeft(yScale)
         .ticks(6)
         .tickPadding(8)
         .tickFormat(d => {
           const value = Number(d)
           if (timeUnit.value === 'minutes') {
-            const minutes = value
-            return minutes >= 1 ? `${minutes.toFixed(1)} min` : `${(minutes * 60).toFixed(0)} s`
+            return value >= 1 ? `${value.toFixed(1)}` : `${(value * 60).toFixed(0)}`
           }
-          return `${value.toFixed(0)} s`
+          return `${value.toFixed(0)}`
         })
     )
-  xAxis.select('.domain').remove()
-  xAxis.selectAll('line').attr('stroke', '#cbd5e1')
-  xAxis.selectAll('text')
+  yAxis.select('.domain').remove()
+  yAxis.selectAll('line').attr('stroke', '#cbd5e1')
+  yAxis.selectAll('text')
     .style('font-size', '14px')
     .style('fill', '#1f2937')
 
+  const xAxis = g.append('g')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(d3.axisBottom(xScale).tickSize(0).tickPadding(10))
+  xAxis.select('.domain').remove()
+  xAxis.selectAll('text')
+    .style('font-size', '14px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
+
   g.append('text')
     .attr('x', innerWidth / 2)
-    .attr('y', innerHeight + margin.bottom - 10)
+    .attr('y', innerHeight + margin.bottom - 20)
+    .style('text-anchor', 'middle')
+    .style('font-size', '20px')
+    .style('font-weight', '700')
+    .style('fill', '#1f2937')
+    .text('Methods')
+
+  g.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('x', 0 - (innerHeight / 2))
+    .attr('y', 0 - margin.left + 26)
     .style('text-anchor', 'middle')
     .style('font-size', '20px')
     .style('font-weight', '700')
@@ -248,13 +249,15 @@ const createChart = () => {
     training: Math.max(0, d.trainingTime / timeScale)
   }))
 
+  const keys = ['training', 'endToEnd'] as const
+
   const colorScale = d3.scaleOrdinal<string, string>()
-    .domain(['training', 'endToEnd'])
+    .domain(keys as unknown as string[])
     .range(['#9ca3af', '#f59e0b'])
 
   const subScale = d3.scaleBand()
-    .domain(['training', 'endToEnd'])
-    .range([0, yScale.bandwidth()])
+    .domain(keys as unknown as string[])
+    .range([0, xScale.bandwidth()])
     .padding(0.18)
 
   const groups = g.selectAll('.method-group')
@@ -262,9 +265,9 @@ const createChart = () => {
     .enter()
     .append('g')
     .attr('class', 'method-group')
-    .attr('transform', (d: any) => `translate(0,${yScale(d.method) || 0})`)
+    .attr('transform', (d: any) => `translate(${xScale(d.method) || 0},0)`)
 
-  const barRows = groups.selectAll('rect')
+  const bars = groups.selectAll('rect.stacked-bar')
     .data((d: any) => ([
       { method: d.method, isAdda: d.isAdda, key: 'training', value: d.training },
       { method: d.method, isAdda: d.isAdda, key: 'endToEnd', value: d.total }
@@ -272,18 +275,19 @@ const createChart = () => {
     .enter()
     .append('rect')
     .attr('class', 'stacked-bar')
-    .attr('x', 0)
-    .attr('y', (d: any) => subScale(d.key) || 0)
-    .attr('height', subScale.bandwidth())
-    .attr('width', 0)
+    .attr('x', (d: any) => subScale(d.key) || 0)
+    .attr('y', innerHeight)
+    .attr('width', subScale.bandwidth())
+    .attr('height', 0)
     .attr('fill', (d: any) => colorScale(d.key as string) || '#9ca3af')
     .attr('rx', 3)
     .style('cursor', 'pointer')
 
-  barRows.transition()
+  bars.transition()
     .duration(800)
     .delay((_d, i) => i * 30)
-    .attr('width', (d: any) => xScale(d.value))
+    .attr('y', (d: any) => yScale(d.value))
+    .attr('height', (d: any) => innerHeight - yScale(d.value))
 
   groups.selectAll('.value-label')
     .data((d: any) => ([
@@ -293,18 +297,16 @@ const createChart = () => {
     .enter()
     .append('text')
     .attr('class', 'value-label')
-    .attr('x', (d: any) => xScale(d.value) + 6)
-    .attr('y', (d: any) => (subScale(d.key) || 0) + subScale.bandwidth() / 2)
-    .attr('dy', '0.35em')
+    .attr('x', (d: any) => (subScale(d.key) || 0) + subScale.bandwidth() / 2)
+    .attr('y', (d: any) => yScale(d.value) - 8)
+    .attr('text-anchor', 'middle')
     .text((d: any) => {
       const val = d.value
       if (val <= 0) return ''
-      if (timeUnit.value === 'minutes') {
-        return `${val.toFixed(1)} min`
-      }
+      if (timeUnit.value === 'minutes') return `${val.toFixed(1)} min`
       return `${val.toFixed(0)} s`
     })
-    .style('font-size', '20px')
+    .style('font-size', '16px')
     .style('fill', '#000000')
     .style('opacity', 0)
     .transition()
@@ -316,9 +318,9 @@ const createChart = () => {
     .filter((d: any) => d.isAdda)
     .append('rect')
     .attr('x', -2)
-    .attr('y', -2)
-    .attr('height', yScale.bandwidth() + 4)
-    .attr('width', (d: any) => xScale(d.total) + 4)
+    .attr('y', (d: any) => yScale(Math.max(d.training, d.total)) - 2)
+    .attr('width', xScale.bandwidth() + 4)
+    .attr('height', (d: any) => innerHeight - yScale(Math.max(d.training, d.total)) + 4)
     .attr('fill', 'none')
     .attr('stroke', '#007bff')
     .attr('stroke-width', 2)
@@ -359,7 +361,7 @@ const createChart = () => {
 
   const legendGroup = svg.append('g')
     .attr('class', 'chart-legend-d3')
-    .attr('transform', `translate(${width - margin.right - 240}, ${margin.top + 10})`)
+    .attr('transform', `translate(${margin.left + 10}, ${margin.top + 10})`)
 
   legendGroup.append('rect')
     .attr('width', 230)
@@ -398,7 +400,7 @@ const createChart = () => {
     .style('fill', '#374151')
     .text('End-to-End Latency')
 
-  currentChart = { svg, g, xScale, yScale, bars: barRows }
+  currentChart = { svg, g, xScale, yScale, bars }
 }
 
 const updateChart = () => {

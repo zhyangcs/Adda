@@ -369,7 +369,7 @@ function renderTree(treeStructure: any) {
   // 清空容器
   d3.select(treeContainer.value).selectAll("*").remove()
 
-  let { root_id, parent_child_relations, node_info } = treeStructure
+  const { root_id, parent_child_relations, node_info } = treeStructure
   const selectedNodeId = featureTreeStore.selectedNode?.node_id
 
   // 将节点信息转换为字典

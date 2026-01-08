@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div class="panel-title">
         <i class="bi bi-bar-chart-line"></i>
-        Performance Comparison
+        Performance Comparison (Horizontal)
       </div>
       <div class="panel-actions">
         <div class="metric-toggle">
@@ -121,7 +121,7 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     .attr('height', height)
     .style('background-color', '#ffffff')
 
-  const margin = { top: 60, right: 36, bottom: 40, left: 90 }
+  const margin = { top: 30, right: 36, bottom: 64, left: 160 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -133,53 +133,52 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     return { svg: newSvg, g }
   }
 
-  const xScale = d3.scaleBand()
-    .domain(validData.value.map((d: any) => d.method))
-    .range([0, innerWidth])
-    .padding(0.47)
-
-  const yScale = d3.scaleLinear()
+  const xScale = d3.scaleLinear()
     .domain([0, d3.max(validData.value, (d: any) => d.value) || 1])
     .nice()
-    .range([innerHeight, 0])
+    .range([0, innerWidth])
 
-  // Add horizontal grid lines
+  const yScale = d3.scaleBand()
+    .domain(validData.value.map((d: any) => d.method))
+    .range([0, innerHeight])
+    .padding(0.35)
+
+  // Add vertical grid lines
   const grid = g.append('g')
-    .attr('class', 'y-grid')
-    .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerWidth).tickFormat(() => ''))
+    .attr('class', 'x-grid')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(
+      d3.axisBottom(xScale)
+        .ticks(6)
+        .tickSize(-innerHeight)
+        .tickFormat(() => '')
+    )
   grid.selectAll('.domain').remove()
   grid.selectAll('line')
     .attr('stroke', '#dfe3eb')
     .attr('stroke-width', 1)
     .attr('shape-rendering', 'crispEdges')
 
+  // Y-axis (left side)
+  const yAxis = g.append('g')
+    .call(d3.axisLeft(yScale).tickSize(0).tickPadding(10))
+  yAxis.select('.domain').remove()
+  yAxis.selectAll('text')
+    .style('font-size', '16px')
+    .style('font-weight', '600')
+
   // X-axis (bottom) - only show tick labels, no tick lines
   const xAxis = g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale).tickSize(0).tickPadding(10))
+    .call(d3.axisBottom(xScale).tickFormat(d3.format('.2f')).tickSize(0).tickPadding(8))
   xAxis.select('.domain').remove()
   xAxis.selectAll('text')
-    .style('font-size', '14px')
-    .style('font-weight', '600')
-    .style('fill', '#374151')
-    .style('text-anchor', 'middle')
-    .attr('dx', '0')
-    .attr('dy', '0.75em')
-    .attr('transform', 'rotate(0)')
-
-  // Y-axis (left) - only show tick labels, no tick lines
-  const yAxis = g.append('g')
-    .call(d3.axisLeft(yScale).tickFormat(d3.format('.2f')).tickSize(0).tickPadding(8))
-  yAxis.select('.domain').remove()
-  yAxis.selectAll('text')
     .style('font-size', '14px')
     .style('fill', '#1f2937')
 
   g.append('text')
-    .attr('transform', 'rotate(-90)')
-    .attr('y', 0 - margin.left + 20)
-    .attr('x', 0 - (innerHeight / 2))
-    .attr('dy', '1em')
+    .attr('x', innerWidth / 2)
+    .attr('y', innerHeight + margin.bottom - 20)
     .style('text-anchor', 'middle')
     .style('font-size', '20px')
     .style('font-weight', '700')
@@ -190,10 +189,10 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     .data(validData.value)
     .enter().append('rect')
     .attr('class', 'bar')
-    .attr('x', (d: any) => xScale(d.method) || 0)
-    .attr('width', xScale.bandwidth())
-    .attr('y', animate ? innerHeight : (d: any) => yScale(d.value))
-    .attr('height', animate ? 0 : (d: any) => innerHeight - yScale(d.value))
+    .attr('x', 0)
+    .attr('y', (d: any) => yScale(d.method) || 0)
+    .attr('height', yScale.bandwidth())
+    .attr('width', animate ? 0 : (d: any) => xScale(d.value))
     .attr('fill', (_d: any, i: number) => {
       const colors = ['#2c4b74', '#a8560d', '#96282b', '#316a66', '#2d5e2e', '#947814', '#63405c', '#a3525b', '#5c4031', '#6e6662']
       return colors[i % colors.length]
@@ -205,8 +204,7 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     bars.transition()
       .duration(800)
       .delay((_: any, i: number) => i * 100)
-      .attr('y', (d: any) => yScale(d.value))
-      .attr('height', (d: any) => innerHeight - yScale(d.value))
+      .attr('width', (d: any) => xScale(d.value))
   }
 
   bars
@@ -239,9 +237,10 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     .data(validData.value)
     .enter().append('text')
     .attr('class', 'label')
-    .attr('x', (d: any) => (xScale(d.method) || 0) + xScale.bandwidth() / 2)
-    .attr('y', (d: any) => yScale(d.value) - 5)
-    .attr('text-anchor', 'middle')
+    .attr('x', (d: any) => xScale(d.value) + 8)
+    .attr('y', (d: any) => (yScale(d.method) || 0) + yScale.bandwidth() / 2)
+    .attr('dy', '0.35em')
+    .attr('text-anchor', 'start')
     .style('font-size', '16px')
     .style('font-weight', 'bold')
     .style('fill', (_d: any, i: number) => {
