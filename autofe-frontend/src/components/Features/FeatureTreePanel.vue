@@ -118,17 +118,69 @@ function renderD3Tree(data: any) {
   d3.select(treeContainer.value).selectAll("*").remove()
 
   // 节点尺寸配置（字体大，但卡片更紧凑）
-  const nodeWidth = 170
-  const nodeHeight = 74
+  const nodeHeight = 38
+  const nodePaddingX = 10
+  const minNodeWidth = 140
+  const maxNodeWidth = 420
   const horizontalSpacing = 34
-  const verticalSpacing = 72
+  const verticalSpacing = 44
 
   // 创建层次结构
   const root = d3.hierarchy(data)
 
+  // ---- node width auto-fit (by feature name length) ----
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  const fontFamily =
+    "'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+  const titleFont = `700 15px ${fontFamily}`
+  const metaFont = `700 15px ${fontFamily}`
+
+  const measure = (text: string, font: string) => {
+    if (!ctx) return text.length * 8
+    ctx.font = font
+    return ctx.measureText(text).width
+  }
+
+  const truncateToWidth = (text: string, maxWidthPx: number, font: string) => {
+    if (measure(text, font) <= maxWidthPx) return text
+    const ellipsis = '...'
+    const ellipsisW = measure(ellipsis, font)
+    if (ellipsisW >= maxWidthPx) return ellipsis
+
+    let lo = 0
+    let hi = text.length
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      const slice = text.slice(0, mid) + ellipsis
+      if (measure(slice, font) <= maxWidthPx) lo = mid
+      else hi = mid - 1
+    }
+    return text.slice(0, lo) + ellipsis
+  }
+
+  root.descendants().forEach((d: any) => {
+    const fullName = d.data.feature_name || 'Unknown'
+    const idText = `id: ${d.data.node_id}`
+    const scoreText =
+      isScoreReady(d.data.score) ? `${Number(d.data.score).toFixed(4)}` : 'validating'
+
+    const nameW = measure(fullName, titleFont)
+    const bottomW = Math.max(measure(idText, metaFont), measure(scoreText, metaFont))
+    const contentW = Math.max(nameW, bottomW)
+
+    const boxW = Math.max(minNodeWidth, Math.min(maxNodeWidth, contentW + nodePaddingX * 2))
+    d._boxWidth = boxW
+    d._fullName = fullName
+    d._displayName = truncateToWidth(fullName, boxW - nodePaddingX * 2, titleFont)
+    d._scoreText = scoreText
+  })
+
+  const layoutNodeWidth = d3.max(root.descendants() as any, (d: any) => d._boxWidth) || minNodeWidth
+
   // 使用 nodeSize 而不是 size，这样树可以根据内容自动扩展
   const treeLayout = d3.tree()
-    .nodeSize([nodeWidth + horizontalSpacing, nodeHeight + verticalSpacing])
+    .nodeSize([layoutNodeWidth + horizontalSpacing, nodeHeight + verticalSpacing])
   
   treeLayout(root)
 
@@ -147,7 +199,7 @@ function renderD3Tree(data: any) {
 
   // 加上边距
   const margin = { top: 40, right: 20, bottom: 40, left: 20 }
-  const widthNeeded = (xMax - xMin) + nodeWidth + margin.left + margin.right
+  const widthNeeded = (xMax - xMin) + layoutNodeWidth + margin.left + margin.right
   const heightNeeded = (yMax - yMin) + nodeHeight + margin.top + margin.bottom
   const containerWidth = treeContainer.value.clientWidth || widthNeeded
   const containerHeight = treeContainer.value.clientHeight || heightNeeded
@@ -205,17 +257,56 @@ function renderD3Tree(data: any) {
     .call(zoomBehavior!.transform as any, initialTransform)
   currentTransform = initialTransform
 
-  // 绘制连接线 (曲线更美观)
+  // 绘制连接线：黑色圆角折线（orthogonal / elbow） + 箭头
   const svg = zoomGroup
+
+  // Arrow marker (created per render since we clear SVG each time)
+  const defs = svgRootSelection!.append("defs")
+  defs.append("marker")
+    .attr("id", "feature-tree-arrowhead")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 10)
+    .attr("refY", 0)
+    .attr("markerWidth", 8)
+    .attr("markerHeight", 8)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", "#111827")
 
   svg.selectAll(".link")
     .data(root.links())
     .enter()
     .append("path")
     .attr("class", "link")
-    .attr("d", d3.linkVertical<any, d3.HierarchyNode<any>>()
-      .x((d: any) => d.x)
-      .y((d: any) => d.y) as any)
+    .attr("d", (d: any) => {
+      // Start at bottom-center of parent node and end at top-center of child node.
+      const sx = d.source.x
+      const sy = d.source.y + nodeHeight
+      const tx = d.target.x
+      const ty = d.target.y
+
+      const dx = tx - sx
+      const dy = ty - sy
+      if (Math.abs(dx) < 1e-6 || Math.abs(dy) < 1e-6) {
+        return `M${sx},${sy} L${tx},${ty}`
+      }
+
+      const midY = sy + dy / 2
+      const signX = dx > 0 ? 1 : -1
+      const signY = dy > 0 ? 1 : -1
+      const r = Math.min(10, Math.abs(dx) / 2, Math.abs(dy) / 2)
+      if (r <= 0) return `M${sx},${sy} L${tx},${ty}`
+
+      const v1 = midY - signY * r
+      const h1 = sx + signX * r
+      const h2 = tx - signX * r
+      const v2 = midY + signY * r
+
+      // Rounded elbows via quadratic Beziers at both corners
+      return `M${sx},${sy} V${v1} Q${sx},${midY} ${h1},${midY} H${h2} Q${tx},${midY} ${tx},${v2} V${ty}`
+    })
+    .attr("marker-end", "url(#feature-tree-arrowhead)")
 
   // 创建节点组
   const nodes = svg.selectAll(".node")
@@ -229,99 +320,60 @@ function renderD3Tree(data: any) {
       handleNodeClick(d.data)
     })
 
-  // 添加阴影滤镜
-  const defs = svg.append("defs")
-  const filter = defs.append("filter")
-    .attr("id", "drop-shadow")
-    .attr("height", "130%")
-  
-  filter.append("feGaussianBlur")
-    .attr("in", "SourceAlpha")
-    .attr("stdDeviation", 2)
-    .attr("result", "blur")
-  
-  filter.append("feOffset")
-    .attr("in", "blur")
-    .attr("dx", 0)
-    .attr("dy", 2)
-    .attr("result", "offsetBlur")
-  
-  filter.append("feFlood")
-    .attr("flood-color", "rgba(0,0,0,0.1)")
-    .attr("result", "colorBlur")
-    
-  filter.append("feComposite")
-    .attr("in", "colorBlur")
-    .attr("in2", "offsetBlur")
-    .attr("operator", "in")
-  
-  filter.append("feMerge")
-    .append("feMergeNode")
-  filter.select("feMerge")
-    .append("feMergeNode")
-    .attr("in", "SourceGraphic")
-
   // 绘制节点矩形 (卡片样式)
   nodes.append("rect")
-    .attr("width", nodeWidth)
+    .attr("width", (d: any) => d._boxWidth)
     .attr("height", nodeHeight)
-    .attr("x", -nodeWidth / 2)
+    .attr("x", (d: any) => -d._boxWidth / 2)
     .attr("y", 0) // 从 y=0 开始
-    .attr("rx", 6) // 圆角调整为更小
-    .attr("ry", 6)
-    .style("filter", "url(#drop-shadow)")
-    .attr("fill", (d: any) => d.data.selected ? "#ecfdf5" : "#ffffff") // 选中背景改为浅绿
-    .attr("stroke", (d: any) => d.data.selected ? "#10b981" : "#cbd5e1") // 选中边框改为绿色
-    .attr("stroke-width", (d: any) => d.data.selected ? 2 : 1)
+    .attr("rx", 10)
+    .attr("ry", 10)
+    .attr("fill", (d: any) => d.data.selected ? "#e5e7eb" : "#f3f4f6")
+    .attr("stroke", (d: any) => d.data.selected ? "#111827" : "#6b7280")
+    .attr("stroke-width", (d: any) => d.data.selected ? 3 : 2)
     .on("mouseover", function (_event: any, d: any) {
       if (!d.data.selected) {
-        d3.select(this).attr("stroke", "#94a3b8")
+        d3.select(this).attr("stroke", "#374151")
       }
     })
     .on("mouseout", function (_event: any, d: any) {
       if (!d.data.selected) {
-        d3.select(this).attr("stroke", "#cbd5e1")
+        d3.select(this).attr("stroke", "#6b7280")
       }
     })
 
-  // 移除原来的左侧蓝色装饰线
-
-  // 添加特征名称文字
+  // Top row: feature name
   nodes.append("text")
-    .attr("dy", 24)
+    .attr("x", 0)
+    .attr("y", 14)
     .attr("text-anchor", "middle")
     .style("font-weight", "700")
-    .style("font-size", "16px") // 再增大字号
-    .style("fill", "#1e293b")
-    .text((d: any) => {
-      const name = d.data.feature_name || 'Unknown'
-      // 增加显示长度但保持卡片紧凑
-      return name.length > 20 ? name.substring(0, 18) + '...' : name
-    })
+    .style("font-size", "15px")
+    .style("fill", "#111827")
+    .text((d: any) => d._displayName || (d.data.feature_name || 'Unknown'))
     .append("title") // Tooltip
-    .text((d: any) => d.data.feature_name)
+    .text((d: any) => d._fullName || d.data.feature_name)
 
-  // 添加 ID 文字
+  // Bottom row: id (left)
   nodes.append("text")
-    .attr("dy", 42)
-    .attr("text-anchor", "middle")
-    .style("font-size", "13px") // 增大字号
-    .style("fill", "#64748b")
-    .style("font-family", "monospace")
-    .text((d: any) => `ID: ${d.data.node_id}`)
+    .attr("x", (d: any) => -d._boxWidth / 2 + nodePaddingX)
+    .attr("y", 30)
+    .attr("text-anchor", "start")
+    .style("font-size", "15px")
+    .style("font-weight", "700")
+    .style("fill", "#374151")
+    .text((d: any) => `id: ${d.data.node_id}`)
 
-  // 添加 Score 文字
+  // Bottom row: performance metric (right)
   nodes.append("text")
-    .attr("dy", 60)
-    .attr("text-anchor", "middle")
-    .style("font-size", "13px")
-    .style("fill", (d: any) => isScoreReady(d.data.score) ? "#059669" : "#94a3b8") // 有分数为绿色，否则灰色
-    .style("font-weight", "500")
+    .attr("x", (d: any) => d._boxWidth / 2 - nodePaddingX)
+    .attr("y", 30)
+    .attr("text-anchor", "end")
+    .style("font-size", "15px")
+    .style("fill", (d: any) => isScoreReady(d.data.score) ? "#047857" : "#6b7280")
+    .style("font-weight", "700")
     .text((d: any) => {
-       if (isScoreReady(d.data.score)) {
-         return `Score: ${Number(d.data.score).toFixed(4)}`
-       }
-       return 'Score: validating'
+       return d._scoreText || (isScoreReady(d.data.score) ? `${Number(d.data.score).toFixed(4)}` : 'validating')
     })
 
   // 设置根节点引用
@@ -395,9 +447,9 @@ onMounted(() => {
 
 .feature-tree-container {
   height: 100%; /* 占满剩余空间 */
-  background-color: #f7f9fc;
+  background-color: #ffffff;
   border-radius: 6px;
-  border: none;
+  border: 1px solid #e5e7eb;
   padding: 0.4rem;
   min-height: 150px;
 }
@@ -420,8 +472,10 @@ onMounted(() => {
 /* D3.js 样式 */
 :deep(.link) {
   fill: none;
-  stroke: #cbd5e1;
+  stroke: #111827;
   stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   transition: stroke 0.3s ease;
 }
 
