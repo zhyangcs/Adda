@@ -11,7 +11,7 @@ import type {
 class APIService {
   private baseURL =
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
-    'http://10.82.1.203:5000'
+    'http://10.82.1.202:5000'
 
   async post<T = any>(endpoint: string, data?: any, timeoutMs: number = 10 * 60 * 1000): Promise<T> {
     // 默认10分钟超时，对于长时操作如next step

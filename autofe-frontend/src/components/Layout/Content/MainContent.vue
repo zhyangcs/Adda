@@ -47,9 +47,9 @@
                           :class="{ working: workingAgents.includes('system') }"
                         >
                           <div class="agent-icon">
-                            <img src="/demo_dataset.png" alt="System Agent" class="agent-image" />
+                            <img src="/dataset_chat.png" alt="Dataset Info" class="agent-image" />
                           </div>
-                          <div class="agent-label">System</div>
+                          <div class="agent-label">Dataset Info</div>
                           <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
 
                           <!-- System Agent思考气泡 -->
@@ -59,13 +59,13 @@
                         <!-- Main Agent (右上角) -->
                         <div
                           class="agent-node main-agent"
-                          :class="{ working: workingAgents.includes('main') }"
+                          :class="{ working: workingAgents.includes('mainagent') }"
                         >
                           <div class="agent-icon">
-                            <img src="/demo_main.png" alt="Main Agent" class="agent-image" />
+                            <img src="/robot2.png" alt="Main Agent" class="agent-image" />
                           </div>
                           <div class="agent-label">Main Agent</div>
-                          <div v-if="workingAgents.includes('main')" class="working-indicator"></div>
+                          <div v-if="workingAgents.includes('mainagent')" class="working-indicator"></div>
 
                           <!-- Main Agent思考气泡 -->
                           <!-- Bubble disabled -->
@@ -74,13 +74,13 @@
                         <!-- Optimization Agent (右下角) -->
                         <div
                           class="agent-node opt-agent"
-                          :class="{ working: workingAgents.includes('optimization') }"
+                          :class="{ working: workingAgents.includes('optimizationagent') }"
                         >
                           <div class="agent-icon">
-                            <img src="/demo_opt.png" alt="Optimization Agent" class="agent-image" />
+                            <img src="/robot2.png" alt="Optimization Agent" class="agent-image" />
                           </div>
-                          <div class="agent-label">Opt Agent</div>
-                          <div v-if="workingAgents.includes('optimization')" class="working-indicator"></div>
+                          <div class="agent-label">Optimization Agent</div>
+                          <div v-if="workingAgents.includes('optimizationagent')" class="working-indicator"></div>
 
                           <!-- Optimization Agent思考气泡 -->
                           <!-- Bubble disabled -->
@@ -89,13 +89,13 @@
                         <!-- Node Validation Process (左下角) -->
                         <div
                           class="agent-node validation-agent"
-                          :class="{ working: workingAgents.includes('validation') }"
+                          :class="{ working: workingAgents.includes('nodevalidator') }"
                         >
                           <div class="agent-icon">
-                            <img src="/demo_validation3.png" alt="Node Validation" class="agent-image" />
+                            <img src="/val.png" alt="Validation" class="agent-image" />
                           </div>
-                          <div class="agent-label">Node Validation</div>
-                          <div v-if="workingAgents.includes('validation')" class="working-indicator"></div>
+                          <div class="agent-label">Validation</div>
+                          <div v-if="workingAgents.includes('nodevalidator')" class="working-indicator"></div>
 
                           <!-- Node Validation Agent思考气泡 -->
                           <!-- Bubble disabled -->
@@ -176,7 +176,7 @@
         <div class="right-panel-content">
           <div class="chat-card info-card">
             <div class="info-header">
-              <h6 class="info-title">Agent Thinking Feed</h6>
+              <h6 class="info-title">Agent thinking</h6>
             </div>
             <div class="info-content chat-panel-content">
               <div class="agent-chat-panel">
@@ -189,43 +189,49 @@
                       v-for="message in chatMessages"
                       :key="message.id"
                       class="chat-message"
-                      :class="`agent-${message.agent}`"
+                      :class="[`agent-${message.agent}`, isRightAligned(message.agent) ? 'align-right' : 'align-left']"
                     >
-                      <div class="chat-avatar" :class="`agent-${message.agent}`">
-                        {{ agentDisplayConfig[message.agent].initial }}
-                      </div>
-                      <div class="chat-bubble">
-                        <div class="chat-meta">
-                          <span class="chat-author">{{ agentDisplayConfig[message.agent].label }}</span>
-                          <span class="chat-time">{{ formatChatTime(message.timestamp) }}</span>
+                      <div class="chat-bubble-wrapper">
+                        <div class="chat-header" :class="isRightAligned(message.agent) ? 'header-right' : 'header-left'">
+                          <div class="chat-avatar" :class="`agent-${message.agent}`">
+                            <img
+                              :src="agentDisplayConfig[message.agent].avatarSrc"
+                              :alt="agentDisplayConfig[message.agent].label"
+                            />
+                          </div>
+                          <div class="chat-agent-name">
+                            {{ agentDisplayConfig[message.agent].label }}
+                          </div>
                         </div>
-                        <div class="chat-body">
-                          <template
-                            v-for="(segment, segIndex) in parseMessageSegments(message.content)"
-                            :key="`${message.id}-${segIndex}`"
-                          >
-                            <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
-                            <details v-else-if="segment.type === 'code'" class="code-block">
-                              <summary class="code-summary">{{ segment.label }}</summary>
-                              <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
-                            </details>
-                            <details
-                              v-else
-                              class="code-block example-block"
-                              :open="isExampleExpanded(message.id, segIndex)"
-                              @toggle="onExampleToggle(message.id, segIndex, $event)"
+                        <div class="chat-bubble">
+                          <div class="chat-body">
+                            <template
+                              v-for="(segment, segIndex) in parseMessageSegments(message.content)"
+                              :key="`${message.id}-${segIndex}`"
                             >
-                              <summary class="code-summary example-summary">
-                                <span class="example-caret" aria-hidden="true"></span>
-                                <span class="example-summary-text">{{ getExampleSummary(segment.items) }}</span>
-                              </summary>
-                              <ul v-if="isExampleExpanded(message.id, segIndex)" class="examples-list">
-                                <li v-for="(item, exIndex) in (segment.items || [])" :key="`${message.id}-${segIndex}-ex-${exIndex}`">
-                                  {{ item }}
-                                </li>
-                              </ul>
-                            </details>
-                          </template>
+                              <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
+                              <details v-else-if="segment.type === 'code'" class="code-block">
+                                <summary class="code-summary">{{ segment.label }}</summary>
+                                <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
+                              </details>
+                              <details
+                                v-else
+                                class="code-block example-block"
+                                :open="isExampleExpanded(message.id, segIndex)"
+                                @toggle="onExampleToggle(message.id, segIndex, $event)"
+                              >
+                                <summary class="code-summary example-summary">
+                                  <span class="example-caret" aria-hidden="true"></span>
+                                  <span class="example-summary-text">{{ getExampleSummary(segment.items) }}</span>
+                                </summary>
+                                <ul v-if="isExampleExpanded(message.id, segIndex)" class="examples-list">
+                                  <li v-for="(item, exIndex) in (segment.items || [])" :key="`${message.id}-${segIndex}-ex-${exIndex}`">
+                                    {{ item }}
+                                  </li>
+                                </ul>
+                              </details>
+                            </template>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -266,11 +272,15 @@ const { featureSearchClearedAt } = storeToRefs(taskStore)
 type AgentKey = 'system' | 'main' | 'optimization' | 'validation'
 type DisplayMode = 'paper'
 
-const agentDisplayConfig: Record<AgentKey, { label: string; initial: string }> = {
-  system: { label: 'System', initial: 'S' },
-  main: { label: 'Main Agent', initial: 'M' },
-  optimization: { label: 'Opt Agent', initial: 'O' },
-  validation: { label: 'Node Validation', initial: 'NV' }
+const agentDisplayConfig: Record<AgentKey, { label: string; avatarSrc: string; side: 'left' | 'right' }> = {
+  system: { label: 'Dataset Info', avatarSrc: '/dataset_chat.png', side: 'left' },
+  main: { label: 'Main Agent', avatarSrc: '/robot2.png', side: 'right' },
+  optimization: { label: 'Optimization Agent', avatarSrc: '/robot2.png', side: 'right' },
+  validation: { label: 'Validation', avatarSrc: '/val.png', side: 'left' }
+}
+
+function isRightAligned(agent: AgentKey): boolean {
+  return agentDisplayConfig[agent].side === 'right'
 }
 
 const connectionActive = ref(false)
@@ -784,7 +794,7 @@ function formatExamplePreview(item: string): string {
     .trim()
   const match = cleaned.match(/node\s+(\d+)\s*:\s*['"]?(.+?)['"]?$/i)
   if (match) {
-    return `node ${match[1]}：${match[2]}`
+    return `node ${match[1]}: ${match[2]}`
   }
   return cleaned || 'examples'
 }
@@ -795,7 +805,10 @@ function getExampleSummary(items?: string[]): string {
   }
 
   const count = items.length
-  const first = items[0]
+  const first = items[0] ?? ''
+  if (!first) {
+    return `View Details (${count} items)`
+  }
 
   if (first.includes('similarity:')) {
     return `Reference Examples (${count} items)`
@@ -900,22 +913,22 @@ function testAgentStatus() {
   console.log('Test Agent Status clicked!')
 
   // 直接添加测试消息到队列
-  addThinkingMessageToQueue('main', '这是一个测试思考消息：Main Agent正在分析数据集特征，准备生成新的特征组合...')
+  addThinkingMessageToQueue('main', 'Test thinking message: Main Agent is analyzing dataset features and preparing new feature combinations...')
 
   // 添加多个测试消息
   setTimeout(() => {
-    addThinkingMessageToQueue('system', 'System Agent 正在生成节点样例，包括数据预处理和特征转换逻辑...')
+    addThinkingMessageToQueue('system', 'Dataset Info is generating example nodes, including preprocessing and feature transformation logic...')
   }, 1000)
 
   setTimeout(() => {
-    addThinkingMessageToQueue('main', 'Main Agent 正在生成特征：max(age, salary) - min(age, salary) 作为新的数值特征...')
+    addThinkingMessageToQueue('main', 'Main Agent is generating a feature: max(age, salary) - min(age, salary) as a new numerical feature...')
   }, 2000)
 
   setTimeout(() => {
-    addThinkingMessageToQueue('optimization', 'Optimization Agent 正在评估特征性能，准确率提升预期：15%...')
+    addThinkingMessageToQueue('optimization', 'Optimization Agent is evaluating feature impact. Expected accuracy gain: 15%...')
   }, 3000)
 
-  taskStore.addNotification('Test Agent消息已添加到队列', 'info')
+  taskStore.addNotification('Test agent messages have been added to the feed.', 'info')
   console.log('Test message added to queue successfully')
 }
 
@@ -927,7 +940,7 @@ function testWebSocketMessage() {
   const testThinkingMessage = {
     type: 'agent_thinking' as const,
     agent: 'mainagent' as const,
-    thinking: '这是一个通过WebSocket模拟的思考消息：Main Agent正在分析数据特征并准备生成新的组合特征...',
+    thinking: 'Simulated WebSocket thinking message: Main Agent is analyzing data features and preparing new composite features...',
     category: undefined,
     timestamp: Date.now() / 1000
   }
@@ -961,7 +974,7 @@ watch(() => taskStore.isInitialized, (isInitialized) => {
 watch(allAgentStates, (states) => {
   const stateList = states || []
 
-  const active = (workingAgents.value?.[0] as AgentKey | undefined) || undefined
+  const active = agentTypeToKey(workingAgents.value?.[0])
   connectionActive.value = active === 'main'
   connectionActiveReverse.value = active === 'optimization'
   connectionActiveValidation.value = active === 'validation'
@@ -973,6 +986,17 @@ watch(allAgentStates, (states) => {
     scheduleTreeReload()
   }
 }, { deep: true })
+
+function agentTypeToKey(agentType?: AgentType): AgentKey | undefined {
+  if (!agentType) return undefined
+  const map: Partial<Record<AgentType, AgentKey>> = {
+    system: 'system',
+    mainagent: 'main',
+    optimizationagent: 'optimization',
+    nodevalidator: 'validation'
+  }
+  return map[agentType]
+}
 
 // 键盘快捷键处理
 const handleKeyDown = (event: KeyboardEvent) => {
@@ -1282,45 +1306,82 @@ onUnmounted(() => {
 /* 聊天消息容器：单个消息的布局 */
 .chat-message {
   display: flex;
-  gap: 0.75rem;
-  /* 消息间距 */
+  justify-content: flex-start;
   margin-bottom: 0.75rem;
-  align-items: flex-start;
+}
+
+.chat-message.align-right {
+  justify-content: flex-end;
+}
+
+.chat-bubble-wrapper {
+  position: relative;
+  padding-top: 48px; /* avatar/header height + small gap */
+  max-width: min(540px, 100%);
+}
+
+/* Header row above bubble: avatar + agent name */
+.chat-header {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  pointer-events: none;
+}
+
+.chat-header.header-left {
+  left: -10px;
+  justify-content: flex-start;
+}
+
+.chat-header.header-right {
+  right: -10px;
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+.chat-agent-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #0f172a;
+  line-height: 1.25;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 聊天头像：显示Agent的头像 */
 .chat-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  font-size: var(--font-size-md);
-  color: #fff;
-  background-color: #adb5bd;
-  letter-spacing: 0.5px;
+}
+
+.chat-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 /* 聊天气泡：显示Agent消息内容 */
 .chat-bubble {
-  flex: 1;
   min-width: 0;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #e2e8f0;
   background-color: #fff;
   box-shadow: none;
-}
-
-/* 聊天消息元信息：显示作者和时间 */
-.chat-meta {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.25rem;
-  font-size: calc(var(--font-size-sm) * 0.9);
-  color: #6c757d;
 }
 
 /* 聊天消息作者：显示Agent名称 */
@@ -1329,16 +1390,10 @@ onUnmounted(() => {
   color: #1f2933;
 }
 
-/* 聊天消息时间：显示消息时间戳 */
-.chat-time {
-  font-size: calc(var(--font-size-sm) * 0.85);
-  color: #94a3b8;
-}
-
 /* 聊天消息文本：显示消息内容 */
 .chat-text {
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: 1.05rem;
   color: #1f2933;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1462,54 +1517,6 @@ onUnmounted(() => {
 
 .code-code .code-number {
   color: #facc15;
-}
-
-/* ===========================================
-   不同Agent的消息样式 - Agent-specific Message Styles
-   =========================================== */
-
-/* System Agent消息气泡：蓝色主题 */
-.chat-message.agent-system .chat-bubble {
-  background-color: #edf2ff;
-  border-color: #dbe4ff;
-}
-
-/* Main Agent消息气泡：绿色主题 */
-.chat-message.agent-main .chat-bubble {
-  background-color: #e6fcf5;
-  border-color: #c3fae8;
-}
-
-/* Optimization Agent消息气泡：橙色主题 */
-.chat-message.agent-optimization .chat-bubble {
-  background-color: #fff4e6;
-  border-color: #ffe8cc;
-}
-
-/* Validation Agent消息气泡：紫色主题 */
-.chat-message.agent-validation .chat-bubble {
-  background-color: #f3f0ff;
-  border-color: #e5dbff;
-}
-
-/* System Agent头像：蓝色 */
-.chat-avatar.agent-system {
-  background-color: #4c6ef5;
-}
-
-/* Main Agent头像：绿色 */
-.chat-avatar.agent-main {
-  background-color: #12b886;
-}
-
-/* Optimization Agent头像：橙色 */
-.chat-avatar.agent-optimization {
-  background-color: #f76707;
-}
-
-/* Validation Agent头像：紫色 */
-.chat-avatar.agent-validation {
-  background-color: #845ef7;
 }
 
 /* ===========================================

@@ -149,7 +149,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 0.5rem 1.5rem 0.25rem;
-  background-color: white;
+  background-color: #f9f9f9;
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
   height: 2.5rem;
@@ -223,9 +223,9 @@ onMounted(() => {
 }
 
 .action-btn.primary {
-  background: #2563eb;
+  background: #0a78fc;
   color: #fff;
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 4px 10px rgba(10, 120, 252, 0.25);
 }
 
 .action-btn.subtle {
@@ -245,10 +245,10 @@ onMounted(() => {
   border: none;
   background: transparent;
   padding: 0.25rem 0.9rem 0.25rem;
-  border-radius: 0;
+  border-radius: 0.45rem;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #475569;
+  color: #0a78fc;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -257,36 +257,21 @@ onMounted(() => {
 }
 
 .workflow-btn::after {
+  display: none;
   content: '';
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  width: 0px;
-  height: 2px;
-  background-color: #2563eb;
-  transition: all 0.15s ease;
-  transform: translateX(-50%);
 }
 
 .workflow-btn:hover {
-  background: transparent;
-  color: #1d4ed8;
-}
-
-.workflow-btn:hover::after {
-  width: 100%;
+  background: rgba(10, 120, 252, 0.08);
+  color: #0a78fc;
 }
 
 .workflow-btn.active {
-  background: transparent;
-  color: #2563eb;
+  background: #0a78fc;
+  color: #fff;
 }
 
-.workflow-btn.active::after {
-  width: 100%;
-}
-
-/* 响应式设计 */
+/* Responsive layout */
 @media (max-width: 1024px) {
   .top-navigation {
     padding: 0.5rem 1rem;

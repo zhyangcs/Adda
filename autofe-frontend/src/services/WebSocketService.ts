@@ -22,7 +22,7 @@ class WebSocketService {
   // 明确的后端 WS 地址（可用 VITE_WS_URL 覆盖），默认直连 5000 端口
   private readonly defaultWsUrl: string =
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) ||
-    'ws://10.82.1.203:5000'
+    'ws://10.82.1.202:5000'
 
   constructor() {
     // 延迟到调用方明确初始化再连接，避免在回调未注册时丢失缓存事件
