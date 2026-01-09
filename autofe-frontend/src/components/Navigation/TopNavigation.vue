@@ -9,14 +9,7 @@
         :class="{ active: currentRoute === 'agent-feature-generation' }"
         @click="navigateTo('agent-feature-generation')"
       >
-        Agent-driven Feature Generation
-      </button>
-      <button
-        class="workflow-btn"
-        :class="{ active: currentRoute === 'in-database-feature-computation' }"
-        @click="navigateTo('in-database-feature-computation')"
-      >
-        In-Database Feature Computation
+        Feature Generation & in-DB Computation
       </button>
       <button
         class="workflow-btn"

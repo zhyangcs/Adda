@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as d3 from 'd3'
 import { apiService } from '@/services/APIService'
 import { useTaskStore } from '@/stores/task'
@@ -69,6 +69,8 @@ const dag = ref<Py2SqlDagData | null>(null)
 const loading = ref(false)
 const error = ref('')
 const selected = ref<Py2SqlDagNode | null>(null)
+const lastZoomTransform = ref<d3.ZoomTransform | null>(null)
+let resizeObserver: ResizeObserver | null = null
 
 const nodeTitle = computed(() => {
   if (!selected.value) return 'Select a node to see details.'
@@ -131,8 +133,92 @@ function renderDag() {
 
   const nodes = data.nodes
   const edges = data.edges || []
-  const nodeWidth = 180
-  const nodeHeight = 60
+
+  type NodeDims = { w: number; h: number; headerH?: number; isIcon?: boolean }
+
+  const cornerR = 10
+  const perRow = 3
+  const colGap = 110
+  const rowGap = 170
+  const padX = 80
+  const padY = 90
+  const turnPad = 26
+  const strokeColor = '#0f172a'
+
+  const containerW = Math.max(320, container.clientWidth || 860)
+  const containerH = Math.max(300, container.clientHeight || 420)
+
+  const COLORS = {
+    sql: {
+      top: 'rgb(58, 117, 147)',
+      bottom: 'rgb(184, 197, 204)',
+      border: 'rgb(48, 82, 102)'
+    },
+    python: {
+      top: 'rgb(188, 114, 28)',
+      bottom: 'rgb(220, 166, 102)',
+      border: 'rgb(181, 115, 39)'
+    }
+  } as const
+
+  const ICONS = {
+    source: '/indb_icon/tp_source_database_icon.png',
+    table: '/indb_icon/tp_table_indb_icon.png',
+    python: '/indb_icon/tp_Python-Emblem.png'
+  } as const
+
+  // Make nodes more compact.
+  const ICON_S = 92
+  const BOX_H = 48
+  const BOX_HEADER_H = 20
+  const BOX_MIN_W = 140
+  const BOX_MAX_W = 360
+
+  // Text measurement for adaptive node width / truncation.
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  const labelFont = "800 13px Inconsolata, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
+  const headerFont = "700 11px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif"
+
+  const measure = (text: string, font: string) => {
+    if (!ctx) return text.length * 8
+    ctx.font = font
+    return ctx.measureText(text).width
+  }
+
+  const truncateToWidth = (text: string, maxPx: number, font: string) => {
+    if (measure(text, font) <= maxPx) return text
+    const ellipsis = '…'
+    const ellipsisW = measure(ellipsis, font)
+    let lo = 0
+    let hi = text.length
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      const candidate = text.slice(0, mid)
+      if (measure(candidate, font) + ellipsisW <= maxPx) lo = mid
+      else hi = mid - 1
+    }
+    return text.slice(0, Math.max(0, lo)) + ellipsis
+  }
+
+  const getLabelText = (n: Py2SqlDagNode) => {
+    const cols = n.writeColumns?.length ? n.writeColumns : n.readColumns
+    if (cols && cols.length) return cols.slice(0, 2).join(',')
+    return 'feature'
+  }
+
+  const dimsById = new Map<number, NodeDims>()
+  nodes.forEach(n => {
+    if (n.opType === 'START' || n.opType === 'END') {
+      dimsById.set(n.nodeId, { w: ICON_S, h: ICON_S, isIcon: true })
+      return
+    }
+    const headerText = (n.opType || 'NODE').toUpperCase()
+    const labelText = getLabelText(n)
+    const contentW = Math.max(measure(headerText, headerFont), measure(labelText, labelFont))
+    const w = Math.max(BOX_MIN_W, Math.min(BOX_MAX_W, Math.ceil(contentW + 34)))
+    dimsById.set(n.nodeId, { w, h: BOX_H, headerH: BOX_HEADER_H, isIcon: false })
+  })
 
   const inDegree = new Map(nodes.map(n => [n.nodeId, 0]))
   const adjacency = new Map(nodes.map(n => [n.nodeId, [] as number[]]))
@@ -141,98 +227,142 @@ function renderDag() {
     inDegree.set(edge.to, (inDegree.get(edge.to) || 0) + 1)
   })
 
-  const startNodes = nodes.filter(n => (inDegree.get(n.nodeId) || 0) === 0)
-  const isLinear =
-    edges.length === nodes.length - 1 &&
-    nodes.every(n => (inDegree.get(n.nodeId) || 0) <= 1 && (adjacency.get(n.nodeId)?.length || 0) <= 1) &&
-    startNodes.length === 1
+  // Topological order (stable-ish by nodeId) → snake layout with max 3 per row.
+  const topoOrder = (() => {
+    const indeg = new Map(inDegree)
+    const q: number[] = []
+    nodes.forEach(n => {
+      if ((indeg.get(n.nodeId) || 0) === 0) q.push(n.nodeId)
+    })
+    q.sort((a, b) => a - b)
+
+    const order: number[] = []
+    while (q.length) {
+      const cur = q.shift()!
+      order.push(cur)
+      const nexts = (adjacency.get(cur) || []).slice().sort((a, b) => a - b)
+      nexts.forEach(nx => {
+        indeg.set(nx, (indeg.get(nx) || 0) - 1)
+        if ((indeg.get(nx) || 0) === 0) {
+          q.push(nx)
+          q.sort((a, b) => a - b)
+        }
+      })
+    }
+
+    // If graph has cycles / missing nodes, append remaining by nodeId.
+    const all = new Set(nodes.map(n => n.nodeId))
+    order.forEach(id => all.delete(id))
+    Array.from(all).sort((a, b) => a - b).forEach(id => order.push(id))
+
+    const byId = new Map(nodes.map(n => [n.nodeId, n] as const))
+    return order.map(id => byId.get(id)!).filter(Boolean)
+  })()
 
   const positions = new Map<number, { x: number; y: number }>()
-  let width = 740
-  let height = 300
+  const rowIndexById = new Map<number, number>()
+  const colIndexById = new Map<number, number>()
+  const rowBounds = new Map<number, { left: number; right: number }>()
 
-  if (isLinear) {
-    const order: Py2SqlDagNode[] = []
-    let cur = startNodes[0]
-    const visited = new Set<number>()
-    while (cur && !visited.has(cur.nodeId)) {
-      order.push(cur)
-      visited.add(cur.nodeId)
-      const nextId = (adjacency.get(cur.nodeId) || [])[0]
-      cur = nodes.find(n => n.nodeId === nextId) as Py2SqlDagNode
-    }
+  // Snake placement on a 3-column grid:
+  // 0→1→2 then go down staying at 2, reverse: 2→1→0 then go down staying at 0...
+  const gridPosById = new Map<number, { row: number; col: number }>()
+  let curRow = 0
+  let curCol = 0
+  let dir = 1 // +1: move right, -1: move left
+  topoOrder.forEach((n, idx) => {
+    gridPosById.set(n.nodeId, { row: curRow, col: curCol })
+    rowIndexById.set(n.nodeId, curRow)
+    colIndexById.set(n.nodeId, curCol)
 
-    const perRow = 4
-    const rowCount = Math.ceil(order.length / perRow)
-    const colWidth = 260
-    const rowHeight = 160
-    width = Math.max(740, perRow * colWidth)
-    height = Math.max(300, rowCount * rowHeight + 60)
-
-    order.forEach((node, idx) => {
-      const row = Math.floor(idx / perRow)
-      const colInRow = idx % perRow
-      const rowNodes = order.slice(row * perRow, row * perRow + perRow)
-      const actualCols = rowNodes.length
-      const col = row % 2 === 0 ? colInRow : (actualCols - 1 - colInRow)
-      const x = (col + 1) * (width / (Math.max(actualCols, 1) + 1))
-      const y = (row + 1) * rowHeight
-      positions.set(node.nodeId, { x, y })
-    })
-  } else {
-    const level = new Map<number, number>()
-    const indeg = new Map(inDegree)
-    const queue: number[] = []
-    nodes.forEach(n => {
-      if ((indeg.get(n.nodeId) || 0) === 0) {
-        queue.push(n.nodeId)
-        level.set(n.nodeId, 0)
+    if (idx === topoOrder.length - 1) return
+    if (dir === 1) {
+      if (curCol < perRow - 1) curCol += 1
+      else {
+        curRow += 1
+        dir = -1
+        // keep at last column to create a vertical connection
+        curCol = perRow - 1
       }
-    })
-    while (queue.length > 0) {
-      const curNode = queue.shift()!
-      const curLevel = level.get(curNode) || 0
-      const nexts = adjacency.get(curNode) || []
-      nexts.forEach(next => {
-        const nextLevel = Math.max(level.get(next) || 0, curLevel + 1)
-        level.set(next, nextLevel)
-        indeg.set(next, (indeg.get(next) || 0) - 1)
-        if ((indeg.get(next) || 0) === 0) queue.push(next)
-      })
+    } else {
+      if (curCol > 0) curCol -= 1
+      else {
+        curRow += 1
+        dir = 1
+        // keep at first column to create a vertical connection
+        curCol = 0
+      }
     }
-    nodes.forEach(n => {
-      if (!level.has(n.nodeId)) level.set(n.nodeId, 0)
-    })
+  })
 
-    const levels: Record<number, Py2SqlDagNode[]> = {}
-    nodes.forEach(n => {
-      const l = level.get(n.nodeId) || 0
-      if (!levels[l]) levels[l] = []
-      levels[l].push(n)
-    })
+  const maxRow = Math.max(...Array.from(gridPosById.values()).map(p => p.row), 0)
+  const rowCount = maxRow + 1
 
-    const levelKeys = Object.keys(levels).map(Number).sort((a, b) => a - b)
-    const maxPerLevel = Math.max(...levelKeys.map(k => (levels[k]?.length ?? 0)), 1)
-    width = Math.max(740, maxPerLevel * 240)
-    height = Math.max(300, levelKeys.length * 160)
-
-    levelKeys.forEach((lvl, idx) => {
-      const row = levels[lvl] || []
-      row.forEach((node, i) => {
-        const x = (i + 1) * (width / (row.length + 1))
-        const y = (idx + 1) * 140
-        positions.set(node.nodeId, { x, y })
-      })
-    })
+  // Column widths based on the widest node in each column.
+  const colWidths: number[] = Array.from({ length: perRow }, () => 0)
+  gridPosById.forEach((p, id) => {
+    const d = dimsById.get(id) || { w: BOX_MIN_W, h: BOX_H }
+    const cur = colWidths[p.col] ?? 0
+    colWidths[p.col] = Math.max(cur, d.w)
+  })
+  for (let i = 0; i < perRow; i++) {
+    if (!colWidths[i]) colWidths[i] = BOX_MIN_W
   }
+
+  const colCenters: number[] = new Array(perRow)
+  let runningX = padX
+  for (let c = 0; c < perRow; c++) {
+    const cw = colWidths[c] ?? BOX_MIN_W
+    const cx = runningX + cw / 2
+    colCenters[c] = cx
+    runningX += cw + colGap
+  }
+
+  let layoutW = 0
+  let layoutH = 0
+  for (let r = 0; r < rowCount; r++) {
+    const y = padY + r * rowGap
+    let leftEdge = Number.POSITIVE_INFINITY
+    let rightEdge = Number.NEGATIVE_INFINITY
+
+    for (let c = 0; c < perRow; c++) {
+      const cx = colCenters[c] ?? (padX + c * (BOX_MIN_W + colGap))
+      const cw = colWidths[c] ?? BOX_MIN_W
+      leftEdge = Math.min(leftEdge, cx - cw / 2)
+      rightEdge = Math.max(rightEdge, cx + cw / 2)
+    }
+
+    rowBounds.set(r, { left: leftEdge, right: rightEdge })
+    layoutW = Math.max(layoutW, rightEdge + padX)
+    layoutH = Math.max(layoutH, y + rowGap / 2 + padY)
+  }
+
+  gridPosById.forEach((p, id) => {
+    const x = colCenters[p.col] ?? (padX + p.col * (BOX_MIN_W + colGap))
+    positions.set(id, { x, y: padY + p.row * rowGap })
+  })
+
+  layoutW = Math.max(layoutW, 860)
+  layoutH = Math.max(layoutH, 360)
 
   const svg = d3.select(container)
     .append('svg')
-    .attr('width', '100%')
-    .attr('height', height)
-    .attr('viewBox', `0 0 ${width} ${height}`)
-    .attr('preserveAspectRatio', 'xMidYMid meet')
-    .style('overflow', 'visible')
+    .attr('width', containerW)
+    .attr('height', containerH)
+    .attr('class', 'dag-svg')
+    .style('display', 'block')
+    .style('overflow', 'hidden')
+
+  // Background to capture zoom/pan interactions.
+  svg.append('rect')
+    .attr('x', 0)
+    .attr('y', 0)
+    .attr('width', containerW)
+    .attr('height', containerH)
+    .style('fill', 'transparent')
+    .style('pointer-events', 'all')
+
+  const zoomRoot = svg.append('g').attr('class', 'zoom-root')
 
   const defs = svg.append('defs')
 
@@ -247,66 +377,87 @@ function renderDag() {
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-    .attr('fill', '#64748b')
+    .attr('fill', strokeColor)
 
-  const pattern = defs.append('pattern')
-    .attr('id', `grid-pattern-${markerId}`)
-    .attr('width', 20)
-    .attr('height', 20)
-    .attr('patternUnits', 'userSpaceOnUse')
-  pattern.append('circle')
-    .attr('cx', 1)
-    .attr('cy', 1)
-    .attr('r', 1)
-    .attr('fill', '#e2e8f0')
+  const nodeShadowId = `node-shadow-${markerId}`
+  const nodeShadow = defs.append('filter')
+    .attr('id', nodeShadowId)
+    .attr('x', '-40%')
+    .attr('y', '-40%')
+    .attr('width', '180%')
+    .attr('height', '180%')
+  nodeShadow.append('feDropShadow')
+    .attr('dx', '0')
+    .attr('dy', '2')
+    .attr('stdDeviation', '2')
+    .attr('flood-color', '#0f172a')
+    .attr('flood-opacity', '0.12')
 
-  svg.append('rect')
-    .attr('width', '100%')
-    .attr('height', '100%')
-    .attr('fill', `url(#grid-pattern-${markerId})`)
-
-  const edgePath = (src?: { x: number; y: number }, dst?: { x: number; y: number }) => {
+  const edgePath = (fromId: number, toId: number) => {
+    const src = positions.get(fromId)
+    const dst = positions.get(toId)
     if (!src || !dst) return ''
+
+    const sDim = dimsById.get(fromId) || { w: BOX_MIN_W, h: BOX_H }
+    const dDim = dimsById.get(toId) || { w: BOX_MIN_W, h: BOX_H }
+
+    const sRow = rowIndexById.get(fromId) ?? 0
+    const dRow = rowIndexById.get(toId) ?? 0
+    const sCol = colIndexById.get(fromId) ?? 0
+    const dCol = colIndexById.get(toId) ?? 0
+
     const dx = dst.x - src.x
-    const dy = dst.y - src.y
-    if (dx === 0 && dy === 0) return ''
+    const sy = src.y
+    const ey = dst.y
 
-    const absDx = Math.abs(dx)
-    const absDy = Math.abs(dy)
-
-    if (absDx >= absDy) {
-      const sx = src.x + Math.sign(dx) * (nodeWidth / 2)
-      const ex = dst.x - Math.sign(dx) * (nodeWidth / 2)
-      const sy = src.y
-      const ey = dst.y
-      const c1x = sx + dx * 0.4
-      const c1y = sy
-      const c2x = ex - dx * 0.4
-      const c2y = ey
-      return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${ex},${ey}`
+    // Same row: horizontal straight arrow.
+    if (sRow === dRow) {
+      const sx = src.x + Math.sign(dx || 1) * (sDim.w / 2)
+      const ex = dst.x - Math.sign(dx || 1) * (dDim.w / 2)
+      return `M${sx},${sy} L${ex},${ey}`
     }
 
-    const sy = src.y + Math.sign(dy) * (nodeHeight / 2)
-    const ey = dst.y - Math.sign(dy) * (nodeHeight / 2)
-    const sx = src.x
-    const ex = dst.x
-    const c1x = sx
-    const c1y = sy + dy * 0.4
-    const c2x = ex
-    const c2y = ey - dy * 0.4
-    return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${ex},${ey}`
+    // Same column across rows: vertical straight arrow (e.g. node3 -> node4).
+    if (sCol === dCol) {
+      const dy = dst.y - src.y
+      const ySign = Math.sign(dy || 1)
+      const sx = src.x
+      const sy2 = src.y + ySign * (sDim.h / 2)
+      const ex = dst.x
+      const ey2 = dst.y - ySign * (dDim.h / 2)
+      return `M${sx},${sy2} L${ex},${ey2}`
+    }
+
+    // Different rows: orthogonal polyline (horizontal → vertical → horizontal).
+    const bounds = rowBounds.get(sRow)
+    const dir = sRow % 2 === 0 ? 1 : -1
+    const sx = src.x + dir * (sDim.w / 2)
+    const turnX = bounds
+      ? (dir === 1 ? bounds.right + turnPad : bounds.left - turnPad)
+      : sx + dir * turnPad
+
+    const dy = dst.y - src.y
+    const ySign = Math.sign(dy || 1)
+    const midY = (src.y + dst.y) / 2
+
+    // End on a vertical segment so the arrow can be vertical.
+    const endY = dst.y - ySign * (dDim.h / 2)
+    const endX = dst.x
+
+    return `M${sx},${sy} L${turnX},${sy} L${turnX},${midY} L${endX},${midY} L${endX},${endY}`
   }
 
-  const linkGroup = svg.append('g').attr('class', 'links')
+  const linkGroup = zoomRoot.append('g').attr('class', 'links')
   linkGroup.selectAll('.pipeline-link-halo')
     .data(edges)
     .enter()
     .append('path')
     .attr('class', 'pipeline-link-halo')
-    .attr('d', d => edgePath(positions.get(d.from), positions.get(d.to)))
+    .attr('d', d => edgePath(d.from, d.to))
     .style('fill', 'none')
     .style('stroke', '#ffffff')
-    .style('stroke-width', '4px')
+    .style('stroke-width', '6px')
+    .style('stroke-linecap', 'square')
 
   linkGroup.selectAll('.pipeline-link')
     .data(edges)
@@ -314,12 +465,13 @@ function renderDag() {
     .append('path')
     .attr('class', 'pipeline-link')
     .attr('marker-end', `url(#${markerId})`)
-    .attr('d', d => edgePath(positions.get(d.from), positions.get(d.to)))
+    .attr('d', d => edgePath(d.from, d.to))
     .style('fill', 'none')
-    .style('stroke', '#64748b')
-    .style('stroke-width', '2px')
+    .style('stroke', strokeColor)
+    .style('stroke-width', '2.5px')
+    .style('stroke-linecap', 'square')
 
-  const nodeGroup = svg.selectAll('.pipeline-node')
+  const nodeGroup = zoomRoot.selectAll('.pipeline-node')
     .data(nodes)
     .enter()
     .append('g')
@@ -331,175 +483,161 @@ function renderDag() {
     .style('cursor', 'pointer')
     .on('click', (_event, d) => {
       selected.value = d
-      svg.selectAll('.node-stroke')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-      d3.select(_event.currentTarget).selectAll('.node-stroke')
-        .style('stroke', '#3b82f6')
-        .style('stroke-width', 2)
+      zoomRoot.selectAll<SVGRectElement, Py2SqlDagNode>('.node-border')
+        .each(function () {
+          const base = (this as SVGRectElement).getAttribute('data-base-stroke') || '#94a3b8'
+          d3.select(this).style('stroke', base).style('stroke-width', 2.5)
+        })
+      d3.select(_event.currentTarget).select<SVGRectElement>('.node-border')
+        .style('stroke', '#0f172a')
+        .style('stroke-width', 3.5)
     })
 
   nodeGroup.each(function (d) {
     const g = d3.select(this)
-    const isUdf = (d.udfSnippets && d.udfSnippets.length > 0) || d.opType === 'UDF' || d.opType === 'APPLY'
+    const isPythonNode = (d.udfSnippets && d.udfSnippets.length > 0) || d.opType === 'UDF' || d.opType === 'APPLY'
+    const dim = dimsById.get(d.nodeId) || { w: BOX_MIN_W, h: BOX_H, headerH: BOX_HEADER_H }
 
     if (d.opType === 'START') {
-      const r = 24
-      const h = 16
-      const stackH = 14
-      g.append('path')
-        .attr('class', 'node-stroke')
-        .attr('d', `M ${-r} ${stackH} v ${stackH} c 0 ${h} ${2 * r} ${h} ${2 * r} 0 v ${-stackH}`)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
+      const imgW = ICON_S
+      const imgH = ICON_S
+      g.append('image')
+        .attr('href', ICONS.source)
+        .attr('xlink:href', ICONS.source)
+        .attr('x', -imgW / 2)
+        .attr('y', -imgH / 2)
+        .attr('width', imgW)
+        .attr('height', imgH)
+        .style('filter', `url(#${nodeShadowId})`)
 
-      g.append('ellipse')
-        .attr('class', 'node-stroke')
-        .attr('cx', 0).attr('cy', stackH)
-        .attr('rx', r).attr('ry', h / 2)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      g.append('path')
-        .attr('class', 'node-stroke')
-        .attr('d', `M ${-r} 0 v ${stackH} c 0 ${h} ${2 * r} ${h} ${2 * r} 0 v ${-stackH}`)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      g.append('ellipse')
-        .attr('class', 'node-stroke')
-        .attr('cx', 0).attr('cy', 0)
-        .attr('rx', r).attr('ry', h / 2)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      g.append('path')
-        .attr('class', 'node-stroke')
-        .attr('d', `M ${-r} ${-stackH} v ${stackH} c 0 ${h} ${2 * r} ${h} ${2 * r} 0 v ${-stackH}`)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      g.append('ellipse')
-        .attr('class', 'node-stroke')
-        .attr('cx', 0).attr('cy', -stackH)
-        .attr('rx', r).attr('ry', h / 2)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      const bitSz = 4
-      const bitX = r - 8
-      const bitY1 = -stackH + 4
-      const bitY2 = 4
-      const bitY3 = stackH + 4
-      const drawBits = (y: number) => {
-        g.append('rect').attr('x', bitX).attr('y', y).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
-        g.append('rect').attr('x', bitX - 6).attr('y', y).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
-        g.append('rect').attr('x', bitX).attr('y', y + 6).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
-        g.append('rect').attr('x', bitX - 6).attr('y', y + 6).attr('width', bitSz).attr('height', bitSz).style('fill', '#334155')
-      }
-      drawBits(bitY1)
-      drawBits(bitY2)
-      drawBits(bitY3)
+      const label = g.append('text')
+        .attr('x', 0)
+        .attr('y', -imgH / 2 - 12)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .style('font-weight', '700')
+        .style('fill', strokeColor)
+        .style('pointer-events', 'none')
+      label.append('tspan').attr('x', 0).attr('dy', '0').text('Source Table')
+      label.append('tspan').attr('x', 0).attr('dy', '14').text('(Input Layer)')
       return
     }
 
     if (d.opType === 'END') {
-      const w = 60
-      const h = 50
-      const x = -w / 2
-      const y = -h / 2
+      const imgW = ICON_S
+      const imgH = ICON_S
+      g.append('image')
+        .attr('href', ICONS.table)
+        .attr('xlink:href', ICONS.table)
+        .attr('x', -imgW / 2)
+        .attr('y', -imgH / 2)
+        .attr('width', imgW)
+        .attr('height', imgH)
+        .style('filter', `url(#${nodeShadowId})`)
 
-      g.append('rect')
-        .attr('class', 'node-stroke')
-        .attr('x', x).attr('y', y)
-        .attr('width', w).attr('height', h)
-        .attr('rx', 2)
-        .style('fill', '#ffffff')
-        .style('stroke', '#94a3b8')
-        .style('stroke-width', 1)
-
-      g.append('rect')
-        .attr('x', x).attr('y', y)
-        .attr('width', w).attr('height', 12)
-        .attr('rx', 2)
-        .style('fill', '#1e40af')
-
-      g.append('line').attr('x1', x + w / 4).attr('y1', y + 12).attr('x2', x + w / 4).attr('y2', y + h).style('stroke', '#cbd5e1').style('stroke-width', 1)
-      g.append('line').attr('x1', x + w / 2).attr('y1', y + 12).attr('x2', x + w / 2).attr('y2', y + h).style('stroke', '#cbd5e1').style('stroke-width', 1)
-      g.append('line').attr('x1', x + 3 * w / 4).attr('y1', y + 12).attr('x2', x + 3 * w / 4).attr('y2', y + h).style('stroke', '#cbd5e1').style('stroke-width', 1)
-
-      const rowH = (h - 12) / 4
-      for (let i = 1; i < 4; i++) {
-        g.append('line')
-          .attr('x1', x).attr('y1', y + 12 + i * rowH)
-          .attr('x2', x + w).attr('y2', y + 12 + i * rowH)
-          .style('stroke', '#cbd5e1').style('stroke-width', 1)
-      }
-
-      g.append('rect').attr('x', x).attr('y', y + 12).attr('width', w / 4).attr('height', rowH).style('fill', '#f1f5f9')
-      g.append('rect').attr('x', x).attr('y', y + 12 + 2 * rowH).attr('width', w / 4).attr('height', rowH).style('fill', '#f1f5f9')
+      const label = g.append('text')
+        .attr('x', 0)
+        .attr('y', imgH / 2 + 20)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .style('font-weight', '700')
+        .style('fill', strokeColor)
+        .style('pointer-events', 'none')
+      label.append('tspan').attr('x', 0).attr('dy', '0').text('Training View')
+      label.append('tspan').attr('x', 0).attr('dy', '14').text('(Output Layer)')
       return
     }
 
-    const headerColor = isUdf ? '#ea580c' : '#3b82f6'
-    const headerH = 26
-    const bodyColor = isUdf ? '#ffedd5' : '#ffffff'
+    const palette = isPythonNode ? COLORS.python : COLORS.sql
     const headerText = (d.opType || 'NODE').toUpperCase()
-    const cols = d.writeColumns?.length ? d.writeColumns : d.readColumns
-    const labelText = (cols && cols.length) ? cols.slice(0, 2).join(',') : 'feature'
+    const rawLabelText = getLabelText(d)
+    const labelText = truncateToWidth(rawLabelText, dim.w - 28, labelFont)
 
-    g.append('rect')
-      .attr('class', 'node-stroke')
-      .attr('x', -nodeWidth / 2).attr('y', -nodeHeight / 2)
-      .attr('width', nodeWidth).attr('height', nodeHeight)
-      .attr('rx', 8).attr('ry', 8)
-      .style('fill', bodyColor)
-      .style('stroke', '#94a3b8')
-      .style('stroke-width', 1)
+    const border = g.append('rect')
+      .attr('class', 'node-border')
+      .attr('data-base-stroke', palette.border)
+      .attr('x', -dim.w / 2).attr('y', -dim.h / 2)
+      .attr('width', dim.w).attr('height', dim.h)
+      .attr('rx', cornerR).attr('ry', cornerR)
+      .style('fill', palette.bottom)
+      .style('stroke', palette.border)
+      .style('stroke-width', 2.2)
+      .style('filter', `url(#${nodeShadowId})`)
 
+    const headerH = dim.headerH ?? BOX_HEADER_H
     g.append('path')
-      .attr('d', `M ${-nodeWidth / 2} ${-nodeHeight / 2 + headerH} L ${-nodeWidth / 2} ${-nodeHeight / 2 + 8} Q ${-nodeWidth / 2} ${-nodeHeight / 2} ${-nodeWidth / 2 + 8} ${-nodeHeight / 2} L ${nodeWidth / 2 - 8} ${-nodeHeight / 2} Q ${nodeWidth / 2} ${-nodeHeight / 2} ${nodeWidth / 2} ${-nodeHeight / 2 + 8} L ${nodeWidth / 2} ${-nodeHeight / 2 + headerH} Z`)
-      .style('fill', headerColor)
+      .attr('d', `M ${-dim.w / 2} ${-dim.h / 2 + headerH} L ${-dim.w / 2} ${-dim.h / 2 + cornerR} Q ${-dim.w / 2} ${-dim.h / 2} ${-dim.w / 2 + cornerR} ${-dim.h / 2} L ${dim.w / 2 - cornerR} ${-dim.h / 2} Q ${dim.w / 2} ${-dim.h / 2} ${dim.w / 2} ${-dim.h / 2 + cornerR} L ${dim.w / 2} ${-dim.h / 2 + headerH} Z`)
+      .style('fill', palette.top)
 
     g.append('text')
       .attr('x', 0)
-      .attr('y', -nodeHeight / 2 + 18)
+      .attr('y', -dim.h / 2 + headerH / 2)
       .attr('text-anchor', 'middle')
-      .style('font-size', '12px')
+      .attr('dominant-baseline', 'middle')
+      .style('font-size', '11px')
       .style('font-weight', '700')
       .style('fill', '#ffffff')
       .style('pointer-events', 'none')
       .text(headerText)
 
+    const bottomCenterY = (-dim.h / 2 + headerH + dim.h / 2) / 2
     g.append('text')
       .attr('x', 0)
-      .attr('y', 10)
+      .attr('y', bottomCenterY)
       .attr('text-anchor', 'middle')
-      .style('font-family', 'monospace')
-      .style('font-size', '14px')
-      .style('font-weight', '600')
-      .style('fill', '#1e293b')
+      .attr('dominant-baseline', 'middle')
+      .style('font-family', "'Inconsolata', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace")
+      .style('font-size', '13px')
+      .style('font-weight', '800')
+      .style('fill', '#0b1224')
       .style('pointer-events', 'none')
       .text(labelText)
 
-    if (isUdf) {
-      const iconX = nodeWidth / 2 - 10
-      const iconY = -nodeHeight / 2 - 10
-      const pyGroup = g.append('g').attr('transform', `translate(${iconX}, ${iconY}) scale(0.8)`)
-      pyGroup.append('path')
-        .attr('d', 'M 9.9 0 C 4.5 0 2.5 3 2.5 3 L 2.5 5.5 L 6 5.5 C 6 5.5 6 3 9.9 3 C 13.8 3 13.8 5.7 13.8 5.7 L 13.8 7.3 L 5.5 7.3 C 1 7.3 0 11.5 0 11.5 L 0 16.5 C 0 21 5.5 21 5.5 21 L 9.5 21 L 9.5 17.5 C 9.5 14.5 9.5 13.5 12.5 13.5 L 18.5 13.5 C 18.5 13.5 18.5 10 18.5 5.5 C 18.5 0 9.9 0 9.9 0 Z M 7 1.5 C 7.8 1.5 8.5 2.2 8.5 3 C 8.5 3.8 7.8 4.5 7 4.5 C 6.2 4.5 5.5 3.8 5.5 3 C 5.5 2.2 6.2 1.5 7 1.5 Z')
-        .style('fill', '#3776ab')
-      pyGroup.append('path')
-        .attr('d', 'M 12.3 22 C 17.7 22 19.7 19 19.7 19 L 19.7 16.5 L 16.2 16.5 C 16.2 16.5 16.2 19 12.3 19 C 8.4 19 8.4 16.3 8.4 16.3 L 8.4 14.7 L 16.7 14.7 C 21.2 14.7 22.2 10.5 22.2 10.5 L 22.2 5.5 C 22.2 1 16.7 1 16.7 1 L 12.7 1 L 12.7 4.5 C 12.7 7.5 12.7 8.5 9.7 8.5 L 3.7 8.5 C 3.7 8.5 3.7 12 3.7 16.5 C 3.7 22 12.3 22 12.3 22 Z M 15.2 20.5 C 14.4 20.5 13.7 19.8 13.7 19 C 13.7 18.2 14.4 17.5 15.2 17.5 C 16 17.5 16.7 18.2 16.7 19 C 16.7 19.8 16 20.5 15.2 20.5 Z')
-        .style('fill', '#ffd343')
+    if (isPythonNode) {
+      // Match the screenshot: icon sits at top-right, slightly outside the node.
+      const iconSz = 28
+      const iconX = dim.w / 2 - iconSz * 0.55
+      const iconY = -dim.h / 2 - iconSz * 0.55
+      g.append('image')
+        .attr('href', ICONS.python)
+        .attr('xlink:href', ICONS.python)
+        .attr('x', iconX)
+        .attr('y', iconY)
+        .attr('width', iconSz)
+        .attr('height', iconSz)
+        .style('filter', `url(#${nodeShadowId})`)
     }
   })
+
+  // Keep selected border highlighted after re-render.
+  if (selected.value) {
+    zoomRoot.selectAll<SVGGElement, Py2SqlDagNode>('.pipeline-node')
+      .filter(d => d.nodeId === selected.value?.nodeId)
+      .select<SVGRectElement>('.node-border')
+      .style('stroke', '#0f172a')
+      .style('stroke-width', 3.5)
+  }
+
+  // Zoom + pan (wheel zoom, drag to pan). Persist transform across rerenders.
+  const zoom = d3.zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.2, 3.2])
+    .on('zoom', (event) => {
+      lastZoomTransform.value = event.transform
+      zoomRoot.attr('transform', event.transform.toString())
+    })
+
+  svg.call(zoom as any)
+
+  if (lastZoomTransform.value) {
+    svg.call(zoom.transform as any, lastZoomTransform.value)
+  } else {
+    const fitScale = Math.min(containerW / layoutW, containerH / layoutH, 1)
+    const tx = (containerW - layoutW * fitScale) / 2
+    const ty = (containerH - layoutH * fitScale) / 2
+    const init = d3.zoomIdentity.translate(tx, ty).scale(fitScale)
+    lastZoomTransform.value = init
+    svg.call(zoom.transform as any, init)
+  }
 }
 
 watch(dag, () => {
@@ -518,6 +656,21 @@ onMounted(() => {
   if (taskStore.agentSearchStatus === 'running') {
     loadDag()
   }
+
+  // Keep DAG responsive to container resize.
+  if (containerRef.value && 'ResizeObserver' in window) {
+    resizeObserver = new ResizeObserver(() => {
+      if (dag.value?.nodes?.length) renderDag()
+    })
+    resizeObserver.observe(containerRef.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (resizeObserver && containerRef.value) {
+    resizeObserver.unobserve(containerRef.value)
+  }
+  resizeObserver = null
 })
 </script>
 
@@ -573,11 +726,13 @@ onMounted(() => {
 
 .dag-canvas {
   position: relative;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border: 2px solid rgb(48, 82, 102);
+  border-radius: 14px;
   background: #ffffff;
-  min-height: 260px;
+  min-height: 300px;
+  height: 520px;
   overflow: hidden;
+  touch-action: none;
 }
 
 .muted-text {
