@@ -6,159 +6,192 @@
   >
     <!-- 使用Splitpanes实现左右分区布局 -->
     <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
-      <!-- 左侧面板：Agent流程图 + Node Information（上方）与 Feature Generation（下方） -->
+      <!-- Left pane: Agent thinking process + feature generation + agent thinking feed -->
       <pane :size="leftPaneSize" min="15" max="70">
         <div class="left-panel">
-          <div class="top-sections">
-            <!-- 上方：Agent协作流程图 -->
-            <div class="agent-flow-section">
-              <div class="info-card">
+          <div class="left-grid">
+            <div class="left-stack">
+              <div class="agent-flow-section">
+                <div class="info-card">
+                  <div class="info-header">
+                    <h6 class="info-title">
+                      <Users :size="18" class="me-2" />
+                      Agent Thinking Process
+                    </h6>
+                  </div>
+                  <div class="info-content agent-process-content">
+                    <div class="agent-flow-diagram">
+                      <div class="flow-container">
+                        <div class="agents-container">
+                          <div
+                            class="agent-node system-agent"
+                            :class="{ working: workingAgents.includes('system') }"
+                          >
+                            <div class="agent-icon">
+                              <img src="/dataset_chat.png" alt="Dataset Info" class="agent-image" />
+                            </div>
+                            <div class="agent-label">Dataset Info</div>
+                            <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
+                          </div>
+
+                          <div
+                            class="agent-node main-agent"
+                            :class="{ working: workingAgents.includes('mainagent') }"
+                          >
+                            <div class="agent-icon">
+                              <img src="/robot2.png" alt="Main Agent" class="agent-image" />
+                            </div>
+                            <div class="agent-label">Main Agent</div>
+                            <div v-if="workingAgents.includes('mainagent')" class="working-indicator"></div>
+                          </div>
+
+                          <div
+                            class="agent-node opt-agent"
+                            :class="{ working: workingAgents.includes('optimizationagent') }"
+                          >
+                            <div class="agent-icon">
+                              <img src="/robot2.png" alt="Optimization Agent" class="agent-image" />
+                            </div>
+                            <div class="agent-label">Optimization Agent</div>
+                            <div v-if="workingAgents.includes('optimizationagent')" class="working-indicator"></div>
+                          </div>
+
+                          <div
+                            class="agent-node validation-agent"
+                            :class="{ working: workingAgents.includes('nodevalidator') }"
+                          >
+                            <div class="agent-icon">
+                              <img src="/val.png" alt="Validation" class="agent-image" />
+                            </div>
+                            <div class="agent-label">Validation</div>
+                            <div v-if="workingAgents.includes('nodevalidator')" class="working-indicator"></div>
+                          </div>
+
+                          <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
+                          <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
+                          <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
+                          <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="feature-generation-section">
+                <div class="feature-tree-section">
+                  <FeatureTreePanel />
+                </div>
+              </div>
+
+              <div class="node-info-section">
+                <div class="info-card">
+                  <div class="info-header">
+                    <h6 class="info-title">Node Information</h6>
+                  </div>
+                  <div class="info-content">
+                    <div v-if="featureTreeStore.selectedNode" class="node-details">
+                      <div class="node-detail">
+                        <span class="detail-label">Node ID:</span>
+                        <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
+                      </div>
+                      <div class="node-detail">
+                        <span class="detail-label">Feature Name:</span>
+                        <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
+                      </div>
+                      <div class="node-detail">
+                        <span class="detail-label">Operation:</span>
+                        <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
+                      </div>
+                      <div class="node-detail">
+                        <span class="detail-label">Description:</span>
+                        <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
+                      </div>
+                      <div class="node-detail">
+                        <span class="detail-label">Score:</span>
+                        <span class="detail-value">{{ formatScore(featureTreeStore.selectedNode.score) }}</span>
+                      </div>
+                      <div class="node-code">
+                        <details v-if="featureTreeStore.selectedNode.task_code" class="code-block" open>
+                          <summary class="code-summary">PYTHON code</summary>
+                          <pre class="code-pre"><code class="code-code" v-html="highlightCode(featureTreeStore.selectedNode.task_code, 'python')"></code></pre>
+                        </details>
+                        <div v-else class="no-task-code">No task code available.</div>
+                      </div>
+                    </div>
+                    <div v-else class="no-node-info">
+                      Hover over a node to see details.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat-column">
+              <div class="chat-card info-card">
                 <div class="info-header">
-                  <h6 class="info-title">
-                    <Users :size="18" class="me-2" />
-                    Agent Thinking Process
-                    <!--
-                    <button
-                      class="btn btn-sm btn-info ms-2"
-                      @click="testAgentStatus"
-                      style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
-                    >
-                      Test Queue
-                    </button>
-                    <button
-                      class="btn btn-sm btn-warning ms-1"
-                      @click="testWebSocketMessage"
-                      style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
-                    >
-                      Test WS
-                    </button>
-                    -->
-                  </h6>
+                  <h6 class="info-title">Agent thinking</h6>
                 </div>
-                <div class="info-content agent-process-content">
-                  <div class="agent-flow-diagram">
-                    <!-- 环形布局的Agent协作图 -->
-                    <div class="flow-container">
-                      <!-- Agent图标正方形布局 -->
-                      <div class="agents-container">
-                        <!-- System Agent (左上角) -->
+                <div class="info-content chat-panel-content">
+                  <div class="agent-chat-panel">
+                    <div class="chat-panel-body" ref="chatListRef">
+                      <div v-if="!chatMessages.length" class="chat-empty-state">
+                        Agent thinking updates will appear here in real time.
+                      </div>
+                      <div v-else>
                         <div
-                          class="agent-node system-agent"
-                          :class="{ working: workingAgents.includes('system') }"
+                          v-for="message in chatMessages"
+                          :key="message.id"
+                          class="chat-message"
+                          :class="[`agent-${message.agent}`, isRightAligned(message.agent) ? 'align-right' : 'align-left']"
                         >
-                          <div class="agent-icon">
-                            <img src="/dataset_chat.png" alt="Dataset Info" class="agent-image" />
+                          <div class="chat-bubble-wrapper">
+                            <div class="chat-header" :class="isRightAligned(message.agent) ? 'header-right' : 'header-left'">
+                              <div class="chat-avatar" :class="`agent-${message.agent}`">
+                                <img
+                                  :src="agentDisplayConfig[message.agent].avatarSrc"
+                                  :alt="agentDisplayConfig[message.agent].label"
+                                />
+                              </div>
+                              <div class="chat-agent-name">
+                                {{ agentDisplayConfig[message.agent].label }}
+                              </div>
+                            </div>
+                            <div class="chat-bubble">
+                              <div class="chat-body">
+                                <template
+                                  v-for="(segment, segIndex) in parseMessageSegments(message.content)"
+                                  :key="`${message.id}-${segIndex}`"
+                                >
+                                  <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
+                                  <details v-else-if="segment.type === 'code'" class="code-block">
+                                    <summary class="code-summary">{{ segment.label }}</summary>
+                                    <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
+                                  </details>
+                                  <details
+                                    v-else
+                                    class="code-block example-block"
+                                    :open="isExampleExpanded(message.id, segIndex)"
+                                    @toggle="onExampleToggle(message.id, segIndex, $event)"
+                                  >
+                                    <summary class="code-summary example-summary">
+                                      <span class="example-caret" aria-hidden="true"></span>
+                                      <span class="example-summary-text">{{ getExampleSummary(segment.items) }}</span>
+                                    </summary>
+                                    <ul v-if="isExampleExpanded(message.id, segIndex)" class="examples-list">
+                                      <li v-for="(item, exIndex) in (segment.items || [])" :key="`${message.id}-${segIndex}-ex-${exIndex}`">
+                                        {{ item }}
+                                      </li>
+                                    </ul>
+                                  </details>
+                                </template>
+                              </div>
+                            </div>
                           </div>
-                          <div class="agent-label">Dataset Info</div>
-                          <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
-
-                          <!-- System Agent思考气泡 -->
-                          <!-- Bubble disabled -->
                         </div>
-
-                        <!-- Main Agent (右上角) -->
-                        <div
-                          class="agent-node main-agent"
-                          :class="{ working: workingAgents.includes('mainagent') }"
-                        >
-                          <div class="agent-icon">
-                            <img src="/robot2.png" alt="Main Agent" class="agent-image" />
-                          </div>
-                          <div class="agent-label">Main Agent</div>
-                          <div v-if="workingAgents.includes('mainagent')" class="working-indicator"></div>
-
-                          <!-- Main Agent思考气泡 -->
-                          <!-- Bubble disabled -->
-                        </div>
-
-                        <!-- Optimization Agent (右下角) -->
-                        <div
-                          class="agent-node opt-agent"
-                          :class="{ working: workingAgents.includes('optimizationagent') }"
-                        >
-                          <div class="agent-icon">
-                            <img src="/robot2.png" alt="Optimization Agent" class="agent-image" />
-                          </div>
-                          <div class="agent-label">Optimization Agent</div>
-                          <div v-if="workingAgents.includes('optimizationagent')" class="working-indicator"></div>
-
-                          <!-- Optimization Agent思考气泡 -->
-                          <!-- Bubble disabled -->
-                        </div>
-
-                        <!-- Node Validation Process (左下角) -->
-                        <div
-                          class="agent-node validation-agent"
-                          :class="{ working: workingAgents.includes('nodevalidator') }"
-                        >
-                          <div class="agent-icon">
-                            <img src="/val.png" alt="Validation" class="agent-image" />
-                          </div>
-                          <div class="agent-label">Validation</div>
-                          <div v-if="workingAgents.includes('nodevalidator')" class="working-indicator"></div>
-
-                          <!-- Node Validation Agent思考气泡 -->
-                          <!-- Bubble disabled -->
-                        </div>
-
-                        <!-- CSS箭头 - 相对中心定位，在同一容器内 -->
-                        <div class="arrow-horizontal top-arrow" :class="{ active: connectionActive }"></div>
-                        <div class="arrow-vertical right-arrow" :class="{ active: connectionActiveReverse }"></div>
-                        <div class="arrow-horizontal bottom-arrow" :class="{ active: connectionActiveValidation }"></div>
-                        <div class="arrow-vertical left-arrow" :class="{ active: connectionActiveSystem }"></div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 上方：Feature Generation -->
-            <div class="feature-generation-section">
-              <div class="feature-tree-section">
-                <FeatureTreePanel />
-              </div>
-            </div>
-          </div>
-
-          <!-- 下方：Node Information -->
-          <div class="node-info-section">
-            <div class="info-card">
-              <div class="info-header">
-                <h6 class="info-title">Node Information</h6>
-              </div>
-              <div class="info-content">
-                <div v-if="featureTreeStore.selectedNode" class="node-details">
-                  <div class="node-detail">
-                    <span class="detail-label">Node ID:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.node_id }}</span>
-                  </div>
-                  <div class="node-detail">
-                    <span class="detail-label">Feature Name:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.feature_name }}</span>
-                  </div>
-                  <div class="node-detail">
-                    <span class="detail-label">Operation:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.op_type }}</span>
-                  </div>
-                  <div class="node-detail">
-                    <span class="detail-label">Description:</span>
-                    <span class="detail-value">{{ featureTreeStore.selectedNode.operation_desc }}</span>
-                  </div>
-                  <div class="node-detail">
-                    <span class="detail-label">Score:</span>
-                    <span class="detail-value">{{ formatScore(featureTreeStore.selectedNode.score) }}</span>
-                  </div>
-                  <div class="node-code">
-                    <details v-if="featureTreeStore.selectedNode.task_code" class="code-block" open>
-                      <summary class="code-summary">PYTHON code</summary>
-                      <pre class="code-pre"><code class="code-code" v-html="highlightCode(featureTreeStore.selectedNode.task_code, 'python')"></code></pre>
-                    </details>
-                    <div v-else class="no-task-code">No task code available.</div>
-                  </div>
-                </div>
-                <div v-else class="no-node-info">
-                  Hover over a node to see details.
                 </div>
               </div>
             </div>
@@ -166,87 +199,16 @@
         </div>
       </pane>
 
-
-      <pane
-        v-if="showRightPanel"
-        :size="rightPaneSize"
-        min="20"
-        max="60"
-      >
+      <pane :size="rightPaneSize" min="20" max="60">
         <div class="right-panel-content">
-          <div class="chat-card info-card">
-            <div class="info-header">
-              <h6 class="info-title">Agent thinking</h6>
-            </div>
-            <div class="info-content chat-panel-content">
-              <div class="agent-chat-panel">
-                <div class="chat-panel-body" ref="chatListRef">
-                  <div v-if="!chatMessages.length" class="chat-empty-state">
-                    Agent thinking updates will appear here in real time.
-                  </div>
-                  <div v-else>
-                    <div
-                      v-for="message in chatMessages"
-                      :key="message.id"
-                      class="chat-message"
-                      :class="[`agent-${message.agent}`, isRightAligned(message.agent) ? 'align-right' : 'align-left']"
-                    >
-                      <div class="chat-bubble-wrapper">
-                        <div class="chat-header" :class="isRightAligned(message.agent) ? 'header-right' : 'header-left'">
-                          <div class="chat-avatar" :class="`agent-${message.agent}`">
-                            <img
-                              :src="agentDisplayConfig[message.agent].avatarSrc"
-                              :alt="agentDisplayConfig[message.agent].label"
-                            />
-                          </div>
-                          <div class="chat-agent-name">
-                            {{ agentDisplayConfig[message.agent].label }}
-                          </div>
-                        </div>
-                        <div class="chat-bubble">
-                          <div class="chat-body">
-                            <template
-                              v-for="(segment, segIndex) in parseMessageSegments(message.content)"
-                              :key="`${message.id}-${segIndex}`"
-                            >
-                              <p v-if="segment.type === 'text'" class="chat-text">{{ segment.content }}</p>
-                              <details v-else-if="segment.type === 'code'" class="code-block">
-                                <summary class="code-summary">{{ segment.label }}</summary>
-                                <pre class="code-pre"><code class="code-code" v-html="highlightCode(segment.content, segment.language)"></code></pre>
-                              </details>
-                              <details
-                                v-else
-                                class="code-block example-block"
-                                :open="isExampleExpanded(message.id, segIndex)"
-                                @toggle="onExampleToggle(message.id, segIndex, $event)"
-                              >
-                                <summary class="code-summary example-summary">
-                                  <span class="example-caret" aria-hidden="true"></span>
-                                  <span class="example-summary-text">{{ getExampleSummary(segment.items) }}</span>
-                                </summary>
-                                <ul v-if="isExampleExpanded(message.id, segIndex)" class="examples-list">
-                                  <li v-for="(item, exIndex) in (segment.items || [])" :key="`${message.id}-${segIndex}-ex-${exIndex}`">
-                                    {{ item }}
-                                  </li>
-                                </ul>
-                              </details>
-                            </template>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <InDbComputationPanel />
         </div>
       </pane>
 
-      <div v-if="showRightPanel && rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
+      <div v-if="rightPanelCollapsed" class="expand-button-container" @click="toggleRightPanel">
         <div class="expand-button">
           <span class="expand-arrow">‹</span>
-          <span class="expand-tooltip">Expand Panel (Ctrl+→)</span>
+          <span class="expand-tooltip">Show in-DB panel (Ctrl+→)</span>
         </div>
       </div>
     </splitpanes>
@@ -262,6 +224,7 @@ import { useFeatureTreeStore } from '@/stores/featureTree'
 import { useAgentStore } from '@/stores/agent'
 import type { AgentType, AgentState } from '@/types/websocket'
 import FeatureTreePanel from '@/components/Features/FeatureTreePanel.vue'
+import InDbComputationPanel from '@/components/InDb/InDbComputationPanel.vue'
 
 const taskStore = useTaskStore()
 const featureTreeStore = useFeatureTreeStore()
@@ -297,7 +260,7 @@ const formatScore = (score?: number) => {
   return 'Validating...'
 }
 
-// Right panel hosts the chat feed
+// Right panel hosts the in-DB computation panel
 const showRightPanel = true
 
 // Splitpanes 相关状态
@@ -1185,11 +1148,25 @@ onUnmounted(() => {
   padding-right: 0.0rem;
 }
 
-/* 上方区域网格布局：Agent流程图和功能树并排显示 */
-.top-sections {
+/* Left grid: left stack + agent thinking feed */
+.left-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: 0.6rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.left-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+.chat-column {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -1533,7 +1510,7 @@ onUnmounted(() => {
     min-height: 300px;
   }
 
-  .top-sections {
+  .left-grid {
     grid-template-columns: 1fr;
   }
 }

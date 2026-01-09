@@ -25,6 +25,7 @@ export const useTaskStore = defineStore('task', () => {
   const agentSearchStatus = ref<AgentSearchStatus>('idle')
   const agentSearchInfo = ref<any>(null)
   const featureSearchClearedAt = ref(0)
+  const featureSearchStartedAt = ref(0)
 
   // 计算属性
   const canStartTask = computed(() =>
@@ -62,7 +63,7 @@ export const useTaskStore = defineStore('task', () => {
       }
     } catch (err) {
       status.value = 'error'
-      error.value = err instanceof Error ? err.message : '未知错误'
+      error.value = err instanceof Error ? err.message : 'Unknown error'
       addNotification(`Format check failed: ${error.value}`, 'fail')
       return false
     }
@@ -265,6 +266,7 @@ export const useTaskStore = defineStore('task', () => {
       })
       agentSearchInfo.value = res.data || null
       agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'running')
+      featureSearchStartedAt.value = Date.now()
       addNotification(`Feature search started (depth=${depth}, model=${modelType})`, 'info')
       return true
     } catch (error: any) {
@@ -293,6 +295,8 @@ export const useTaskStore = defineStore('task', () => {
       const res = await apiService.featureSearchResume()
       agentSearchInfo.value = res.data || null
       agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'running')
+      // Treat resume as a (re)start trigger for dependent panels.
+      featureSearchStartedAt.value = Date.now()
       addNotification('Feature search resumed', 'info')
       return true
     } catch (error: any) {
@@ -309,7 +313,7 @@ export const useTaskStore = defineStore('task', () => {
       agentSearchInfo.value = res.data || null
       agentSearchStatus.value = 'clear'
       agentStore.clearWorkingStates()
-      addNotification('Feature search stopped', 'warning')
+      addNotification('Feature search stopped', 'info')
       return true
     } catch (error: any) {
       agentSearchStatus.value = 'error'
@@ -344,6 +348,7 @@ export const useTaskStore = defineStore('task', () => {
     agentSearchInfo.value = null
     agentSearchStatus.value = 'idle'
     featureSearchClearedAt.value = Date.now()
+    featureSearchStartedAt.value = 0
     addNotification('Feature output cleared', 'success')
   }
 
@@ -359,6 +364,7 @@ export const useTaskStore = defineStore('task', () => {
     agentSearchStatus,
     agentSearchInfo,
     featureSearchClearedAt,
+    featureSearchStartedAt,
 
     // 计算属性
     canStartTask,
