@@ -532,9 +532,9 @@ onMounted(() => {
 
 .card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -545,11 +545,15 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 0.4rem 0.6rem 0.35rem;
+  background: #ffffff;
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
 }
 
 .title {
-  font-weight: 800;
+  font-size: var(--font-size-lg, 1.5rem);
+  font-weight: 700;
   color: #0f172a;
 }
 

@@ -5,11 +5,13 @@
     :data-display-mode="displayMode"
   >
     <!-- 使用Splitpanes实现左右分区布局 -->
-    <splitpanes class="default-theme" @resize="handleResize" :push-other-panes="false">
+    <splitpanes class="default-theme main-splitpanes" @resize="handleResize" :push-other-panes="false">
       <!-- Left pane: Agent thinking process + feature generation + agent thinking feed -->
       <pane :size="leftPaneSize" min="15" max="70">
         <div class="left-panel">
-          <div class="left-grid">
+          <splitpanes class="default-theme left-inner-split" @resize="handleLeftInnerResize" :push-other-panes="false">
+            <pane :size="leftInnerPaneSize" min="25" max="75">
+            <div class="pane-fill">
             <div class="left-stack">
               <div class="agent-flow-section">
                 <div class="info-card">
@@ -127,6 +129,11 @@
               </div>
             </div>
 
+            </div>
+            </pane>
+
+            <pane :size="rightInnerPaneSize" min="25" max="75">
+            <div class="pane-fill">
             <div class="chat-column">
               <div class="chat-card info-card">
                 <div class="info-header">
@@ -195,7 +202,9 @@
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+            </pane>
+          </splitpanes>
         </div>
       </pane>
 
@@ -268,6 +277,10 @@ const leftPaneSize = ref(75) // 左侧面板默认占75%
 const rightPaneSize = ref(25) // 右侧面板默认占25%（留空）
 const rightPanelCollapsed = ref(false) // 右侧面板折叠状态
 
+// Left inner split: left-stack vs agent thinking feed
+const leftInnerPaneSize = ref(50)
+const rightInnerPaneSize = ref(50)
+
 // 处理分隔条拖动
 function handleResize(event: any) {
   console.log('Resize event:', event)
@@ -288,6 +301,24 @@ function handleResize(event: any) {
     leftPaneSize.value = event.size
     rightPaneSize.value = 100 - event.size
     localStorage.setItem('main-content-split-ratio', event.size.toString())
+  }
+}
+
+function handleLeftInnerResize(event: any) {
+  if (Array.isArray(event)) {
+    const [leftPane] = event
+    leftInnerPaneSize.value = leftPane.size
+    rightInnerPaneSize.value = 100 - leftPane.size
+    localStorage.setItem('left-inner-split-ratio', leftPane.size.toString())
+  } else if (event && event[0]) {
+    const leftPane = event[0]
+    leftInnerPaneSize.value = leftPane.size
+    rightInnerPaneSize.value = 100 - leftPane.size
+    localStorage.setItem('left-inner-split-ratio', leftPane.size.toString())
+  } else if (event && event.size !== undefined) {
+    leftInnerPaneSize.value = event.size
+    rightInnerPaneSize.value = 100 - event.size
+    localStorage.setItem('left-inner-split-ratio', event.size.toString())
   }
 }
 
@@ -978,6 +1009,7 @@ onMounted(() => {
   // 从localStorage加载用户偏好
   const savedRatio = localStorage.getItem('main-content-split-ratio')
   const savedCollapsed = localStorage.getItem('right-panel-collapsed')
+  const savedInnerRatio = localStorage.getItem('left-inner-split-ratio')
 
   if (savedRatio) {
     leftPaneSize.value = parseFloat(savedRatio)
@@ -992,11 +1024,16 @@ onMounted(() => {
     }
   }
 
+  if (savedInnerRatio) {
+    leftInnerPaneSize.value = parseFloat(savedInnerRatio)
+    rightInnerPaneSize.value = 100 - leftInnerPaneSize.value
+  }
+
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeyDown)
   // 添加splitter点击事件监听器
   nextTick(() => {
-    const splitters = document.querySelectorAll('.splitpanes__splitter')
+    const splitters = document.querySelectorAll('.main-splitpanes > .splitpanes__splitter')
     splitters.forEach((splitter) => {
       splitter.addEventListener('click', (event: Event) => {
         event.preventDefault()
@@ -1149,12 +1186,24 @@ onUnmounted(() => {
 }
 
 /* Left grid: left stack + agent thinking feed */
-.left-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 0.6rem;
-  min-height: 0;
+.left-inner-split {
   flex: 1;
+  min-height: 0;
+}
+
+.pane-fill {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.left-inner-split :deep(.splitpanes__pane) {
+  min-height: 0 !important;
+}
+
+.chat-column {
+  height: 100%;
 }
 
 .left-stack {
@@ -1509,10 +1558,6 @@ onUnmounted(() => {
   .agent-process-content > .agent-flow-diagram {
     min-height: 300px;
   }
-
-  .left-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ===========================================
@@ -1526,6 +1571,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  overflow: hidden;
 }
 
 /* 节点信息区域：显示选中节点的详细信息 */
@@ -1533,7 +1579,9 @@ onUnmounted(() => {
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  height: 500px;
+  flex: 0 0 320px;
+  min-height: 180px;
+  overflow: hidden;
 }
 
 /* 功能树区域：显示特征工程的树状结构 */
@@ -1542,6 +1590,8 @@ onUnmounted(() => {
   min-width: 250px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ===========================================
@@ -2478,5 +2528,12 @@ onUnmounted(() => {
 .btn-info:focus {
   outline: none;
   box-shadow: none;
+}
+
+/* Wider gutter between Agent Thinking Process and Agent thinking */
+.left-inner-split :deep(.splitpanes__splitter) {
+  flex: 0 0 10px !important;
+  width: 20px !important;
+  min-width: 10px !important;
 }
 </style>
