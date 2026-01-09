@@ -28,18 +28,25 @@
         <!-- Comparison methods - only show on End-to-End page -->
         <div class="mb-4" v-if="isEndToEnd">
           <label class="form-label fw-bold">Comparison Methods (Adda always included)</label>
-          <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
-            <input
-              class="form-check-input"
-              type="checkbox"
-              :id="`cmp-panel-${method.value}`"
-              :value="method.value"
-              :checked="taskStore.config.comparisonMethods.includes(method.value)"
-              @change="toggleComparisonMethod(method.value)"
-            />
-            <label class="form-check-label" :for="`cmp-panel-${method.value}`">
-              {{ method.label }}
-            </label>
+          <div class="comparison-grid">
+            <div class="form-check comparison-locked">
+              <input class="form-check-input" type="checkbox" id="cmp-panel-Adda" checked disabled />
+              <label class="form-check-label" for="cmp-panel-Adda">Adda</label>
+            </div>
+
+            <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                :id="`cmp-panel-${method.value}`"
+                :value="method.value"
+                :checked="taskStore.config.comparisonMethods.includes(method.value)"
+                @change="toggleComparisonMethod(method.value)"
+              />
+              <label class="form-check-label" :for="`cmp-panel-${method.value}`">
+                {{ method.label }}
+              </label>
+            </div>
           </div>
           <div class="form-text">
             Select additional comparison baselines. Adda runs by default.
@@ -167,12 +174,41 @@ const isEndToEnd = computed(() => route.path.includes('performance'))
 const comparisonOptions = [
   { value: 'AutoFeat', label: 'AutoFeat' },
   { value: 'MADlib', label: 'MADlib' },
-  { value: 'CAAFE', label: 'CAAFE' },
-  { value: 'Baseline', label: 'Baseline' },
-  { value: 'PGML', label: 'PGML' }
+  { value: 'CAAFE', label: 'CAAFE' }
 ]
 
+const REQUIRED_COMPARISON_METHOD = 'Adda'
+const DISALLOWED_COMPARISON_METHODS = new Set(['Baseline', 'PGML'])
+
+function normalizeComparisonMethods() {
+  const list = taskStore.config.comparisonMethods
+
+  for (let i = list.length - 1; i >= 0; i--) {
+    const value = list[i]
+    if (value && DISALLOWED_COMPARISON_METHODS.has(value)) list.splice(i, 1)
+  }
+
+  if (!list.includes(REQUIRED_COMPARISON_METHOD)) {
+    list.unshift(REQUIRED_COMPARISON_METHOD)
+  }
+
+  const seen = new Set<string>()
+  for (let i = list.length - 1; i >= 0; i--) {
+    const v = list[i]
+    if (!v) {
+      list.splice(i, 1)
+      continue
+    }
+
+    if (seen.has(v)) list.splice(i, 1)
+    else seen.add(v)
+  }
+}
+
+normalizeComparisonMethods()
+
 function toggleComparisonMethod(method: string) {
+  if (method === REQUIRED_COMPARISON_METHOD) return
   const list = taskStore.config.comparisonMethods
   const idx = list.indexOf(method)
   if (idx >= 0) {
@@ -180,6 +216,8 @@ function toggleComparisonMethod(method: string) {
   } else {
     list.push(method)
   }
+
+  normalizeComparisonMethods()
 }
 
 function loadExampleConfig() {
@@ -258,6 +296,21 @@ function resetConfig() {
 
 .bg-light {
   background-color: #f8f9fa !important;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 0.75rem;
+}
+
+.comparison-grid .form-check {
+  margin-bottom: 0;
+}
+
+.comparison-locked {
+  opacity: 0.85;
+  margin-bottom: 0;
 }
 
 /* 动画效果 */

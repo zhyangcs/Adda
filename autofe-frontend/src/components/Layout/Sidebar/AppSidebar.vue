@@ -82,18 +82,31 @@
           <!-- Comparison methods (only in End-to-End) -->
           <div class="mb-3" v-if="showComparisonOptions">
             <label class="form-label">Comparison Methods (Adda always included)</label>
-            <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
-              <input
-                class="form-check-input"
-                type="checkbox"
-                :id="`cmp-${method.value}`"
-                :value="method.value"
-                :checked="isComparisonSelected(method.value)"
-                @change="toggleComparisonMethod(method.value)"
-              />
-              <label class="form-check-label" :for="`cmp-${method.value}`">
-                {{ method.label }}
-              </label>
+            <div class="comparison-grid">
+              <div class="form-check comparison-locked">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="cmp-Adda"
+                  checked
+                  disabled
+                />
+                <label class="form-check-label" for="cmp-Adda">Adda</label>
+              </div>
+
+              <div class="form-check" v-for="method in comparisonOptions" :key="method.value">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  :id="`cmp-${method.value}`"
+                  :value="method.value"
+                  :checked="isComparisonSelected(method.value)"
+                  @change="toggleComparisonMethod(method.value)"
+                />
+                <label class="form-check-label" :for="`cmp-${method.value}`">
+                  {{ method.label }}
+                </label>
+              </div>
             </div>
           </div>
 
@@ -130,10 +143,39 @@ const route = useRoute()
 const comparisonOptions = [
   { value: 'AutoFeat', label: 'AutoFeat' },
   { value: 'MADlib', label: 'MADlib' },
-  { value: 'CAAFE', label: 'CAAFE' },
-  { value: 'Baseline', label: 'Baseline' },
-  { value: 'PGML', label: 'PGML' }
+  { value: 'CAAFE', label: 'CAAFE' }
 ]
+
+const REQUIRED_COMPARISON_METHOD = 'Adda'
+const DISALLOWED_COMPARISON_METHODS = new Set(['Baseline', 'PGML'])
+
+function normalizeComparisonMethods() {
+  const list = taskStore.config.comparisonMethods
+
+  for (let i = list.length - 1; i >= 0; i--) {
+    const value = list[i]
+    if (value && DISALLOWED_COMPARISON_METHODS.has(value)) list.splice(i, 1)
+  }
+
+  if (!list.includes(REQUIRED_COMPARISON_METHOD)) {
+    list.unshift(REQUIRED_COMPARISON_METHOD)
+  }
+
+  // de-duplicate (preserve first occurrence)
+  const seen = new Set<string>()
+  for (let i = list.length - 1; i >= 0; i--) {
+    const v = list[i]
+    if (!v) {
+      list.splice(i, 1)
+      continue
+    }
+
+    if (seen.has(v)) list.splice(i, 1)
+    else seen.add(v)
+  }
+}
+
+normalizeComparisonMethods()
 
 // 折叠功能
 function toggleCollapse() {
@@ -159,6 +201,7 @@ const statusDotClass = computed(() => {
 const showComparisonOptions = computed(() => route.path === '/performance')
 
 function toggleComparisonMethod(method: string) {
+  if (method === REQUIRED_COMPARISON_METHOD) return
   const list = taskStore.config.comparisonMethods
   const idx = list.indexOf(method)
   if (idx >= 0) {
@@ -166,6 +209,8 @@ function toggleComparisonMethod(method: string) {
   } else {
     list.push(method)
   }
+
+  normalizeComparisonMethods()
 }
 
 function isComparisonSelected(method: string) {
@@ -181,13 +226,28 @@ function isComparisonSelected(method: string) {
   max-width: 340px;
   height: 100vh;
   padding-top: 1rem;
-  background-color: white;
+  background-color: rgb(245, 245, 245);
   border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   position: relative;
   transition: all 0.3s ease;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 0.75rem;
+}
+
+.comparison-grid .form-check {
+  margin-bottom: 0;
+}
+
+.comparison-locked {
+  opacity: 0.85;
+  margin-bottom: 0;
 }
 
 .app-sidebar.collapsed {

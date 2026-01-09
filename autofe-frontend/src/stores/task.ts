@@ -12,7 +12,7 @@ export const useTaskStore = defineStore('task', () => {
     dataset: '2',
     model: '2',
     mlModel: 'RF',
-    comparisonMethods: []
+    comparisonMethods: ['Adda']
   })
 
   const status = ref<TaskStatus>('idle')
@@ -92,7 +92,7 @@ export const useTaskStore = defineStore('task', () => {
           dataset: '2',
           model: '2',
           mlModel: 'RF',
-          comparisonMethods: []
+          comparisonMethods: ['Adda']
         }
         status.value = 'idle'
         isInitialized.value = false

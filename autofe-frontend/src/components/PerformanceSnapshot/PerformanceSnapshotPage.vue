@@ -136,7 +136,7 @@ const datasets = [
   { label: 'House', value: 'house' }
 ]
 
-const availableComparisonMethods = ['CAAFE', 'MADlib', 'Baseline', 'AutoFeat', 'PGML'] as const
+const availableComparisonMethods = ['CAAFE', 'MADlib', 'AutoFeat'] as const
 
 const selectedDataset = ref<string>('heart')
 const mlModelType = ref<'RF' | 'XGB' | 'LightGBM'>('RF')
