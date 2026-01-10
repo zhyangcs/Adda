@@ -22,26 +22,13 @@
             F1-Score
           </button>
         </div>
-        <button
-          class="export-btn"
-          @click="exportChart"
-          title="Export HD chart"
-        >
-          <i class="bi bi-download"></i>
-          Export HD
-        </button>
       </div>
     </div>
 
     <div class="chart-container">
       <div ref="chartRef" class="performance-chart"></div>
-
-      <!-- 图表说明 -->
-      <!-- Legend removed as each bar has a distinct color -->
-
     </div>
 
-    <!-- 鼠标悬停提示 -->
     <div
       v-if="tooltip.show"
       class="chart-tooltip"
@@ -110,35 +97,8 @@ const validData = computed(() => {
     d.method &&
     typeof d.value === 'number' &&
     d.value >= 0 &&
-    d.value <= 1 // AUC和F1值应该在0-1之间
+    d.value <= 1
   )
-})
-
-const bestMethod = computed(() => {
-  if (chartData.value.length === 0) return 'N/A'
-  const best = chartData.value[0]
-  return best ? best.method : 'N/A'
-})
-
-const improvement = computed(() => {
-  if (chartData.value.length === 0) return 0
-
-  const addaData = chartData.value.find(d => d.isAdda)
-  const baselineMethods = chartData.value.filter(d => !d.isAdda)
-
-  if (!addaData || baselineMethods.length === 0) return 0
-
-  const baselineAvg = baselineMethods
-    .reduce((sum, d) => sum + (d.value || 0), 0) /
-    baselineMethods.length
-
-  return ((addaData.value || 0) - baselineAvg) / baselineAvg * 100
-})
-
-const averageScore = computed(() => {
-  if (chartData.value.length === 0) return 0
-  const values = chartData.value.map(d => d.value || 0)
-  return values.reduce((sum, val) => sum + val, 0) / values.length
 })
 
 const setMetric = (metric: 'auc' | 'f1') => {
@@ -156,9 +116,8 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     // Add white background for export
     .style('background-color', '#ffffff')
 
-  // 为右上角图例预留顶部空间
-  // Reduce left margin to bring AUC label closer
-  const margin = { top: 60, right: 36, bottom: 40, left: 90 }
+  // Tighter margins so the chart fills the panel better on /performance.
+  const margin = { top: 28, right: 28, bottom: 44, left: 84 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
@@ -181,25 +140,37 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     .nice()
     .range([innerHeight, 0])
 
-  
-  // X轴
-  g.append('g')
+  // Add horizontal grid lines
+  const grid = g.append('g')
+    .attr('class', 'y-grid')
+    .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerWidth).tickFormat(() => ''))
+  grid.selectAll('.domain').remove()
+  grid.selectAll('line')
+    .attr('stroke', '#dfe3eb')
+    .attr('stroke-width', 1)
+    .attr('shape-rendering', 'crispEdges')
+
+  // X-axis (bottom) - only show tick labels, no tick lines
+  const xAxis = g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale))
-    .selectAll('text')
-    .style('font-size', '16px')
+    .call(d3.axisBottom(xScale).tickSize(0).tickPadding(10))
+  xAxis.select('.domain').remove()
+  xAxis.selectAll('text')
+    .style('font-size', '14px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
     .style('text-anchor', 'middle')
     .attr('dx', '0')
     .attr('dy', '0.75em')
     .attr('transform', 'rotate(0)')
 
-  // Y轴
-  g.append('g')
-    .call(d3.axisLeft(yScale)
-      .tickFormat(d3.format('.2f'))
-    )
-    .selectAll('text')
-    .style('font-size', '16px')
+  // Y-axis (left) - only show tick labels, no tick lines
+  const yAxis = g.append('g')
+    .call(d3.axisLeft(yScale).tickFormat(d3.format('.2f')).tickSize(0).tickPadding(8))
+  yAxis.select('.domain').remove()
+  yAxis.selectAll('text')
+    .style('font-size', '14px')
+    .style('fill', '#1f2937')
 
   // Y轴标签
   g.append('text')
@@ -208,7 +179,7 @@ const drawChart = (container: HTMLElement, width: number, height: number, animat
     .attr('x', 0 - (innerHeight / 2))
     .attr('dy', '1em')
     .style('text-anchor', 'middle')
-    .style('font-size', '16px')
+    .style('font-size', '20px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
     .text(`Performance (${selectedMetric.value.toUpperCase()})`)
@@ -297,16 +268,11 @@ const createChart = () => {
   if (!chartRef.value) return
 
   const container = chartRef.value
-  
-  // 动态使用可用空间高度，避免固定 320px
+  // Fill available space (avoid forcing an aspect ratio / minimum height,
+  // which can cause clipping inside the /performance grid layout).
   const rect = container.getBoundingClientRect()
-  const availableHeight = rect.height && rect.height > 0 ? rect.height : (container.clientHeight || 360)
-  const height = Math.max(availableHeight, 360) 
-
-  // 计算目标宽度为高度的1.5倍（长宽比约1.5:1）
-  const targetWidth = height * 1.5
-  // 但不能超过容器宽度
-  const width = Math.min(container.clientWidth, targetWidth)
+  const width = rect.width || container.clientWidth
+  const height = rect.height || container.clientHeight
 
   if (width === 0 || height === 0) {
     requestAnimationFrame(() => createChart())
@@ -405,44 +371,6 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
 }
 
 
-const exportChart = () => {
-  if (!svg) return
-
-  const svgNode = svg.node()!
-  const svgData = new XMLSerializer().serializeToString(svgNode)
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')!
-  const img = new Image()
-  
-  // 获取当前 SVG 尺寸
-  const width = +svg.attr('width')
-  const height = +svg.attr('height')
-  
-  // 设置高清导出的缩放倍数
-  const scale = 3
-
-  img.onload = () => {
-    canvas.width = width * scale
-    canvas.height = height * scale
-    
-    // 缩放绘图上下文
-    ctx.scale(scale, scale)
-    
-    // 填充白色背景
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
-    
-    ctx.drawImage(img, 0, 0)
-
-    const link = document.createElement('a')
-    link.download = `performance-comparison-${selectedMetric.value}-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-  }
-
-  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
-}
-
 // 响应式处理
 const handleResize = () => {
   if (chartRef.value) {
@@ -533,46 +461,6 @@ watch(() => props.performanceData, () => {
 
 .metric-btn:hover:not(.active) {
   color: var(--text-primary);
-}
-
-.btn-icon {
-  background: none;
-  border: none;
-  padding: 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon:hover {
-  background: rgba(42, 125, 225, 0.08);
-  color: var(--accent-blue, #2a7de1);
-}
-
-.export-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-left: 8px;
-}
-
-.export-btn:hover {
-  background: #f8fafc;
-  color: #2a7de1;
-  border-color: #2a7de1;
 }
 
 .chart-container {
@@ -693,7 +581,7 @@ watch(() => props.performanceData, () => {
   }
 }
 
-/* D3图表样式 */
+/* D3 chart styles */
 :deep(.bar) {
   transition: opacity 0.2s ease;
 }
@@ -703,18 +591,12 @@ watch(() => props.performanceData, () => {
 }
 
 :deep(.domain) {
-  stroke: #cbd5e1;
-  stroke-width: 1.2;
-}
-
-:deep(.tick line) {
-  stroke: #cbd5e1;
-  stroke-width: 1.2;
+  display: none;
 }
 
 :deep(.tick text) {
   fill: #1f2937;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 500;
 }
 </style>

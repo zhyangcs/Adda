@@ -22,13 +22,6 @@
             Minutes
           </button>
         </div>
-        <button
-          class="btn-icon export-btn"
-          @click="exportChart"
-          title="Export HD chart"
-        >
-          <i class="bi bi-download"></i>
-        </button>
       </div>
     </div>
 
@@ -36,7 +29,6 @@
       <div ref="chartRef" class="time-chart"></div>
     </div>
 
-    <!-- 鼠标悬停提示 -->
     <div
       v-if="tooltip.show"
       class="chart-tooltip"
@@ -91,7 +83,6 @@ const chartData = computed(() => {
 
   return data.methods.map((method, index) => {
     const trainingTime = data.trainingTime?.[index] || 0
-    // Prefer backend featureGenerationTime; fallback to legacy totalTime-trainingTime
     const featureGenTimeRaw = data.featureGenerationTime?.[index]
     const legacyTotal = data.totalTime?.[index] || 0
     const featureGenerationTime = typeof featureGenTimeRaw === 'number'
@@ -105,7 +96,7 @@ const chartData = computed(() => {
       trainingTime,
       isAdda: method === 'Adda'
     }
-  }).sort((a, b) => (a.totalTime || 0) - (b.totalTime || 0)) // 按总时间升序排序
+  }).sort((a, b) => (a.totalTime || 0) - (b.totalTime || 0))
 })
 
 const formatTime = (seconds: number): string => {
@@ -133,23 +124,17 @@ const createChart = () => {
   if (!chartRef.value) return
 
   const container = chartRef.value
-  // 动态使用可用空间高度，避免固定 320px 导致在 100% 缩放时图表被裁切
   const rect = container.getBoundingClientRect()
-  const availableHeight = rect.height && rect.height > 0 ? rect.height : (container.clientHeight || 360)
-  const height = Math.max(availableHeight, 360) // 保留较高最小值，但为下方图例腾出空间
+  // Fill available space (avoid forcing an aspect ratio / minimum height,
+  // which can cause clipping inside the /performance grid layout).
+  const width = rect.width || container.clientWidth
+  const height = rect.height || container.clientHeight
 
-  // 计算目标宽度为高度的1.5倍（长宽比约1.5:1）
-  const targetWidth = height * 1.5
-  // 但不能超过容器宽度
-  const width = Math.min(container.clientWidth, targetWidth)
-
-  // 如果容器当前不可见或尺寸为0，延迟到下一帧再尝试，避免缓存/切换后刻度错位
   if (width === 0 || height === 0) {
     requestAnimationFrame(() => createChart())
     return
   }
 
-  // 清除现有图表
   d3.select(container).selectAll('*').remove()
 
   svg = d3.select(container)
@@ -157,30 +142,17 @@ const createChart = () => {
     .attr('width', width)
     .attr('height', height)
     .style('display', 'block')
-    .style('margin', '0 auto') // 居中显示
+    .style('margin', '0 auto')
     .style('background', '#fff')
 
-  // 内置边框矩形 (确保导出时可见，内缩1px防止描边被裁剪)
-  svg.append('rect')
-    .attr('x', 1)
-    .attr('y', 1)
-    .attr('width', width - 2)
-    .attr('height', height - 2)
-    .attr('rx', 12)
-    .attr('ry', 12)
-    .attr('fill', 'none')
-    .attr('stroke', '#dee2e6')
-    .attr('stroke-width', 2)
-
-  // 调整边距：减少顶部留白，使图表充满组件，图例将覆盖在图表右上角
-  const margin = { top: 20, right: 20, bottom: 60, left: 90 }
+  // Tighter margins so the chart fills the panel better on /performance.
+  const margin = { top: 20, right: 20, bottom: 70, left: 90 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 
   const g = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
 
-  // 确保有有效的数据
   const validData = chartData.value.filter(d =>
     d.method &&
     typeof d.totalTime === 'number' &&
@@ -190,89 +162,79 @@ const createChart = () => {
   )
 
   if (validData.length === 0) {
-    // 显示空图表
     showEmptyChart(g, innerWidth, innerHeight)
     return
   }
 
-  // 转换时间单位
   const timeScale = timeUnit.value === 'minutes' ? 60 : 1
-
-  // 安全的数值计算
-  // 增加 15% 上限空间，以容纳右侧数据标签
   const maxTimeValue = Math.max(...validData.map(d => (d.totalTime || 0) / timeScale), 1) * 1.15
 
-  // 比例尺（横向柱状图）
-  const xScale = d3.scaleLinear()
-    .domain([0, maxTimeValue])
-    .nice()
-    .range([0, innerWidth])
-
-  const yScale = d3.scaleBand()
+  const xScale = d3.scaleBand()
     .domain(validData.map(d => d.method))
-    .range([0, innerHeight])
+    .range([0, innerWidth])
     .padding(0.22)
 
-  // 竖向网格线（若干条竖线表示标度）
-  const grid = g.append('g')
-    .attr('class', 'x-grid')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(
-      d3.axisBottom(xScale)
-        .ticks(6)
-        .tickSize(-innerHeight)
-        .tickFormat(() => '')
-    )
-  grid.selectAll('.domain').remove()
-  grid.selectAll('line')
+  const yScale = d3.scaleLinear()
+    .domain([0, maxTimeValue])
+    .nice()
+    .range([innerHeight, 0])
+
+  const yGrid = g.append('g')
+    .attr('class', 'y-grid')
+    .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerWidth).tickFormat(() => ''))
+  yGrid.selectAll('.domain').remove()
+  yGrid.selectAll('line')
     .attr('stroke', '#dfe3eb')
     .attr('stroke-width', 1)
     .attr('shape-rendering', 'crispEdges')
 
-  // Y轴（方法名）
   const yAxis = g.append('g')
-    .call(d3.axisLeft(yScale).tickSize(0).tickPadding(10))
-  
-  yAxis.select('.domain').remove() // 移除左侧黑色竖线
-  yAxis.selectAll('text')
-    .style('text-anchor', 'end')
-    .style('font-size', '16px')
-    .style('font-weight', '600')
-    .style('fill', '#374151')
-
-  // X轴（时间刻度）
-  const xAxis = g.append('g')
-    .attr('transform', `translate(0,${innerHeight})`)
     .call(
-      d3.axisBottom(xScale)
+      d3.axisLeft(yScale)
         .ticks(6)
         .tickPadding(8)
         .tickFormat(d => {
           const value = Number(d)
           if (timeUnit.value === 'minutes') {
-            const minutes = value
-            return minutes >= 1 ? `${minutes.toFixed(1)} min` : `${(minutes * 60).toFixed(0)} s`
+            return value >= 1 ? `${value.toFixed(1)}` : `${(value * 60).toFixed(0)}`
           }
-          return `${value.toFixed(0)} s`
+          return `${value.toFixed(0)}`
         })
     )
-  xAxis.select('.domain').remove()
-  xAxis.selectAll('line').attr('stroke', '#cbd5e1') // 浅灰色刻度线
-  xAxis.selectAll('text')
+  yAxis.select('.domain').remove()
+  yAxis.selectAll('line').attr('stroke', '#cbd5e1')
+  yAxis.selectAll('text')
     .style('font-size', '14px')
     .style('fill', '#1f2937')
 
-  // X轴标签
+  const xAxis = g.append('g')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(d3.axisBottom(xScale).tickSize(0).tickPadding(10))
+  xAxis.select('.domain').remove()
+  xAxis.selectAll('text')
+    .style('font-size', '14px')
+    .style('font-weight', '600')
+    .style('fill', '#374151')
+
   g.append('text')
     .attr('x', innerWidth / 2)
-    .attr('y', innerHeight + margin.bottom - 10)
+    .attr('y', innerHeight + margin.bottom - 20)
+    .style('text-anchor', 'middle')
+    .style('font-size', '20px')
+    .style('font-weight', '700')
+    .style('fill', '#1f2937')
+    .text('Methods')
+
+  g.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('x', 0 - (innerHeight / 2))
+    .attr('y', 0 - margin.left + 26)
     .style('text-anchor', 'middle')
     .style('font-size', '20px')
     .style('font-weight', '700')
     .style('fill', '#1f2937')
     .text(`Latency (${timeUnit.value === 'minutes' ? 'minutes' : 'seconds'})`)
 
-  // 分组柱数据（不堆叠）：Training + End-to-End Latency 分开显示
   const groupedData = validData.map(d => ({
     method: d.method,
     isAdda: d.isAdda,
@@ -280,25 +242,25 @@ const createChart = () => {
     training: Math.max(0, d.trainingTime / timeScale)
   }))
 
-  // 颜色：End-to-End Latency=橙色，Training=灰色
+  const keys = ['training', 'endToEnd'] as const
+
   const colorScale = d3.scaleOrdinal<string, string>()
-    .domain(['training', 'endToEnd'])
+    .domain(keys as unknown as string[])
     .range(['#9ca3af', '#f59e0b'])
 
   const subScale = d3.scaleBand()
-    .domain(['training', 'endToEnd'])
-    .range([0, yScale.bandwidth()])
+    .domain(keys as unknown as string[])
+    .range([0, xScale.bandwidth()])
     .padding(0.18)
 
-  // 每个方法一个分组
   const groups = g.selectAll('.method-group')
     .data(groupedData)
     .enter()
     .append('g')
     .attr('class', 'method-group')
-    .attr('transform', (d: any) => `translate(0,${yScale(d.method) || 0})`)
+    .attr('transform', (d: any) => `translate(${xScale(d.method) || 0},0)`)
 
-  const barRows = groups.selectAll('rect')
+  const bars = groups.selectAll('rect.stacked-bar')
     .data((d: any) => ([
       { method: d.method, isAdda: d.isAdda, key: 'training', value: d.training },
       { method: d.method, isAdda: d.isAdda, key: 'endToEnd', value: d.total }
@@ -306,20 +268,20 @@ const createChart = () => {
     .enter()
     .append('rect')
     .attr('class', 'stacked-bar')
-    .attr('x', 0)
-    .attr('y', (d: any) => subScale(d.key) || 0)
-    .attr('height', subScale.bandwidth())
-    .attr('width', 0)
+    .attr('x', (d: any) => subScale(d.key) || 0)
+    .attr('y', innerHeight)
+    .attr('width', subScale.bandwidth())
+    .attr('height', 0)
     .attr('fill', (d: any) => colorScale(d.key as string) || '#9ca3af')
     .attr('rx', 3)
     .style('cursor', 'pointer')
 
-  barRows.transition()
+  bars.transition()
     .duration(800)
     .delay((_d, i) => i * 30)
-    .attr('width', (d: any) => xScale(d.value))
+    .attr('y', (d: any) => yScale(d.value))
+    .attr('height', (d: any) => innerHeight - yScale(d.value))
 
-  // 添加数值标签
   groups.selectAll('.value-label')
     .data((d: any) => ([
       { method: d.method, key: 'training', value: d.training },
@@ -328,19 +290,16 @@ const createChart = () => {
     .enter()
     .append('text')
     .attr('class', 'value-label')
-    .attr('x', (d: any) => xScale(d.value) + 6)
-    .attr('y', (d: any) => (subScale(d.key) || 0) + subScale.bandwidth() / 2)
-    .attr('dy', '0.35em')
+    .attr('x', (d: any) => (subScale(d.key) || 0) + subScale.bandwidth() / 2)
+    .attr('y', (d: any) => yScale(d.value) - 8)
+    .attr('text-anchor', 'middle')
     .text((d: any) => {
       const val = d.value
       if (val <= 0) return ''
-      // 若是 minutes 模式，显示小数；若是 seconds 模式，显示整数
-      if (timeUnit.value === 'minutes') {
-        return `${val.toFixed(1)} min`
-      }
+      if (timeUnit.value === 'minutes') return `${val.toFixed(1)} min`
       return `${val.toFixed(0)} s`
     })
-    .style('font-size', '20px')
+    .style('font-size', '16px')
     .style('fill', '#000000')
     .style('opacity', 0)
     .transition()
@@ -348,14 +307,13 @@ const createChart = () => {
     .delay((_d, i) => i * 30 + 300)
     .style('opacity', 1)
 
-  // Adda 高亮边框（围绕总时间标尺宽度）
   groups
     .filter((d: any) => d.isAdda)
     .append('rect')
     .attr('x', -2)
-    .attr('y', -2)
-    .attr('height', yScale.bandwidth() + 4)
-    .attr('width', (d: any) => xScale(d.total) + 4)
+    .attr('y', (d: any) => yScale(Math.max(d.training, d.total)) - 2)
+    .attr('width', xScale.bandwidth() + 4)
+    .attr('height', (d: any) => innerHeight - yScale(Math.max(d.training, d.total)) + 4)
     .attr('fill', 'none')
     .attr('stroke', '#007bff')
     .attr('stroke-width', 2)
@@ -367,7 +325,6 @@ const createChart = () => {
     .delay(800)
     .style('opacity', 1)
 
-  // 鼠标事件
   groups
     .on('mouseover', function(event, d: any) {
       d3.select(this).selectAll('.stacked-bar')
@@ -395,12 +352,10 @@ const createChart = () => {
       hideTooltip()
     })
 
-  // 绘制内置图例 (D3) - 放在最后以确保覆盖在图表上层
   const legendGroup = svg.append('g')
     .attr('class', 'chart-legend-d3')
-    .attr('transform', `translate(${width - margin.right - 240}, ${margin.top + 10})`) // 右上角定位
-  
-  // 图例背景
+    .attr('transform', `translate(${margin.left + 10}, ${margin.top + 10})`)
+
   legendGroup.append('rect')
     .attr('width', 230)
     .attr('height', 74)
@@ -410,7 +365,6 @@ const createChart = () => {
     .attr('rx', 8)
     .style('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.05))')
 
-  // 图例项 1: Training Time
   const legendItem1 = legendGroup.append('g').attr('transform', 'translate(16, 18)')
   legendItem1.append('rect')
     .attr('width', 18)
@@ -424,8 +378,7 @@ const createChart = () => {
     .style('font-weight', '600')
     .style('fill', '#374151')
     .text('Training Time')
-  
-  // 图例项 2: End-to-End Latency
+
   const legendItem2 = legendGroup.append('g').attr('transform', 'translate(16, 50)')
   legendItem2.append('rect')
     .attr('width', 18)
@@ -440,7 +393,7 @@ const createChart = () => {
     .style('fill', '#374151')
     .text('End-to-End Latency')
 
-  currentChart = { svg, g, xScale, yScale, bars: barRows }
+  currentChart = { svg, g, xScale, yScale, bars }
 }
 
 const updateChart = () => {
@@ -468,7 +421,6 @@ const hideTooltip = () => {
 }
 
 const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, width: number, height: number) => {
-  // 绘制空的坐标轴
   const xScale = d3.scaleBand()
     .domain([])
     .range([0, width])
@@ -479,16 +431,13 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
     .nice()
     .range([height, 0])
 
-  // X轴
   g.append('g')
     .attr('transform', `translate(0,${height})`)
     .call(d3.axisBottom(xScale))
 
-  // Y轴
   g.append('g')
     .call(d3.axisLeft(yScale))
 
-  // Y轴标签
   g.append('text')
     .attr('transform', 'rotate(-90)')
     .attr('y', 0 - 50)
@@ -499,7 +448,6 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
     .style('fill', '#6c757d')
     .text('Time')
 
-  // X轴标签
   g.append('text')
     .attr('transform', `translate(${width / 2}, ${height + 50})`)
     .style('text-anchor', 'middle')
@@ -507,7 +455,6 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
     .style('fill', '#6c757d')
     .text('Methods')
 
-  // 空状态提示
   g.append('text')
     .attr('x', width / 2)
     .attr('y', height / 2)
@@ -518,77 +465,12 @@ const showEmptyChart = (g: d3.Selection<SVGGElement, unknown, null, undefined>, 
     .text('No data available')
 }
 
-const showNoDataMessage = (container: HTMLElement) => {
-  // 清除现有内容
-  d3.select(container).selectAll('*').remove()
-
-  const noDataDiv = d3.select(container)
-    .append('div')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('height', '320px')
-    .style('color', '#6c757d')
-    .style('font-size', '14px')
-
-  noDataDiv.append('i')
-    .attr('class', 'bi bi-clock-history')
-    .style('font-size', '48px')
-    .style('margin-bottom', '16px')
-    .style('opacity', '0.5')
-
-  noDataDiv.append('div')
-    .style('text-align', 'center')
-    .html('No time data available<br><small>Run the analysis to see time comparisons</small>')
-}
-
-const exportChart = () => {
-  if (!svg) return
-
-  const svgNode = svg.node()!
-  const svgData = new XMLSerializer().serializeToString(svgNode)
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')!
-  const img = new Image()
-  
-  // 获取当前 SVG 尺寸
-  const width = +svg.attr('width')
-  const height = +svg.attr('height')
-  
-  // 设置高清导出的缩放倍数
-  const scale = 3
-
-  img.onload = () => {
-    canvas.width = width * scale
-    canvas.height = height * scale
-    
-    // 缩放绘图上下文
-    ctx.scale(scale, scale)
-    
-    // 填充白色背景
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
-    
-    ctx.drawImage(img, 0, 0)
-
-    const link = document.createElement('a')
-    link.download = `time-comparison-${timeUnit.value}-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-  }
-
-  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
-}
-
-// 响应式处理
 const handleResize = () => {
   if (chartRef.value) {
     createChart()
   }
 }
 
-// keep-alive/tab 返回时确保重绘
 onActivated(() => {
   nextTick(() => {
     createChart()
@@ -599,7 +481,6 @@ onMounted(() => {
   createChart()
   window.addEventListener('resize', handleResize)
 
-  // 监听容器尺寸变化，避免隐藏/显示后尺寸为0导致的刻度问题
   if (chartRef.value && 'ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(() => {
       createChart()
@@ -694,36 +575,6 @@ watch(() => props.timeData, () => {
   color: var(--text-primary);
 }
 
-.btn-icon {
-  background: none;
-  border: none;
-  padding: 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon:hover {
-  background: rgba(42, 125, 225, 0.08);
-  color: var(--accent-blue, #2a7de1);
-}
-
-.export-btn {
-  margin-left: 8px;
-  background-color: #f1f5f9;
-  color: #2a7de1;
-  border: 1px solid #e2e8f0;
-}
-
-.export-btn:hover {
-  background-color: #e2e8f0;
-  color: #1a60c0;
-}
-
 .chart-container {
   position: relative;
   flex: 1;
@@ -740,47 +591,6 @@ watch(() => props.timeData, () => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-}
-
-.chart-legend {
-  position: absolute;
-  top: 48px;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(2px);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-  z-index: 5;
-  color: #4b5563;
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-segment {
-  width: 16px;
-  height: 12px;
-  border-radius: 3px;
-  border: 1px solid #cbd5e1;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
-}
-
-.training-segment {
-  background: #9ca3af;
-}
-.latency-segment {
-  background: #f59e0b;
 }
 
 .chart-tooltip {
@@ -819,7 +629,6 @@ watch(() => props.timeData, () => {
   color: #4dabf7;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .panel-header {
     padding: 10px 12px;
@@ -829,27 +638,12 @@ watch(() => props.timeData, () => {
     padding: 12px;
   }
 
-  .stats-summary {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .stat-item {
-    flex-direction: row;
-    justify-content: space-between;
-  }
-
   .unit-btn {
     padding: 4px 8px;
     font-size: 11px;
   }
-
-  .legend-item {
-    font-size: 11px;
-  }
 }
 
-/* D3图表样式 */
 :deep(.stacked-bar) {
   transition: opacity 0.2s ease;
 }
@@ -878,3 +672,4 @@ watch(() => props.timeData, () => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 </style>
+
