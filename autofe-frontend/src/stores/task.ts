@@ -21,7 +21,7 @@ export const useTaskStore = defineStore('task', () => {
   const error = ref<string | null>(null)
   const notifications = ref<Notification[]>([])
   const autoStepData = ref<AutoStepData | null>(null)
-  type AgentSearchStatus = 'idle' | 'running' | 'paused' | 'finished' | 'stopped' | 'error' | 'clear'
+  type AgentSearchStatus = 'idle' | 'running' | 'paused' | 'stopping' | 'finished' | 'stopped' | 'error' | 'clear'
   const agentSearchStatus = ref<AgentSearchStatus>('idle')
   const agentSearchInfo = ref<any>(null)
   const featureSearchClearedAt = ref(0)
@@ -238,10 +238,10 @@ export const useTaskStore = defineStore('task', () => {
     const normalized = (nextStatus || '').toLowerCase()
     if (normalized === 'running') return 'running'
     if (normalized === 'paused') return 'paused'
+    if (normalized === 'stopping') return 'stopping'
     if (normalized === 'error') return 'error'
     if (normalized === 'idle') return 'idle'
     if (normalized === 'finished' || normalized === 'stopped') return 'clear'
-    if (normalized === 'stopping') return 'running'
     return 'idle'
   }
 
@@ -307,11 +307,12 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   async function stopFeatureSearch() {
+    agentSearchStatus.value = 'stopping'
     try {
       const agentStore = useAgentStore()
       const res = await apiService.featureSearchStop()
       agentSearchInfo.value = res.data || null
-      agentSearchStatus.value = 'clear'
+      agentSearchStatus.value = normalizeFeatureSearchStatus(res.data?.status || 'stopped')
       agentStore.clearWorkingStates()
       addNotification('Feature search stopped', 'info')
       return true

@@ -114,15 +114,11 @@
       </div>
 
       <!-- 状态指示器 -->
-      <div class="status-indicator w-100 px-3 mt-auto">
-        <div class="alert alert-info py-2 px-2 small" role="alert">
-          <div class="d-flex align-items-center mb-1">
+      <div class="sidebar-status-indicator w-100 px-3 mt-auto">
+        <div class="status-card" role="status" aria-live="polite">
+          <div class="status-row">
             <div class="status-dot me-2" :class="statusDotClass"></div>
-            <span class="text-white">{{ taskStore.statusText }}</span>
-          </div>
-          <div v-if="taskStore.isRunning" class="text-white-50 small">
-            <div class="spinner-border spinner-border-sm me-1" role="status"></div>
-            Processing...
+            <span class="status-text">{{ sidebarStatusText }}</span>
           </div>
         </div>
       </div>
@@ -139,6 +135,9 @@ import { useRoute } from 'vue-router'
 const taskStore = useTaskStore()
 const isCollapsed = ref(false)
 const route = useRoute()
+
+const showComparisonOptions = computed(() => route.path === '/performance')
+const isAgentPage = computed(() => route.path === '/agent-feature-generation')
 
 const comparisonOptions = [
   { value: 'AutoFeat', label: 'AutoFeat' },
@@ -183,9 +182,28 @@ function toggleCollapse() {
 }
 
 const statusDotClass = computed(() => {
+  if (isAgentPage.value) {
+    switch (taskStore.agentSearchStatus) {
+      case 'idle':
+        return 'status-ready'
+      case 'running':
+        return 'status-running'
+      case 'paused':
+        return 'status-paused'
+      case 'stopping':
+        return 'status-stopping'
+      case 'clear':
+        return 'status-idle'
+      case 'error':
+        return 'status-error'
+      default:
+        return 'status-idle'
+    }
+  }
+
   switch (taskStore.status) {
     case 'idle':
-      return 'status-idle'
+      return 'status-ready'
     case 'running':
     case 'initializing':
       return 'status-running'
@@ -198,7 +216,27 @@ const statusDotClass = computed(() => {
   }
 })
 
-const showComparisonOptions = computed(() => route.path === '/performance')
+const sidebarStatusText = computed(() => {
+  if (isAgentPage.value) {
+    switch (taskStore.agentSearchStatus) {
+      case 'idle':
+        return 'Ready'
+      case 'running':
+        return 'Running...'
+      case 'paused':
+        return 'Paused'
+      case 'stopping':
+        return 'Stopping...'
+      case 'clear':
+        return 'Stopped'
+      case 'error':
+        return 'Error'
+      default:
+        return 'Ready'
+    }
+  }
+  return taskStore.statusText
+})
 
 function toggleComparisonMethod(method: string) {
   if (method === REQUIRED_COMPARISON_METHOD) return
@@ -484,12 +522,14 @@ function isComparisonSelected(method: string) {
 }
 
 /* 状态指示器 */
-.status-indicator {
+.sidebar-status-indicator {
   position: sticky;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.1);
+  /* 稍微上移一点，避免贴边过紧 */
+  bottom: 30px;
+  /* 与 Task Configuration/Sidebar 背景保持一致 */
+  background-color: rgb(245, 245, 245);
   padding: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: none;
   margin-top: auto;
 }
 
@@ -509,12 +549,55 @@ function isComparisonSelected(method: string) {
   animation: pulse 1.5s ease-in-out infinite alternate;
 }
 
+.status-paused {
+  background-color: #f59e0b;
+}
+
+.status-stopping {
+  background-color: #f59e0b;
+  animation: pulse 1.1s ease-in-out infinite alternate;
+}
+
 .status-completed {
   background-color: #28a745;
 }
 
 .status-error {
   background-color: #dc3545;
+}
+
+/* 状态卡片：替换 alert-info（避免蓝色背景），更简洁 */
+.status-card {
+  background: rgb(255, 255, 255);
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.status-text {
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.1;
+}
+
+.status-subtext {
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+}
+
+.status-ready {
+  background-color: #22c55e;
 }
 
 @keyframes pulse {

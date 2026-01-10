@@ -20,7 +20,7 @@
       </button>
     </div>
     <div class="nav-right">
-      <button v-if="isAgentPage" class="action-btn primary" type="button" @click="handleAgentRunAction">
+      <button v-if="isAgentPage" class="action-btn primary" type="button" @click="handleAgentRunAction" :disabled="isStopping">
         {{ agentRunLabel }}
       </button>
       <button
@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useTaskStore } from '@/stores/task'
@@ -95,7 +95,7 @@ const agentRunLabel = computed(() => {
   return 'Resume'
 })
 
-const isStopping = ref(false)
+const isStopping = computed(() => agentSearchStatus.value === 'stopping')
 const stopLabel = computed(() => (isStopping.value ? 'Stopping...' : 'Stop'))
 
 async function handleAgentRunAction() {
@@ -112,15 +112,7 @@ async function handleAgentRunAction() {
 
 async function handleAgentStop() {
   if (isStopping.value) return
-  isStopping.value = true
-  try {
-    const stopped = await taskStore.stopFeatureSearch()
-    if (stopped) {
-      taskStore.addNotification('Feature search has been stopped.', 'success')
-    }
-  } finally {
-    isStopping.value = false
-  }
+  await taskStore.stopFeatureSearch()
 }
 
 async function handleRunAction() {
