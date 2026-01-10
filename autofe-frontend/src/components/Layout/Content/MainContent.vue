@@ -21,7 +21,7 @@
                       Agent Thinking Process
                     </h6>
                   </div>
-                  <div class="info-content agent-process-content">
+                  <div class="info-content agent-process-content" ref="agentProcessScrollRef">
                     <div class="agent-flow-diagram">
                       <div class="flow-container">
                         <div class="agents-container">
@@ -386,6 +386,8 @@ const currentDisplayedMessage = ref<Map<AgentKey, QueuedMessage | null>>(new Map
 const disappearingTimers = ref<Map<string, number>>(new Map())
 const chatMessages = ref<ChatMessage[]>([])
 const chatListRef = ref<HTMLElement | null>(null)
+const agentProcessScrollRef = ref<HTMLElement | null>(null)
+const didSetAgentProcessDefaultScroll = ref(false)
 const MAX_CHAT_HISTORY = 200
 
 const PYTHON_KEYWORDS = [
@@ -896,6 +898,26 @@ watch(() => chatMessages.value.length, () => {
   })
 })
 
+function trySetAgentProcessDefaultScroll() {
+  if (didSetAgentProcessDefaultScroll.value) return
+
+  nextTick(() => {
+    const container = agentProcessScrollRef.value
+    if (!container) return
+
+    const maxScrollTop = container.scrollHeight - container.clientHeight
+    if (maxScrollTop <= 0) return
+
+    // Default to ~10% scrolled down so the diagram isn't clipped at the top.
+    container.scrollTop = Math.round(maxScrollTop * 0.1)
+    didSetAgentProcessDefaultScroll.value = true
+  })
+}
+
+watch([leftPaneSize, leftInnerPaneSize, rightPanelCollapsed], () => {
+  trySetAgentProcessDefaultScroll()
+})
+
 watch(featureSearchClearedAt, (clearedAt) => {
   if (clearedAt) {
     resetThinkingFeed()
@@ -1033,6 +1055,9 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   // 添加splitter点击事件监听器
   nextTick(() => {
+    // Set a nicer default scroll position for the agent process diagram.
+    trySetAgentProcessDefaultScroll()
+
     const splitters = document.querySelectorAll('.main-splitpanes > .splitpanes__splitter')
     splitters.forEach((splitter) => {
       splitter.addEventListener('click', (event: Event) => {

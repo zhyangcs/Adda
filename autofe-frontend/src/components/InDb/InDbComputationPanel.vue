@@ -647,19 +647,7 @@ watch(dag, () => {
   renderDag()
 })
 
-watch(() => taskStore.featureSearchStartedAt, (ts) => {
-  if (ts) {
-    loadDag()
-  }
-})
-
 onMounted(() => {
-  // Keep this lightweight: the DAG is loaded when feature search starts.
-  // If a search is already in progress (reload page), load it immediately.
-  if (taskStore.agentSearchStatus === 'running') {
-    loadDag()
-  }
-
   // Keep DAG responsive to container resize.
   if (containerRef.value && 'ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(() => {
