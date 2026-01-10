@@ -17,7 +17,7 @@
         <div class="component-header">
           <h6 class="component-title">
             <Settings :size="16" class="me-1" />
-            Task Configuration
+            Settings
           </h6>
         </div>
 
@@ -79,9 +79,9 @@
             </select>
           </div>
 
-          <!-- Comparison methods (only in End-to-End) -->
-          <div class="mb-3" v-if="showComparisonOptions">
-            <label class="form-label">Comparison Methods (Adda always included)</label>
+          <!-- Methods -->
+          <div class="mb-3">
+            <label class="form-label">Methods</label>
             <div class="comparison-grid">
               <div class="form-check comparison-locked">
                 <input
@@ -136,7 +136,6 @@ const taskStore = useTaskStore()
 const isCollapsed = ref(false)
 const route = useRoute()
 
-const showComparisonOptions = computed(() => route.path === '/performance')
 const isAgentPage = computed(() => route.path === '/agent-feature-generation')
 
 const comparisonOptions = [
@@ -340,7 +339,7 @@ function isComparisonSelected(method: string) {
 }
 
 .component-title {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: #0f172a;
   margin-bottom: 0.5rem;
@@ -393,7 +392,8 @@ function isComparisonSelected(method: string) {
 }
 
 .component-header {
-  padding: 0 var(--spacing-lg);
+  /* Shift header content (icon + title) left */
+  padding: 0 0.75rem 0 0.25rem;
   margin-bottom: var(--spacing-lg);
 }
 
@@ -402,7 +402,8 @@ function isComparisonSelected(method: string) {
   margin: 0;
   display: flex;
   align-items: center;
-  font-size: var(--font-size-md);
+  /* Ensure larger Settings title */
+  font-size: 1.25rem;
   color: #374151;
 }
 
@@ -526,7 +527,7 @@ function isComparisonSelected(method: string) {
   position: sticky;
   /* 稍微上移一点，避免贴边过紧 */
   bottom: 30px;
-  /* 与 Task Configuration/Sidebar 背景保持一致 */
+  /* 与 Settings/Sidebar 背景保持一致 */
   background-color: rgb(245, 245, 245);
   padding: 0.5rem;
   border-top: none;

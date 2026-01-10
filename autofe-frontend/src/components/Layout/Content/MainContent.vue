@@ -18,7 +18,7 @@
                   <div class="info-header">
                     <h6 class="info-title">
                       <Users :size="18" class="me-2" />
-                      Agent Thinking Process
+                      Agent-driven feature generation
                     </h6>
                   </div>
                   <div class="info-content agent-process-content" ref="agentProcessScrollRef">

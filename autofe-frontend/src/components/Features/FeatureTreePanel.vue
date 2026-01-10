@@ -4,7 +4,7 @@
       <div class="info-header">
         <h6 class="info-title">
           <GitBranch :size="18" class="me-2" />
-          Feature Generation
+          Feature search tree
         </h6>
       </div>
       <div class="info-content">
