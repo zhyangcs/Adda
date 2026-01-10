@@ -18,7 +18,7 @@
                   <div class="info-header">
                     <h6 class="info-title">
                       <Users :size="18" class="me-2" />
-                      Agent-driven feature generation
+                      Agent-based feature generation
                     </h6>
                   </div>
                   <div class="info-content agent-process-content" ref="agentProcessScrollRef">
@@ -1428,7 +1428,7 @@ onUnmounted(() => {
 /* 聊天气泡：显示Agent消息内容 */
 .chat-bubble {
   min-width: 0;
-  padding: 0.7rem 0.9rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background-color: #fff;
@@ -1450,9 +1450,9 @@ onUnmounted(() => {
 /* 聊天消息文本：显示消息内容 */
 .chat-text {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.20rem;
   color: inherit;
-  line-height: 1.65;
+  line-height: 1.30;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
