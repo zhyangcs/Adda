@@ -1,7 +1,8 @@
 """
-特征工程框架对比模块
-提供多种特征工程框架的对比功能
-重点关注特征生成效果和时间的对比
+Feature engineering framework comparison module.
+
+Provides a unified interface to compare multiple feature engineering approaches,
+focusing on predictive performance and time cost.
 """
 
 import os
@@ -429,14 +430,14 @@ class BaselineMethod(ComparisonMethod):
                 "generated_feature_count": self.generated_features.shape[1],  # 基线方法没有生成新特征
                 "feature_names": list(self.generated_features.columns),
                 "generated_features": self.generated_features,
-                "description": "使用原始特征，无额外特征工程"
+                "description": "Raw features only (no additional feature engineering)."
             }
         return {
             "original_feature_count": 0,
             "generated_feature_count": 0,
             "feature_names": [],
             "generated_features": None,
-            "description": "使用原始特征，无额外特征工程"
+            "description": "Raw features only (no additional feature engineering)."
         }
 
 
@@ -556,7 +557,11 @@ class AutoFeatMethod(ComparisonMethod):
         """获取生成的特征信息"""
         if self.generated_features is not None:
             original_count = len(self.generated_features.columns) - len(self.feateng_cols)
-            description = f"使用AutoFeat生成了{len(self.feateng_cols)}个新特征" if len(self.feateng_cols) > 0 else "AutoFeat特征选择后保留了原有特征"
+            description = (
+                f"AutoFeat generated {len(self.feateng_cols)} new features."
+                if len(self.feateng_cols) > 0
+                else "AutoFeat kept the original features after selection."
+            )
             return {
                 "original_feature_count": original_count,
                 "generated_feature_count": len(self.generated_features.columns),
@@ -574,7 +579,7 @@ class AutoFeatMethod(ComparisonMethod):
             "feature_names": [],
             "new_feature_names": [],
             "generated_features": None,
-            "description": "AutoFeat特征生成失败",
+            "description": "AutoFeat feature generation failed.",
             "success": False
         }
 
@@ -857,7 +862,7 @@ class PGMLMethod(ComparisonMethod):
                 "new_features_count": new_features_count,
                 "feature_names": list(self.generated_features.columns),
                 "generated_features": self.generated_features,
-                "description": f"使用PGML进行特征工程，生成了{new_features_count}个新特征（多项式特征+特征选择）"
+                "description": f"PGML-style feature processing (polynomial features + selection). Estimated new features: {new_features_count}."
             }
         return {
             "original_feature_count": 0,
@@ -865,7 +870,7 @@ class PGMLMethod(ComparisonMethod):
             "new_features_count": 0,
             "feature_names": [],
             "generated_features": None,
-            "description": "PGML特征生成失败或未实现"
+            "description": "PGML feature generation failed or is not implemented."
         }
 
 
@@ -892,13 +897,13 @@ class MadlibMethod(ComparisonMethod):
     def _get_connection(self):
         """获取PostgreSQL连接"""
         if not self.available:
-            raise ImportError("MADlib不可用，缺少psycopg2或数据库连接")
+            raise ImportError("MADlib is not available (missing psycopg2 or DB connection).")
         try:
             if self.connection is None:
                 self.connection = psycopg2.connect(**self.db_config)
             return self.connection
         except Exception as e:
-            raise ConnectionError(f"连接PostgreSQL失败: {str(e)}")
+            raise ConnectionError(f"Failed to connect to PostgreSQL: {str(e)}")
 
     def _ensure_madlib_extension(self, cursor):
         """检测并尝试通过madpack安装MADlib"""
@@ -975,7 +980,7 @@ class MadlibMethod(ComparisonMethod):
     def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
         """利用MADlib在数据库端进行特征工程（主要是一键编码分类变量）"""
         if not self.available:
-            raise ImportError("MADlib not available. Please ensure psycopg2和MADlib已安装并可连接数据库。")
+            raise ImportError("MADlib not available. Please ensure psycopg2 + MADlib are installed and the database is reachable.")
 
         # 记录分类列并构建安全列名映射
         categorical_columns = list(X.select_dtypes(include=['object', 'category']).columns)
@@ -1117,7 +1122,7 @@ class MadlibMethod(ComparisonMethod):
                 "new_features_count": new_features_count,
                 "feature_names": list(self.generated_features.columns),
                 "generated_features": self.generated_features,
-                "description": "使用MADlib编码分类变量并拉取编码后的宽表，保持与数据库端一致的特征空间"
+                "description": "MADlib categorical encoding + fetch encoded wide table (consistent feature space with DB-side pipeline)."
             }
         return {
             "original_feature_count": 0,
@@ -1125,18 +1130,20 @@ class MadlibMethod(ComparisonMethod):
             "new_features_count": 0,
             "feature_names": [],
             "generated_features": None,
-            "description": "MADlib特征生成失败或未运行"
+            "description": "MADlib feature generation failed or was not executed."
         }
 
 
 class CAAFEMethod(ComparisonMethod):
     """CAAFE (Context-Aware Automated Feature Engineering)方法"""
 
-    def __init__(self):
-        super().__init__("CAAFE")
+    def __init__(self, model_type: str = "RF"):
+        super().__init__("CAAFE", model_type)
         self.available = CAAFE_AVAILABLE
-        self.fitted_caafe = None
+        self.fitted_caafe = None  # CAAFEClassifier instance
         self.generated_feature_names = []
+        self.generated_feature_code = ""
+        self._feature_names_after_caafe = []
         self._setup_logging()
 
     def _setup_logging(self):
@@ -1170,9 +1177,9 @@ class CAAFEMethod(ComparisonMethod):
                 os.environ["OPENAI_API_BASE"] = openai_base_url
                 os.environ["OPENAI_BASE_URL"] = openai_base_url
 
-            # 确保使用真正的LLM模型，而不是auto-step里传入的ML模型标识（如"RF"）
-            # 用户要求：写死使用 deepseek-chat，避免 auto-step 传入 ML 模型名导致 400
-            model_name = "deepseek-chat"
+            # Keep LLM cost under control: use deepseek-chat by default.
+            # Allow override via env var if needed.
+            model_name = os.environ.get("CAAFE_LLM_MODEL", "deepseek-chat")
             os.environ["DEFAULT_LLM_MODEL"] = model_name
 
             print(f"[CAAFE] Configured with API: {openai_base_url}")
@@ -1186,144 +1193,211 @@ class CAAFEMethod(ComparisonMethod):
             import openai
             if not hasattr(openai, 'api_key') or not openai.api_key:
                 print("[CAAFE] Warning: No OpenAI API key configured")
-            return "gpt-3.5-turbo"
+            # Fallback model name (may not be usable without a valid key/base URL)
+            return os.environ.get("CAAFE_LLM_MODEL", "deepseek-chat")
 
-    def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
-        """使用CAAFE生成特征"""
+    def fit_predict(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
+        """
+        Run CAAFE in the "official" way (CAAFEClassifier.fit_pandas + predict/predict_proba),
+        while keeping the LLM model as deepseek-chat for cost control.
+        """
+        start_time = time.time()
+
+        if task_type != "classify":
+            return {"error": "CAAFEClassifier integration currently supports classification only."}
+
         if not self.available:
-            raise ImportError("CAAFE not available. Please install with: pip install caafe")
+            return {"error": "CAAFE not available. Install via: pip install caafe"}
 
-        if y is None:
-            raise ValueError("CAAFE requires target variable for supervised feature generation")
+        # Preprocess (numeric-only; CAAFE expects a DataFrame and will run its own safe code execution)
+        prep_start = time.time()
+        X_processed = self._preprocess_caafe_data(X, y)
+        self.preprocessing_time = time.time() - prep_start
 
+        # Holdout split (same policy as other methods)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_processed, y, test_size=0.2, random_state=0, stratify=y
+        )
+        self._original_feature_count_input = int(X_train.shape[1])
+
+        # Configure LLM endpoint
+        model_name = self._configure_openai()
+        if not os.environ.get("OPENAI_API_KEY"):
+            return {"error": "OPENAI_API_KEY is not set (required by CAAFE / openai client)."}
+
+        # Build base classifier according to model_type (keeps comparison consistent)
+        base_clf = self._build_model(task_type="classify")
+
+        # Wrap the base classifier so we can measure training time inside CAAFEClassifier.fit_pandas().
+        # In upstream CAAFE, the model is trained *within* fit_pandas() after feature generation.
+        from sklearn.base import BaseEstimator, ClassifierMixin
+
+        class _TimedEstimator(BaseEstimator, ClassifierMixin):
+            def __init__(self, estimator):
+                self._estimator = estimator
+                self.fit_seconds = 0.0
+                self.predict_seconds = 0.0
+                self.predict_proba_seconds = 0.0
+
+            def fit(self, X, y, *args, **kwargs):
+                t0 = time.time()
+                try:
+                    return self._estimator.fit(X, y, *args, **kwargs)
+                finally:
+                    self.fit_seconds += time.time() - t0
+
+            def predict(self, X, *args, **kwargs):
+                t0 = time.time()
+                try:
+                    return self._estimator.predict(X, *args, **kwargs)
+                finally:
+                    self.predict_seconds += time.time() - t0
+
+            def predict_proba(self, X, *args, **kwargs):
+                t0 = time.time()
+                try:
+                    return self._estimator.predict_proba(X, *args, **kwargs)
+                finally:
+                    self.predict_proba_seconds += time.time() - t0
+
+            # Make sklearn-style parameter plumbing work and keep BaseEstimator happy.
+            def get_params(self, deep: bool = True):
+                return {"estimator": self._estimator}
+
+            def set_params(self, **params):
+                if "estimator" in params:
+                    self._estimator = params["estimator"]
+                return self
+
+            def __getattr__(self, name):
+                return getattr(self._estimator, name)
+
+        timed_base_clf = _TimedEstimator(base_clf)
+
+        # Keep iterations/splits small by default for cost/time; can be overridden via env vars.
+        iterations = int(os.environ.get("CAAFE_ITERATIONS", "30"))
+        n_splits = int(os.environ.get("CAAFE_N_SPLITS", "5"))
+        n_repeats = int(os.environ.get("CAAFE_N_REPEATS", "1"))
+
+        dataset_description = (
+            f"Tabular dataset for a classification task. "
+            f"Rows: {len(X_train)} train / {len(X_test)} test. "
+            f"Features: {X_train.shape[1]} numeric columns."
+        )
+
+        # Train CAAFEClassifier
+        feature_start = time.time()
         try:
-            print(f"[CAAFE] Starting feature generation with {X.shape[1]} features...")
+            # Compatibility shim:
+            # Some versions of `caafe` access `tabpfn.scripts.tabular_metrics` as an attribute
+            # after importing `tabpfn.scripts` only, which can raise:
+            #   AttributeError: module 'tabpfn.scripts' has no attribute 'tabular_metrics'
+            # Even when the submodule exists and is importable.
+            try:
+                import importlib
+                import tabpfn.scripts as _tabpfn_scripts
 
-            # 配置OpenAI API
-            model_name = self._configure_openai()
+                _tm = importlib.import_module("tabpfn.scripts.tabular_metrics")
+                if not hasattr(_tabpfn_scripts, "tabular_metrics"):
+                    setattr(_tabpfn_scripts, "tabular_metrics", _tm)
+            except Exception:
+                # Best-effort only; if tabpfn isn't installed, CAAFE may not rely on it anyway.
+                pass
 
-            # 预处理数据并创建DataFrame
-            X_processed = self._preprocess_caafe_data(X, y)
+            from caafe import CAAFEClassifier
 
-            # 创建完整的训练DataFrame（CAAFE要求pandas DataFrame格式）
-            train_df = X_processed.copy()
-            target_column_name = 'target'
-            train_df[target_column_name] = y.values
-
-            # 创建数据集描述
-            dataset_description = f"Dataset with {X_processed.shape[1]} features for binary classification task. Target variable represents heart disease presence."
-
-            print("[CAAFE] Initializing CAAFE classifier...")
-            # 创建自定义的base_classifier来避免TabPFN问题
-            from sklearn.ensemble import RandomForestClassifier
-            custom_classifier = RandomForestClassifier(
-                n_estimators=50,  # 减少树的数量以加快速度
-                max_depth=5,      # 限制深度以防止过拟合和加快速度
-                random_state=42,
-                n_jobs=1         # 单线程以减少内存使用
+            caafe_clf = CAAFEClassifier(
+                base_classifier=timed_base_clf,
+                optimization_metric="auc",
+                iterations=iterations,
+                llm_model=model_name,
+                n_splits=n_splits,
+                n_repeats=n_repeats,
             )
 
-            print("[CAAFE] Using CAAFE for feature generation...")
-            print("[CAAFE] This will use LLM to generate and verify features")
-            print("[CAAFE] Using print output to avoid Markdown display issues...")
+            target_column_name = "target"
+            df_train = X_train.copy()
+            df_train[target_column_name] = y_train.values
 
-            # 使用正确的CAAFE核心函数，避免IPython显示问题
-            from caafe.caafe import generate_features
-            from caafe.data import get_X_y
-
-            try:
-                # 准备CAAFE需要的格式 - 需要构建正确的5元素元组
-                x_data, y_data = get_X_y(train_df, target_column_name)
-
-                # 构建CAAFE期望的5元素元组格式：(x, y, train_indices, val_indices, target_name, dataset_description)
-                import torch
-                from sklearn.model_selection import train_test_split
-
-                # 分割训练和验证集索引
-                indices = torch.arange(len(train_df))
-                train_idx, val_idx = train_test_split(
-                    indices, test_size=0.3, random_state=42,
-                    stratify=y_data if len(torch.unique(y_data)) <= 20 else None
-                )
-
-                # 构建ds元组
-                ds = (
-                    x_data,                           # 特征张量
-                    y_data,                           # 目标张量
-                    train_idx,                       # 训练集索引
-                    val_idx,                         # 验证集索引
-                    target_column_name,              # 目标列名
-                    dataset_description              # 数据集描述
-                )
-
-                print("[CAAFE] Starting LLM-driven feature generation...")
-
-                # 使用CAAFE的核心函数，关键参数：display_method="print"
-                result = generate_features(
-                    ds=ds,
-                    df=train_df,
-                    model=model_name,           # 使用配置的模型
-                    just_print_prompt=False,
-                    iterative=1,               # 只进行1次迭代
-                    metric_used='auc',         # 使用AUC作为评估指标
-                    display_method="print",    # 关键：使用print而不是markdown！
-                    n_splits=3,                # 减少交叉验证分割数
-                    n_repeats=1               # 减少重复次数
-                )
-
-                print("[CAAFE] Feature generation completed")
-
-                # 从结果中提取生成的代码
-                generated_code = ""
-                if result and len(result) >= 2:
-                    generated_code = result[1] if result[1] else ""
-
-                if generated_code:
-                    print(f"[CAAFE] Generated {len(generated_code)} characters of feature engineering code")
-                    self.generated_feature_code = generated_code
-
-                    # 创建一个包装器来保存代码
-                    class CAAFEWrapper:
-                        def __init__(self, classifier, code):
-                            self.classifier = classifier
-                            self.code = code
-                            self.iterations = 1
-
-                        def __getattr__(self, name):
-                            return getattr(self.classifier, name)
-
-                    self.fitted_caafe = CAAFEWrapper(custom_classifier, generated_code)
-                else:
-                    print("[CAAFE] No feature code generated")
-                    self.fitted_caafe = None
-                    self.generated_feature_code = ""
-
-            except Exception as e:
-                print(f"[CAAFE] Feature generation failed: {str(e)}")
-                # 如果CAAFE失败，设置为未拟合状态
-                self.fitted_caafe = None
-                self.generated_feature_code = ""
-
-            print("[CAAFE] Processing completed")
-            if self.generated_feature_code:
-                print(f"[CAAFE] Generated {len(self.generated_feature_code.split())} words of feature engineering code")
-
-            # 应用生成的特征工程到原始数据
-            # 注意：CAAFE会在内部应用特征变换，我们返回原始特征
-            # 实际的特征工程已保存在caafe_classifier.code中
-            self.generated_features = X_processed
-
-            # 记录生成的特征信息
-            self._extract_feature_info(X_processed, y, self.fitted_caafe)
-
-            return X_processed
-
+            caafe_clf.fit_pandas(
+                df_train,
+                dataset_description=dataset_description,
+                target_column_name=target_column_name,
+            )
+            self.fitted_caafe = caafe_clf
+            self.generated_feature_code = getattr(caafe_clf, "code", "") or ""
         except Exception as e:
-            print(f"CAAFE feature generation failed: {str(e)}")
-            # 如果CAAFE失败，返回预处理后的特征
-            X_processed = self._preprocess_caafe_data(X, y)
-            self.generated_features = X_processed
-            return X_processed
+            return {"error": f"CAAFE failed during fit: {type(e).__name__}: {e}"}
+        finally:
+            total_fit_seconds = time.time() - feature_start
+            # Split fit_pandas() time into "feature generation" vs "model training"
+            # based on the measured base estimator fit time.
+            self.training_time = float(getattr(timed_base_clf, "fit_seconds", 0.0) or 0.0)
+            self.feature_generation_time = max(0.0, float(total_fit_seconds) - self.training_time)
+
+        # Extract engineered feature space for reporting (counts + optional preview)
+        try:
+            from caafe.run_llm_code import run_llm_code
+            from caafe.preprocessing import make_datasets_numeric, split_target_column, make_dataset_numeric
+
+            # Apply generated code on train (without target), then rebuild numeric mappings like upstream
+            df_train_no_target = X_train.copy()
+            df_train_fe = run_llm_code(self.generated_feature_code, df_train_no_target)
+            df_train_fe[target_column_name] = y_train.values
+            df_train_fe, _, mappings = make_datasets_numeric(
+                df_train_fe, df_test=None, target_column=target_column_name, return_mappings=True
+            )
+            df_train_x, _ = split_target_column(df_train_fe, target_column_name)
+
+            # Apply same transformation + mappings on test (for preview only)
+            df_test_fe = run_llm_code(self.generated_feature_code, X_test.copy())
+            df_test_fe = make_dataset_numeric(df_test_fe, mappings=mappings)
+
+            # Keep a small preview payload in memory (train features only)
+            self.generated_features = df_train_x
+            self._feature_names_after_caafe = list(df_train_x.columns)
+        except Exception:
+            # If anything goes wrong, keep minimal info but still allow metrics
+            self.generated_features = X_train.copy()
+            self._feature_names_after_caafe = list(self.generated_features.columns)
+
+        # Predict + evaluate
+        eval_start = time.time()
+        try:
+            y_pred = self.fitted_caafe.predict(X_test)
+            y_prob = None
+            try:
+                y_prob_full = self.fitted_caafe.predict_proba(X_test)
+                if y_prob_full is not None:
+                    y_prob = y_prob_full[:, 1] if y_prob_full.shape[1] == 2 else y_prob_full
+            except Exception:
+                y_prob = None
+
+            if y_prob is None:
+                auc = accuracy_score(y_test, y_pred)
+            else:
+                if isinstance(y_prob, np.ndarray) and y_prob.ndim == 2:
+                    auc = roc_auc_score(y_test, y_prob, multi_class="ovr")
+                else:
+                    auc = roc_auc_score(y_test, y_prob)
+
+            metrics = {
+                "auc": float(auc),
+                "accuracy": float(accuracy_score(y_test, y_pred)),
+                "f1": float(f1_score(y_test, y_pred, average="weighted")),
+                "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
+                "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
+            }
+        except Exception as e:
+            return {"error": f"CAAFE failed during predict/eval: {type(e).__name__}: {e}"}
+        finally:
+            # Evaluation time (predict + metric computation)
+            self.evaluation_time = time.time() - eval_start
+
+        self.execution_time = time.time() - start_time
+        # execution_time is inclusive; evaluation_time is measured directly above.
+        # Keep other fields consistent if downstream code recomputes totals.
+        return metrics
 
     def _preprocess_caafe_data(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
         """为CAAFE预处理数据"""
@@ -1379,10 +1453,10 @@ class CAAFEMethod(ComparisonMethod):
     def get_feature_info(self) -> Dict[str, Any]:
         """获取生成的特征信息"""
         if self.generated_features is not None:
-            original_count = self.generated_features.shape[1]
+            original_count = int(getattr(self, "_original_feature_count_input", self.generated_features.shape[1]))
 
-            # CAAFE的描述
-            description = "使用CAAFE进行基于大语言模型的自动化特征工程，生成语义有意义的特征"
+            # English-only description (front-end safe)
+            description = "LLM-driven automated feature engineering using CAAFE."
 
             # 获取LLM配置信息
             try:
@@ -1391,29 +1465,38 @@ class CAAFEMethod(ComparisonMethod):
                 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
                 from src.env import openai_base_url, default_model
 
-                description += f" (API: {openai_base_url}, 模型: {default_model})"
-                llm_model = default_model
+                description += f" (API: {openai_base_url}, model: {os.environ.get('CAAFE_LLM_MODEL','deepseek-chat')})"
+                llm_model = os.environ.get("CAAFE_LLM_MODEL", "deepseek-chat")
                 api_base = openai_base_url
             except:
-                description += " (使用默认OpenAI API)"
-                llm_model = "gpt-3.5-turbo"
-                api_base = "https://api.openai.com/v1"
+                description += " (API: default)"
+                llm_model = os.environ.get("CAAFE_LLM_MODEL", "deepseek-chat")
+                api_base = os.environ.get("OPENAI_API_BASE", os.environ.get("OPENAI_BASE_URL", ""))
 
             # 获取特征工程代码信息
             code_lines = 0
             if hasattr(self, 'generated_feature_code') and self.generated_feature_code:
                 code_lines = len(self.generated_feature_code.split('\n'))
-                description += f" (生成代码行数: {code_lines})"
+                description += f" (generated code lines: {code_lines})"
 
             if self.fitted_caafe and hasattr(self.fitted_caafe, 'iterations'):
-                description += f" (迭代次数: {getattr(self.fitted_caafe, 'iterations', 0)})"
+                description += f" (iterations: {getattr(self.fitted_caafe, 'iterations', 0)})"
+
+            # Try to estimate how many new columns were created
+            # Note: original feature count for reporting should come from the input, but here we use current df shape.
+            new_features_count = 0
+            try:
+                if hasattr(self, "_feature_names_after_caafe") and self._feature_names_after_caafe:
+                    new_features_count = max(0, len(self._feature_names_after_caafe) - original_count)
+            except Exception:
+                new_features_count = 0
 
             return {
                 "original_feature_count": original_count,
                 "generated_feature_count": len(self.generated_features.columns),
-                "new_features_count": 0,  # CAAFE是内部特征工程，不是传统意义上的生成新列
+                "new_features_count": int(new_features_count),
                 "feature_names": list(self.generated_features.columns),
-                "new_feature_names": self.generated_feature_names,
+                "new_feature_names": [],
                 "generated_features": self.generated_features,
                 "description": description,
                 "success": True,
@@ -1431,7 +1514,7 @@ class CAAFEMethod(ComparisonMethod):
             "feature_names": [],
             "new_feature_names": [],
             "generated_features": None,
-            "description": "CAAFE特征生成失败",
+            "description": "CAAFE feature generation failed.",
             "success": False,
             "llm_model": "unknown",
             "api_base": "unknown",
@@ -1633,11 +1716,12 @@ class ComparisonEngine:
     def get_method_descriptions(self) -> Dict[str, str]:
         """获取各方法的描述"""
         return {
-            "Baseline": "原始特征，无特征工程",
-            "AutoFeat": "自动化特征工程库，生成数学变换特征",
-            "PGML": "PostgreSQL机器学习扩展，使用真正的pgml库进行数据库内特征工程和自动化机器学习",
-            "MADlib": "使用PostgreSQL MADlib插件进行数据库端的分类变量编码和特征预处理",
-            "CAAFE": "基于大语言模型的上下文感知自动化特征工程，生成语义有意义的特征"
+            # English-only (front-end safe)
+            "Baseline": "Raw features (no feature engineering).",
+            "AutoFeat": "Automated feature engineering with mathematical transformations.",
+            "PGML": "PostgreSQL ML extension (in-database feature processing / AutoML-style pipeline).",
+            "MADlib": "PostgreSQL MADlib plugin for categorical encoding and preprocessing.",
+            "CAAFE": "LLM-driven feature engineering with iterative verification (CAAFE)."
         }
 
 
