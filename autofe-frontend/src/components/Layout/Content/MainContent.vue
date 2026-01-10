@@ -1396,7 +1396,7 @@ onUnmounted(() => {
 .chat-agent-name {
   font-weight: 700;
   font-size: 1.1rem;
-  color: #0f172a;
+  color: #000;
   line-height: 1.25;
   white-space: nowrap;
   max-width: 260px;
@@ -1428,28 +1428,37 @@ onUnmounted(() => {
 /* 聊天气泡：显示Agent消息内容 */
 .chat-bubble {
   min-width: 0;
-  padding: 0.5rem 0.75rem;
+  padding: 0.7rem 0.9rem;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background-color: #fff;
   box-shadow: none;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  color: #000;
+  font-weight: 500;
 }
 
 /* 聊天消息作者：显示Agent名称 */
 .chat-author {
   font-weight: 600;
-  color: #1f2933;
+  color: inherit;
 }
 
 /* 聊天消息文本：显示消息内容 */
 .chat-text {
   margin: 0;
   font-size: 1.05rem;
-  color: #1f2933;
-  line-height: 1.45;
+  color: inherit;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
+  font-family: inherit;
+  font-weight: inherit;
+  letter-spacing: 0.01em;
 }
 
 .chat-body {
@@ -1469,9 +1478,11 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 0.45rem 0.65rem;
   font-size: calc(var(--font-size-sm) * 0.9);
-  color: #1f2933;
+  color: #000;
   background: #eef2f7;
   border-bottom: 1px solid #d0d7de;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 600;
 }
 
 .code-summary:hover {
@@ -1494,7 +1505,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.45rem;
   font-size: calc(var(--font-size-sm) * 0.85);
-  color: #4b5563;
+  color: #000;
 }
 
 .example-caret {
@@ -1523,7 +1534,7 @@ onUnmounted(() => {
   margin: 0 0 0 7px;
   padding: 0.5rem 0 0.5rem 1rem;
   background: transparent;
-  color: #1f2933;
+  color: #000;
   list-style: none;
   border-left: 2px solid #e2e8f0;
 }
