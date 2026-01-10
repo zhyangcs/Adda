@@ -65,28 +65,15 @@ export const useAgentStore = defineStore('agent', () => {
   // 获取所有Agent的当前状态
   const allAgentStates = computed(() => Array.from(agentStates.value.values()))
 
-  // 获取正在工作的Agent列表
-  const workingAgents = computed(() => {
-    // 首先获取所有状态
+  // Getting the currently working agent(s)
+  // IMPORTANT: return raw AgentType values so UI can match consistently.
+  const workingAgents = computed<AgentType[]>(() => {
     const allStates = Array.from(agentStates.value.values())
-    console.log('All agent states:', allStates.map(s => `${s.agent}: ${s.status}`))
-
     const activeAgent = latestWorkingAgent.value
     const activeState = activeAgent ? agentStates.value.get(activeAgent) : undefined
 
-    const resolveMappedName = (agent: AgentType) => {
-      let mappedName = agent
-      if (agent === 'mainagent') mappedName = 'main'
-      if (agent === 'optimizationagent') mappedName = 'optimization'
-      if (agent === 'nodevalidator') mappedName = 'validation'
-      if (agent === 'system') mappedName = 'system'
-      return mappedName
-    }
-
     if (activeState && activeState.status === 'working') {
-      const mappedName = resolveMappedName(activeState.agent)
-      console.log('Working agent (latest):', mappedName)
-      return [mappedName]
+      return [activeState.agent]
     }
 
     const fallback = allStates
@@ -94,12 +81,9 @@ export const useAgentStore = defineStore('agent', () => {
       .sort((a, b) => (b.last_updated || 0) - (a.last_updated || 0))[0]
 
     if (fallback) {
-      const mappedName = resolveMappedName(fallback.agent)
-      console.log('Working agent (fallback):', mappedName)
-      return [mappedName]
+      return [fallback.agent]
     }
 
-    console.log('Final working agents mapped:', [])
     return []
   })
 
@@ -129,25 +113,25 @@ export const useAgentStore = defineStore('agent', () => {
       console.log(`Found state for ${agent}:`, state)
       // 根据状态和工作类型生成显示文本
       if (state.status === 'working' && state.work_type) {
-        const text = `正在执行: ${state.work_type}`
+        const text = `Running: ${state.work_type}`
         console.log(`Generated working text for ${agent}:`, text)
         return text
       } else if (state.status === 'completed') {
         const summary = state.result?.summary || state.data?.summary
         if (summary) {
-          const text = `✅ ${summary}`
+          const text = `${summary}`
           console.log(`Generated completed text for ${agent}:`, text)
           return text
         }
-        const text = `✅ 任务完成`
+        const text = `Completed`
         console.log(`Generated default completed text for ${agent}:`, text)
         return text
       } else if (state.status === 'error') {
-        const text = `❌ 错误: ${state.error || '执行失败'}`
+        const text = `Error: ${state.error || 'Execution failed'}`
         console.log(`Generated error text for ${agent}:`, text)
         return text
       } else if (state.details?.phase) {
-        const text = `📋 阶段: ${state.details.phase.replace(/_/g, ' ')}`
+        const text = `Phase: ${String(state.details.phase).replace(/_/g, ' ')}`
         console.log(`Generated phase text for ${agent}:`, text)
         return text
       }
@@ -180,7 +164,7 @@ export const useAgentStore = defineStore('agent', () => {
         subscribeToAllAgents()
         addSystemNotification({
           type: 'system_notification',
-          message: '已连接到ADDA WebSocket服务器',
+          message: 'Connected to ADDA WebSocket server',
           notification_type: 'success',
           timestamp: Date.now()
         })
@@ -191,7 +175,7 @@ export const useAgentStore = defineStore('agent', () => {
         connectionInfo.value.connected = false
         addSystemNotification({
           type: 'system_notification',
-          message: '与ADDA WebSocket服务器断开连接',
+          message: 'Disconnected from ADDA WebSocket server',
           notification_type: 'warning',
           timestamp: Date.now()
         })
@@ -200,7 +184,7 @@ export const useAgentStore = defineStore('agent', () => {
       onError: (error) => {
         addSystemNotification({
           type: 'system_notification',
-          message: `WebSocket连接错误: ${error.message || error}`,
+          message: `WebSocket connection error: ${error.message || error}`,
           notification_type: 'error',
           timestamp: Date.now()
         })

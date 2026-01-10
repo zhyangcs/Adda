@@ -2746,7 +2746,7 @@ def manual_test_websocket():
 
         # 测试系统通知
         agent_status_wrapper.send_system_notification(
-            "手动测试：WebSocket连接工作正常！",
+            "Manual test: WebSocket connection is working.",
             "success"
         )
 
@@ -2755,14 +2755,14 @@ def manual_test_websocket():
             "type": "agent_status",
             "agent": "mainagent",
             "status": "working",
-            "work_type": "手动测试任务",
+            "work_type": "manual_websocket_test",
             "details": {
                 "phase": "testing_websocket",
                 "progress": 60,
-                "operation": "WebSocket连接测试"
+                "operation": "WebSocket connectivity test"
             },
             "data": {
-                "summary": "正在执行WebSocket连接手动测试..."
+                "summary": "Running manual WebSocket connectivity test..."
             }
         })
 
@@ -2770,7 +2770,7 @@ def manual_test_websocket():
         agent_status_wrapper.send_agent_thinking({
             "type": "agent_thinking",
             "agent": "mainagent",
-            "thinking": "这是一个手动测试的思考消息。我正在验证WebSocket连接是否正常工作，以及前端是否能正确接收Agent状态更新和思考过程。",
+            "thinking": "This is a manual test thinking message. Verifying that the frontend can receive agent status and thinking events via WebSocket.",
             "category": "testing"
         })
 
@@ -2783,16 +2783,16 @@ def manual_test_websocket():
                 "type": "agent_status",
                 "agent": "mainagent",
                 "status": "completed",
-                "work_type": "手动测试任务",
+                "work_type": "manual_websocket_test",
                 "result": {
                     "success": True,
-                    "message": "WebSocket手动测试完成！"
+                    "message": "Manual WebSocket test completed."
                 }
             })
             agent_status_wrapper.send_agent_thinking({
                 "type": "agent_thinking",
                 "agent": "mainagent",
-                "thinking": "测试完成！WebSocket连接工作正常，前端应该能看到完整的状态更新过程。",
+                "thinking": "Test completed. The frontend should see the full status/thinking update sequence.",
                 "category": "testing"
             })
 
@@ -2800,7 +2800,7 @@ def manual_test_websocket():
 
         return jsonify({
             "status": "success",
-            "message": "手动WebSocket测试消息已发送！请检查前端和测试页面。"
+            "message": "Manual WebSocket test messages sent. Please check the frontend and the websocket test page."
         })
 
     except Exception as e:

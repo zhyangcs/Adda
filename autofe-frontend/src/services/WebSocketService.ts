@@ -19,10 +19,35 @@ class WebSocketService {
   private isConnected = false
   // 控制自动刷新，避免首批消息漏渲染后需要手动刷新
   private lastAutoReloadAt = (typeof sessionStorage !== 'undefined' && Number(sessionStorage.getItem('ws-auto-reload-ts'))) || 0
-  // 明确的后端 WS 地址（可用 VITE_WS_URL 覆盖），默认直连 5000 端口
-  private readonly defaultWsUrl: string =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) ||
-    'ws://10.82.1.202:5000'
+  /**
+   * Backend Socket.IO endpoint.
+   *
+   * Priority:
+   * - `VITE_WS_URL` (explicit override)
+   * - Same hostname + port 5000 (common local/dev setup: frontend on :5173, backend on :5000)
+   *
+   * Note: Socket.IO expects an HTTP(S) origin URL (it upgrades to WebSocket internally).
+   */
+  private readonly defaultWsUrl: string = (() => {
+    const viteWsUrl =
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) ||
+      ''
+    if (viteWsUrl && typeof viteWsUrl === 'string') {
+      const trimmed = viteWsUrl.trim()
+      // Accept ws/wss but normalize to http/https for Socket.IO.
+      if (trimmed.startsWith('ws://')) return `http://${trimmed.slice('ws://'.length)}`
+      if (trimmed.startsWith('wss://')) return `https://${trimmed.slice('wss://'.length)}`
+      return trimmed
+    }
+
+    if (typeof window !== 'undefined' && window.location) {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+      const host = window.location.hostname || '127.0.0.1'
+      return `${protocol}//${host}:5000`
+    }
+
+    return 'http://127.0.0.1:5000'
+  })()
 
   constructor() {
     // 延迟到调用方明确初始化再连接，避免在回调未注册时丢失缓存事件

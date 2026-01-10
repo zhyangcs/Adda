@@ -9,9 +9,23 @@ import type {
 } from '@/types'
 
 class APIService {
-  private baseURL =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
-    'http://10.82.1.202:5000'
+  private baseURL = (() => {
+    const viteBase =
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
+      ''
+    if (viteBase && typeof viteBase === 'string') {
+      return viteBase.trim()
+    }
+
+    // Default to same hostname + port 5000 (common dev setup: frontend on :5173, backend on :5000).
+    if (typeof window !== 'undefined' && window.location) {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+      const host = window.location.hostname || '127.0.0.1'
+      return `${protocol}//${host}:5000`
+    }
+
+    return 'http://127.0.0.1:5000'
+  })()
 
   async post<T = any>(endpoint: string, data?: any, timeoutMs: number = 10 * 60 * 1000): Promise<T> {
     // 默认10分钟超时，对于长时操作如next step
