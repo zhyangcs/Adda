@@ -1,6 +1,6 @@
 <template>
   <div class="in-db-panel">
-    <div class="card">
+    <div class="card dag-card">
       <div class="card-header">
         <div class="title">in-DB Computation</div>
         <div class="actions">
@@ -146,7 +146,10 @@ function renderDag() {
   const strokeColor = '#0f172a'
 
   const containerW = Math.max(320, container.clientWidth || 860)
-  const containerH = Math.max(300, container.clientHeight || 420)
+  // Keep SVG size in sync with the container's actual height.
+  // A too-large SVG will visually "bleed" outside the card when the panel is constrained.
+  const MIN_CANVAS_H = 260
+  const containerH = Math.max(MIN_CANVAS_H, container.clientHeight || 420)
 
   const COLORS = {
     sql: {
@@ -681,6 +684,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .card {
@@ -691,6 +695,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.dag-card,
+.code-card {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .card-header {
@@ -720,8 +731,20 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.dag-card .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .dag-layout {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 .dag-canvas {
@@ -729,8 +752,10 @@ onBeforeUnmount(() => {
   border: 2px solid rgb(48, 82, 102);
   border-radius: 14px;
   background: #ffffff;
-  min-height: 300px;
-  height: 520px;
+  flex: 1 1 auto;
+  min-height: 260px;
+  height: auto;
+  max-height: 100%;
   overflow: hidden;
   touch-action: none;
 }
@@ -767,6 +792,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .node-title {
