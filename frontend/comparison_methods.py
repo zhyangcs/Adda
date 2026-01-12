@@ -3,6 +3,9 @@ Feature engineering framework comparison module.
 
 Provides a unified interface to compare multiple feature engineering approaches,
 focusing on predictive performance and time cost.
+
+Environment Variables:
+- AUTOFEAT_FEATSEL_RUNS: Number of feature selection runs for AutoFeat (default: 20)
 """
 
 import os
@@ -12,7 +15,7 @@ import json
 import warnings
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 import subprocess
 
 # 机器学习库（所有特征工程方法使用统一的模型进行评估，模型类型可配置）
@@ -93,8 +96,16 @@ class ComparisonMethod:
         self.name = name
         self.execution_time = 0.0
         self.preprocessing_time = 0.0
+        # Time accounting (aligned for fair benchmarking):
+        # - feature_generation_time: feature search / generation on training split only
+        # - feature_transform_time: applying the learned transformation to test split
+        # - training_time: model.fit on training split only
+        # - prediction_time: model inference on test split (predict / predict_proba)
+        # - evaluation_time: metric computation / remaining overhead
         self.feature_generation_time = 0.0
+        self.feature_transform_time = 0.0
         self.training_time = 0.0
+        self.prediction_time = 0.0
         self.evaluation_time = 0.0
         self.generated_features = None  # 存储生成的特征
         self.model_type = model_type.upper() if model_type else "RF"
@@ -118,50 +129,140 @@ class ComparisonMethod:
         """完整的特征生成+评估流程（避免数据泄露） - 符合系统标准划分方式"""
         start_time = time.time()
 
-        # 预处理
-        prep_start = time.time()
-        X_processed = self._preprocess_data(X)
-        self.preprocessing_time = time.time() - prep_start
+        # Expose task type to subclasses that need it (e.g., AutoFeatClassifier vs AutoFeatRegressor)
+        self._task_type = task_type
 
-        # 使用与系统相同的数据划分方式
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_processed, y, test_size=0.2, random_state=0, stratify=y if task_type == "classify" else None
-        )
+        # Split BEFORE preprocessing to avoid leakage.
+        # IMPORTANT: to align with Adda's DB import (`importTable_with_split`), we split on a *single* dataframe
+        # that includes the target column, with the same random_state/stratify semantics.
+        _target_key = "__target__"
+        df_all = X.copy()
+        df_all[_target_key] = np.asarray(y)
+        if task_type == "classify":
+            df_train, df_test = train_test_split(
+                df_all, test_size=0.2, random_state=0, stratify=df_all[_target_key]
+            )
+        else:
+            df_train, df_test = train_test_split(df_all, test_size=0.2, random_state=0)
+
+        y_train = df_train[_target_key]
+        y_test = df_test[_target_key]
+        X_train_raw = df_train.drop(columns=[_target_key])
+        X_test_raw = df_test.drop(columns=[_target_key])
+
+        # Keep raw splits for methods that need to re-apply preprocessing after fitting (e.g., AutoFeat scaling).
+        self._X_train_raw = X_train_raw
+        self._X_test_raw = X_test_raw
+
+        # Preprocess TRAIN split only (learn statistics from train).
+        prep_start = time.time()
+        X_train = self._preprocess_data(X_train_raw)
+        self.preprocessing_time = time.time() - prep_start
 
         # 保存训练集信息供子类使用
         self._X_train = X_train
-        self._X_test = X_test
+        # NOTE: We intentionally do NOT preprocess X_test yet, because some methods (AutoFeat)
+        # need to apply additional preprocessing (e.g., scaling) *after* they are fitted.
         self._y_train = y_train
         self._y_test = y_test
 
-        # 特征生成（只在训练集上）
-        feature_start = time.time()
+        # Feature generation (TRAIN split only)
+        feat_fit_start = time.time()
         X_train_generated = self.generate_features(X_train, y_train)
-
-        # 应用相同的特征变换到测试集
-        if hasattr(self, 'fitted_autofeat') and self.fitted_autofeat is not None:
-            # AutoFeat方法：使用保存的模型进行transform
-            X_test_processed = self._preprocess_test_data(X_test, X_train)
-            X_test_generated = self.fitted_autofeat.transform(X_test_processed)
-        elif hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
-            # PGML方法或其他方法：使用保存的scaler和预处理组件
-            X_test_generated = self._transform_test_features(X_test)
-        else:
-            # 如果没有保存的模型，使用原始测试集
-            X_test_generated = X_test
-
-        self.feature_generation_time = time.time() - feature_start
+        self.feature_generation_time = time.time() - feat_fit_start
         self.generated_features = X_train_generated
 
-        # 训练和评估（使用训练集训练，测试集评估）
-        train_start = time.time()
-        metrics = self._train_and_evaluate_with_split(X_train_generated, X_test_generated, y_train, y_test, task_type)
-        self.training_time = time.time() - train_start
+        # Apply the learned feature transformation to TEST split (tracked separately)
+        feat_transform_start = time.time()
+        # Preprocess TEST split using TRAIN stats (no leakage). Done after feature generation so
+        # AutoFeat-specific preprocessing can reuse fitted state (scaler/shift) if present.
+        X_test_basic = self._preprocess_test_data(X_test_raw, X_train_raw)
+        self._X_test = X_test_basic
+        if hasattr(self, 'fitted_autofeat') and self.fitted_autofeat is not None:
+            X_test_processed = self._preprocess_test_data(X_test_raw, X_train_raw)
+            # AutoFeat is usually fitted on numeric-only columns (and possibly scaled);
+            # make sure test-time transform sees the exact same columns in the same order.
+            autofeat_cols = getattr(self, "_autofeat_input_columns", None)
+            if isinstance(autofeat_cols, (list, tuple)) and len(autofeat_cols) > 0:
+                for c in autofeat_cols:
+                    if c not in X_test_processed.columns:
+                        X_test_processed[c] = 0.0
+                X_test_processed = X_test_processed[list(autofeat_cols)]
+            else:
+                X_test_processed = X_test_processed.select_dtypes(include=[np.number])
+            X_test_generated = self.fitted_autofeat.transform(X_test_processed)
+        elif hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
+            X_test_generated = self._transform_test_features(X_test_basic)
+        else:
+            X_test_generated = X_test_basic
+        self.feature_transform_time = time.time() - feat_transform_start
+
+        # Train and evaluate (timed as: fit-only, then predict-only, then metric-only/overhead)
+        model = self._build_model(task_type)
+
+        fit_start = time.time()
+        model.fit(X_train_generated, y_train)
+        self.training_time = time.time() - fit_start
+
+        pred_start = time.time()
+        y_pred = model.predict(X_test_generated)
+        y_prob = None
+        if task_type == "classify":
+            try:
+                y_prob = model.predict_proba(X_test_generated)[:, 1] if len(model.classes_) == 2 else None
+            except Exception:
+                y_prob = None
+        self.prediction_time = time.time() - pred_start
+
+        metric_start = time.time()
+        if task_type == "classify":
+            try:
+                auc = roc_auc_score(y_test, y_prob if y_prob is not None else y_pred)
+            except Exception:
+                auc = accuracy_score(y_test, y_pred)
+            metrics = {
+                "auc": auc,
+                "accuracy": accuracy_score(y_test, y_pred),
+                "f1": f1_score(y_test, y_pred, average='weighted'),
+                "precision": precision_score(y_test, y_pred, average='weighted'),
+                "recall": recall_score(y_test, y_pred, average='weighted'),
+            }
+        else:
+            mse = mean_squared_error(y_test, y_pred)
+            # RAE (relative absolute error): sum(|y - y_hat|) / sum(|y - mean(y)|)
+            # Paper-style score: 1 - RAE (higher is better; can be negative if worse than mean baseline).
+            y_true_arr = np.asarray(y_test, dtype=float)
+            y_pred_arr = np.asarray(y_pred, dtype=float)
+            rae_num = float(np.sum(np.abs(y_true_arr - y_pred_arr)))
+            rae_den = float(np.sum(np.abs(y_true_arr - float(np.mean(y_true_arr)))))
+            if rae_den <= 0:
+                rae = 0.0 if rae_num <= 0 else float("inf")
+            else:
+                rae = rae_num / rae_den
+            one_minus_rae = 1.0 - rae if np.isfinite(rae) else float("-inf")
+            metrics = {
+                "rmse": np.sqrt(mse),
+                "mse": mse,
+                "mae": mean_absolute_error(y_test, y_pred),
+                "r2": r2_score(y_test, y_pred),
+                "rae": float(rae),
+                "one_minus_rae": float(one_minus_rae),
+            }
 
         self.execution_time = time.time() - start_time
-        self.evaluation_time = self.execution_time - self.preprocessing_time - self.training_time - self.feature_generation_time
-
+        # "evaluation_time" keeps legacy meaning: metrics + remaining overhead not captured elsewhere.
+        self.evaluation_time = (
+            time.time() - metric_start
+            + max(
+                0.0,
+                self.execution_time
+                - self.preprocessing_time
+                - self.feature_generation_time
+                - self.feature_transform_time
+                - self.training_time
+                - self.prediction_time,
+            )
+        )
         return metrics
 
     # 防止子类重写关键方法
@@ -214,12 +315,19 @@ class ComparisonMethod:
         if hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
             # 确保数值为正（用于log变换）
             X_test_numeric = X_test_processed.copy()
+            shift_by_col = getattr(self, "_positive_shift_by_col", None)
             for col in X_test_numeric.select_dtypes(include=[np.number]).columns:
                 if (X_test_numeric[col] <= 0).any():
-                    min_val = X_test_numeric[col].min()
-                    if min_val <= 0:
-                        # 使用与训练集相同的平移量
-                        shift = 1e-6 - min_val
+                    # Use the same shift learned from the training split when available.
+                    shift = None
+                    if isinstance(shift_by_col, dict) and str(col) in shift_by_col:
+                        shift = shift_by_col[str(col)]
+                    elif col in X_train.columns:
+                        train_min = X_train[col].min()
+                        if train_min <= 0:
+                            shift = 1e-6 - float(train_min)
+
+                    if shift is not None:
                         X_test_numeric[col] = X_test_numeric[col] + shift
 
             # 使用训练集的scaler进行标准化
@@ -395,7 +503,9 @@ class ComparisonMethod:
         return {
             "preprocessing_time": self.preprocessing_time,
             "feature_generation_time": self.feature_generation_time,
+            "feature_transform_time": self.feature_transform_time,
             "training_time": self.training_time,
+            "prediction_time": self.prediction_time,
             "evaluation_time": self.evaluation_time,
             "total_time": self.execution_time
         }
@@ -444,10 +554,460 @@ class BaselineMethod(ComparisonMethod):
 class AutoFeatMethod(ComparisonMethod):
     """AutoFeat特征工程方法"""
 
-    def __init__(self, model_type: str = "RF"):
+    class _AutoFeatStableLassoShim:
+        """
+        Drop-in replacement for sklearn's LassoLarsCV used by `autofeat==0.1`.
+
+        Why: new scikit-learn versions can raise broadcasting errors inside LassoLarsCV's
+        LARS path solver on some datasets (e.g. boston_house split), which makes AutoFeat's
+        internal end-to-end mode fail.
+
+        This shim uses coordinate-descent Lasso (no CV). It's much more stable and typically
+        faster than LassoCV for this use-case, while still providing coef_/intercept_/predict/score.
+        """
+
+        def __init__(self, eps: float = 1e-8, *args, **kwargs):
+            # Keep signature compatible with callers that pass eps=...
+            self.eps = eps
+            # If caller provided alpha, honor it; otherwise choose a small default.
+            alpha = kwargs.pop("alpha", 1e-3)
+            max_iter = kwargs.pop("max_iter", 10000)
+            # Avoid unexpected kwargs breaking instantiation.
+            try:
+                from sklearn.linear_model import Lasso
+
+                self._model = Lasso(
+                    alpha=float(alpha),
+                    max_iter=int(max_iter),
+                    random_state=0,
+                    fit_intercept=True,
+                )
+            except Exception as e:
+                raise ImportError(f"Failed to create Lasso shim for AutoFeat: {e}")
+
+            self.coef_ = None
+            self.intercept_ = 0.0
+
+        def fit(self, X, y):
+            self._model.fit(X, y)
+            self.coef_ = getattr(self._model, "coef_", None)
+            self.intercept_ = float(getattr(self._model, "intercept_", 0.0))
+            return self
+
+        def predict(self, X):
+            return self._model.predict(X)
+
+        def score(self, X, y):
+            return self._model.score(X, y)
+
+    def __init__(
+        self,
+        model_type: str = "RF",
+        *,
+        # Keep comparability with upstream `autofeat` by default.
+        enable_numerical_stability_preprocessing: bool = False,
+        # If True, use AutoFeat's own estimator training/prediction when available (paper-style end-to-end).
+        # In `autofeat==0.1`, this corresponds to AutoFeatRegression training a final linear model internally.
+        use_autofeat_internal_model: Optional[bool] = None,
+        # Older autofeat (0.1) uses these knobs; newer versions may ignore them.
+        featsel_runs: Optional[int] = None,
+        max_gb: Optional[float] = None,
+        units: Optional[Dict[str, Any]] = None,
+        feateng_steps: Optional[int] = None,
+        transformations: Optional[Tuple] = None,
+        n_jobs: Optional[int] = None,
+        verbose: Optional[int] = None,
+    ):
         super().__init__("AutoFeat", model_type)
         self.available = AUTOFEAT_AVAILABLE
         self.feateng_cols = []  # 存储生成的特征列名
+        self.enable_numerical_stability_preprocessing = enable_numerical_stability_preprocessing
+        # Default to "paper-style" internal model for old versions unless explicitly disabled.
+        # Can be overridden via env var AUTOFEAT_USE_INTERNAL_MODEL=0/1.
+        if use_autofeat_internal_model is None:
+            env_flag = os.environ.get("AUTOFEAT_USE_INTERNAL_MODEL", "").strip()
+            if env_flag in {"0", "false", "False", "no", "NO"}:
+                self.use_autofeat_internal_model = False
+            elif env_flag in {"1", "true", "True", "yes", "YES"}:
+                self.use_autofeat_internal_model = True
+            else:
+                self.use_autofeat_internal_model = True
+        else:
+            self.use_autofeat_internal_model = bool(use_autofeat_internal_model)
+
+        self.autofeat_params: Dict[str, Any] = {
+            "featsel_runs": featsel_runs,
+            "max_gb": max_gb,
+            "units": units,
+            "feateng_steps": feateng_steps,
+            "transformations": transformations,
+            "n_jobs": n_jobs,
+            "verbose": verbose,
+        }
+        self.autofeat_version: Optional[str] = None
+        self._positive_shift_by_col: Optional[Dict[str, float]] = None
+        # Train-derived clipping bounds to prevent inf/NaN in old `autofeat==0.1`
+        self._clip_bounds_by_col: Optional[Dict[str, tuple[float, float]]] = None
+        # Whether we've patched `autofeat==0.1` sklearn compatibility shims.
+        self._autofeat_compat_patched: bool = False
+
+    def _instantiate_autofeat(self) -> Any:
+        """Instantiate the correct AutoFeat class for the installed package version."""
+        import inspect
+        import autofeat as _autofeat_pkg
+
+        self.autofeat_version = getattr(_autofeat_pkg, "__version__", None) or getattr(_autofeat_pkg, "version", None)
+        version = str(self.autofeat_version or "")
+
+        # `autofeat==0.1` uses `sklearn.linear_model.LassoLarsCV` in multiple places.
+        # With newer scikit-learn versions, LassoLarsCV can raise
+        #   ValueError: operands could not be broadcast together with shapes (n,) (n-1,)
+        # inside the LARS path solver on some datasets (including our boston_house split).
+        #
+        # We cannot change `autofeat==0.1` (user constraint), so we patch its internal references
+        # to use a stable Lasso shim (no CV) to avoid both the crash and excessive runtime.
+        if (not self._autofeat_compat_patched) and version.startswith("0.1"):
+            try:
+                import autofeat.autofeat as _af_autofeat_mod
+                import autofeat.featsel as _af_featsel_mod
+
+                # Patch both modules, since both import `sklearn.linear_model as lm`.
+                _af_autofeat_mod.lm.LassoLarsCV = AutoFeatMethod._AutoFeatStableLassoShim
+                _af_featsel_mod.lm.LassoLarsCV = AutoFeatMethod._AutoFeatStableLassoShim
+                self._autofeat_compat_patched = True
+            except Exception:
+                # Best-effort only; if patching fails we keep the original behavior.
+                self._autofeat_compat_patched = False
+
+        # `autofeat==0.1` default transformations include log/sqrt/1/, which frequently create NaN/inf
+        # once feature combinations generate negative/zero intermediate values. The library then may
+        # drop rows internally (without dropping y), causing shape mismatch errors.
+        #
+        # To keep the internal end-to-end path reliable for 0.1, we default to a safer subset unless
+        # the caller explicitly provided `transformations`.
+        if version.startswith("0.1") and self.autofeat_params.get("transformations") is None:
+            self.autofeat_params["transformations"] = ["abs", "^2", "^3"]
+
+        is_classification = getattr(self, "_task_type", None) == "classify"
+        AutoFeatRegressor = getattr(_autofeat_pkg, "AutoFeatRegressor", None)
+        AutoFeatClassifier = getattr(_autofeat_pkg, "AutoFeatClassifier", None)
+        AutoFeatRegression = getattr(_autofeat_pkg, "AutoFeatRegression", None)
+
+        if is_classification and AutoFeatClassifier is not None:
+            cls = AutoFeatClassifier
+        elif (not is_classification) and AutoFeatRegressor is not None:
+            cls = AutoFeatRegressor
+        elif AutoFeatRegression is not None:
+            cls = AutoFeatRegression
+        else:
+            raise ImportError("Unsupported autofeat version: cannot find AutoFeat* class entry point.")
+
+        sig = inspect.signature(cls.__init__)
+        allowed = set(sig.parameters.keys())
+        params: Dict[str, Any] = {}
+        if "categorical_cols" in allowed:
+            # In older versions (0.1), categorical_cols defaults to [] (list of column names).
+            params["categorical_cols"] = []
+        for k, v in (self.autofeat_params or {}).items():
+            if v is None:
+                continue
+            if k not in allowed:
+                continue
+            if k == "categorical_cols" and isinstance(v, bool):
+                v = [] if v is False else []
+            params[k] = v
+
+        return cls(**params)
+
+    def _prepare_autofeat_input(self, X: pd.DataFrame, *, fit: bool) -> pd.DataFrame:
+        """Prepare numeric-only input for AutoFeat; optionally fit and store scalers/shifts."""
+        X_numeric = X.select_dtypes(include=[np.number])
+        if X_numeric.shape[1] == 0:
+            raise ValueError("AutoFeat requires at least one numeric feature")
+        X_numeric = X_numeric.fillna(X_numeric.median())
+        if X_numeric.isnull().any().any():
+            X_numeric = X_numeric.fillna(0)
+
+        # Compatibility guard for very old autofeat (0.1) + modern pandas/numpy:
+        # default transformations include log/sqrt/1/, which can produce NaN/inf on non-positive values
+        # and may cause internal row-dropping leading to shape mismatches.
+        try:
+            version = str(getattr(self, "autofeat_version", "") or "")
+            transformations_used = self.autofeat_params.get("transformations") if isinstance(self.autofeat_params, dict) else None
+            if transformations_used is None:
+                # 0.1 default (from signature): ['exp','log','abs','sqrt','^2','^3','1/']
+                transformations_used = ["exp", "log", "abs", "sqrt", "^2", "^3", "1/"]
+            needs_positive = any(t in {"log", "sqrt"} for t in transformations_used)
+            needs_nonzero = any(t in {"1/"} for t in transformations_used)
+            if version.startswith("0.1"):
+                # 1) Shift columns to avoid log/sqrt of non-positive and 1/ near zero.
+                #    (Leakage-free: derive from train, apply same shift to test.)
+                X_np = X_numeric.copy()
+                if fit:
+                    shift_by_col: Dict[str, float] = {}
+                    if needs_positive or needs_nonzero:
+                        for col in X_np.columns:
+                            col_min = float(np.nanmin(X_np[col].to_numpy(dtype=float, copy=False)))
+                            if col_min <= 0:
+                                shift = 1e-6 - col_min
+                                shift_by_col[str(col)] = shift
+                                X_np[col] = X_np[col] + shift
+                    self._positive_shift_by_col = shift_by_col
+                else:
+                    stored = getattr(self, "_positive_shift_by_col", None)
+                    if isinstance(stored, dict) and stored:
+                        for col, shift in stored.items():
+                            if col in X_np.columns:
+                                X_np[col] = X_np[col] + float(shift)
+
+                # 2) Clip to train-derived bounds to prevent exp/power overflow and infinities.
+                #    This targets the common `autofeat==0.1` failure where internal code drops rows
+                #    due to inf/NaN created by aggressive default transformations.
+                if fit:
+                    clip_bounds: Dict[str, tuple[float, float]] = {}
+                    for col in X_np.columns:
+                        arr = X_np[col].to_numpy(dtype=float, copy=False)
+                        # Robust bounds; avoid extremes from outliers.
+                        lo = float(np.nanpercentile(arr, 1.0))
+                        hi = float(np.nanpercentile(arr, 99.0))
+                        if not np.isfinite(lo) or not np.isfinite(hi) or lo >= hi:
+                            lo = float(np.nanmin(arr))
+                            hi = float(np.nanmax(arr))
+                        if not np.isfinite(lo) or not np.isfinite(hi) or lo >= hi:
+                            lo, hi = -1.0, 1.0
+                        clip_bounds[str(col)] = (lo, hi)
+                    self._clip_bounds_by_col = clip_bounds
+                else:
+                    clip_bounds = getattr(self, "_clip_bounds_by_col", None) or {}
+
+                if isinstance(clip_bounds, dict) and clip_bounds:
+                    for col in X_np.columns:
+                        b = clip_bounds.get(str(col))
+                        if b is None:
+                            continue
+                        lo, hi = b
+                        X_np[col] = X_np[col].clip(lower=float(lo), upper=float(hi))
+
+                # 3) Ensure finite numeric matrix (avoid downstream row filtering).
+                X_np = X_np.replace([np.inf, -np.inf], np.nan)
+                if X_np.isnull().any().any():
+                    X_np = X_np.fillna(0.0)
+
+                # 4) Extra guard for 1/ transformation: avoid values too close to 0.
+                if needs_nonzero:
+                    X_vals = X_np.to_numpy(dtype=float, copy=False)
+                    tiny_mask = np.isfinite(X_vals) & (np.abs(X_vals) < 1e-6)
+                    if np.any(tiny_mask):
+                        X_vals = X_vals.copy()
+                        X_vals[tiny_mask] = np.sign(X_vals[tiny_mask]) * 1e-6
+                        X_np = pd.DataFrame(X_vals, columns=X_np.columns, index=X_np.index)
+
+                X_numeric = X_np
+        except Exception:
+            pass
+
+        if self.enable_numerical_stability_preprocessing:
+            X_numeric_processed = X_numeric.copy()
+            positive_shift_by_col: Dict[str, float] = {}
+            for col in X_numeric_processed.columns:
+                if (X_numeric_processed[col] <= 0).any():
+                    min_val = X_numeric_processed[col].min()
+                    if min_val <= 0:
+                        shift = 1e-6 - float(min_val)
+                        positive_shift_by_col[str(col)] = shift
+                        X_numeric_processed[col] = X_numeric_processed[col] + shift
+
+            from sklearn.preprocessing import StandardScaler
+            if fit:
+                scaler = StandardScaler()
+                X_numeric_scaled = pd.DataFrame(
+                    scaler.fit_transform(X_numeric_processed),
+                    columns=X_numeric_processed.columns,
+                    index=X_numeric_processed.index
+                )
+                self.fitted_scaler = scaler
+                self._positive_shift_by_col = positive_shift_by_col
+                X_numeric = X_numeric_scaled
+            else:
+                # Apply stored shift + scaler
+                shift_by_col = getattr(self, "_positive_shift_by_col", None)
+                for col in X_numeric_processed.columns:
+                    if (X_numeric_processed[col] <= 0).any():
+                        shift = None
+                        if isinstance(shift_by_col, dict) and str(col) in shift_by_col:
+                            shift = shift_by_col[str(col)]
+                        if shift is not None:
+                            X_numeric_processed[col] = X_numeric_processed[col] + shift
+                if hasattr(self, "fitted_scaler") and self.fitted_scaler is not None:
+                    X_numeric_scaled = pd.DataFrame(
+                        self.fitted_scaler.transform(X_numeric_processed),
+                        columns=X_numeric_processed.columns,
+                        index=X_numeric_processed.index
+                    )
+                    X_numeric = X_numeric_scaled
+        else:
+            if fit:
+                self.fitted_scaler = None
+                self._positive_shift_by_col = None
+
+        self._autofeat_input_columns = list(X_numeric.columns)
+        return X_numeric
+
+    @staticmethod
+    def _align_xy_for_autofeat(X_df: pd.DataFrame, y: pd.Series | np.ndarray | list) -> tuple[pd.DataFrame, np.ndarray]:
+        """
+        Older autofeat versions (e.g. 0.1) can be sensitive to non-contiguous pandas indices.
+        Force a clean 0..n-1 index on X and a length-matched numpy y.
+        """
+        X_out = X_df.reset_index(drop=True)
+        y_arr = np.asarray(y)
+        if y_arr.ndim > 1:
+            y_arr = y_arr.reshape(-1)
+        # If y came in as a pandas Series with its own index, align by position after reset.
+        if len(y_arr) != len(X_out):
+            try:
+                y_arr = np.asarray(pd.Series(y).reset_index(drop=True))
+            except Exception:
+                pass
+        return X_out, y_arr.astype(float, copy=False)
+
+    def fit_predict(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
+        """
+        If `use_autofeat_internal_model` is enabled and the installed package supports it,
+        run AutoFeat in its native end-to-end mode (fit + predict), counting that wall time.
+        Otherwise, fall back to the base implementation (fit_transform + downstream model training).
+        """
+        self._task_type = task_type
+        if not self.use_autofeat_internal_model:
+            return super().fit_predict(X, y, task_type)
+
+        # `autofeat==0.1` exposes regression only; for classification we must fall back.
+        if task_type == "classify":
+            try:
+                import autofeat as _autofeat_pkg
+                if getattr(_autofeat_pkg, "AutoFeatClassifier", None) is None:
+                    return super().fit_predict(X, y, task_type)
+            except Exception:
+                return super().fit_predict(X, y, task_type)
+
+        start_time = time.time()
+
+        # Split exactly like Adda import_table_with_split (single df split, random_state=0, stratify only for classify)
+        _target_key = "__target__"
+        df_all = X.copy()
+        df_all[_target_key] = np.asarray(y)
+        if task_type == "classify":
+            df_train, df_test = train_test_split(
+                df_all, test_size=0.2, random_state=0, stratify=df_all[_target_key]
+            )
+        else:
+            df_train, df_test = train_test_split(df_all, test_size=0.2, random_state=0)
+
+        y_train = df_train[_target_key]
+        y_test = df_test[_target_key]
+        X_train_raw = df_train.drop(columns=[_target_key])
+        X_test_raw = df_test.drop(columns=[_target_key])
+
+        # Preprocess (train-only) for leakage-free stats, then prepare AutoFeat numeric input
+        prep_start = time.time()
+        X_train_basic = self._preprocess_data(X_train_raw)
+        self.preprocessing_time = time.time() - prep_start
+
+        # Reduce run-to-run drift (older autofeat versions use randomized selection runs).
+        try:
+            import random as _random
+            _random.seed(0)
+            np.random.seed(0)
+        except Exception:
+            pass
+
+        # Best-effort sympy compatibility shim for older autofeat versions
+        try:
+            import types
+            import sympy as _sp
+            if hasattr(_sp, "Add"):
+                add_obj = getattr(_sp, "add", None)
+                if add_obj is None or not hasattr(add_obj, "Add"):
+                    setattr(_sp, "add", types.SimpleNamespace(Add=_sp.Add))
+        except Exception:
+            pass
+
+        try:
+            auto_feat = self._instantiate_autofeat()
+
+            feat_start = time.time()
+            X_train_numeric = self._prepare_autofeat_input(X_train_basic, fit=True)
+            X_train_numeric, y_train_arr = self._align_xy_for_autofeat(X_train_numeric, y_train)
+            # Prefer fit_transform to match autofeat's intended usage (and internal model training).
+            try:
+                auto_feat.fit_transform(X_train_numeric, y_train_arr)
+            except Exception:
+                auto_feat.fit(X_train_numeric, y_train_arr)
+            self.fitted_autofeat = auto_feat
+            # In internal mode, this "feature_generation_time" includes AutoFeat's own model training as well.
+            self.feature_generation_time = time.time() - feat_start
+
+            # Predict on test (AutoFeat does its own transform internally when calling predict)
+            test_basic = self._preprocess_test_data(X_test_raw, X_train_raw)
+            X_test_numeric = self._prepare_autofeat_input(test_basic, fit=False)
+            X_test_numeric = X_test_numeric.reset_index(drop=True)
+
+            pred_start = time.time()
+            y_pred = auto_feat.predict(X_test_numeric)
+            self.prediction_time = time.time() - pred_start
+            self.feature_transform_time = 0.0  # bundled into prediction_time for internal AutoFeat predict
+            self.training_time = 0.0  # bundled into feature_generation_time for internal AutoFeat fit
+
+            metric_start = time.time()
+            if task_type == "classify":
+                # Prefer proba if available
+                y_prob = None
+                try:
+                    if hasattr(auto_feat, "predict_proba"):
+                        y_prob = auto_feat.predict_proba(X_test_numeric)
+                except Exception:
+                    y_prob = None
+                try:
+                    auc = roc_auc_score(y_test, y_prob[:, 1] if isinstance(y_prob, np.ndarray) and y_prob.ndim == 2 else y_pred)
+                except Exception:
+                    auc = accuracy_score(y_test, y_pred)
+                metrics = {
+                    "auc": float(auc),
+                    "accuracy": float(accuracy_score(y_test, y_pred)),
+                    "f1": float(f1_score(y_test, y_pred, average="weighted")),
+                    "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
+                    "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
+                }
+            else:
+                mse = mean_squared_error(y_test, y_pred)
+                y_true_arr = np.asarray(y_test, dtype=float)
+                y_pred_arr = np.asarray(y_pred, dtype=float)
+                rae_num = float(np.sum(np.abs(y_true_arr - y_pred_arr)))
+                rae_den = float(np.sum(np.abs(y_true_arr - float(np.mean(y_true_arr)))))
+                if rae_den <= 0:
+                    rae = 0.0 if rae_num <= 0 else float("inf")
+                else:
+                    rae = rae_num / rae_den
+                one_minus_rae = 1.0 - rae if np.isfinite(rae) else float("-inf")
+                metrics = {
+                    "rmse": float(np.sqrt(mse)),
+                    "mse": float(mse),
+                    "mae": float(mean_absolute_error(y_test, y_pred)),
+                    "r2": float(r2_score(y_test, y_pred)),
+                    "rae": float(rae),
+                    "one_minus_rae": float(one_minus_rae),
+                }
+
+            self.execution_time = time.time() - start_time
+            self.evaluation_time = time.time() - metric_start
+            # Keep generated_features for reporting (train features only, if available)
+            self.generated_features = X_train_numeric
+            return metrics
+
+        except Exception as e:
+            # If internal mode fails for any reason, fall back to external mode (keeps system usable).
+            print(f"AutoFeat internal end-to-end failed: {type(e).__name__}: {e}. Falling back to external evaluation.")
+            return super().fit_predict(X, y, task_type)
 
     def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
         """使用AutoFeat生成特征"""
@@ -457,77 +1017,36 @@ class AutoFeatMethod(ComparisonMethod):
         if y is None:
             raise ValueError("AutoFeat requires target variable for supervised feature generation")
 
-        # AutoFeat要求数据必须是数值型的
-        X_numeric = X.select_dtypes(include=[np.number])
-
-        if X_numeric.shape[1] == 0:
-            raise ValueError("AutoFeat requires at least one numeric feature")
-
-        # 处理缺失值（AutoFeat内部会处理，但我们可以预处理一下）
-        X_numeric = X_numeric.fillna(X_numeric.median())
-
-        # 确保没有NaN值
-        if X_numeric.isnull().any().any():
-            print("Warning: AutoFeat input still contains NaN values after median imputation")
-            # 使用更激进的方法处理
-            X_numeric = X_numeric.fillna(0)
-
-        # 为log和sqrt变换做数据预处理，确保数值稳定性
-        print("[AutoFeat] Preprocessing data for numerical stability...")
-
-        # 确保所有数值都是正数（用于log变换）
-        X_numeric_processed = X_numeric.copy()
-        for col in X_numeric_processed.columns:
-            # 如果列包含负数或零，进行平移
-            if (X_numeric_processed[col] <= 0).any():
-                min_val = X_numeric_processed[col].min()
-                if min_val <= 0:
-                    # 平移到最小值为1e-6
-                    shift = 1e-6 - min_val
-                    X_numeric_processed[col] = X_numeric_processed[col] + shift
-                    print(f"   Shifted {col} by {shift:.6f} to ensure positive values for log transform")
-
-        # 标准化数据，减少数值范围差异
-        from sklearn.preprocessing import StandardScaler
-        scaler = StandardScaler()
-        X_numeric_scaled = pd.DataFrame(
-            scaler.fit_transform(X_numeric_processed),
-            columns=X_numeric_processed.columns,
-            index=X_numeric_processed.index
-        )
-
-        # 保存scaler用于测试集预处理
-        self.fitted_scaler = scaler
-        self.feature_columns = X_numeric_scaled.columns
-
-        print(f"[AutoFeat] Data preprocessing completed. Final shape: {X_numeric_scaled.shape}")
-        X_numeric = X_numeric_scaled
-
         try:
-            # 创建AutoFeatRegressor/Classifier
-            from autofeat import AutoFeatRegressor, AutoFeatClassifier
+            # Reduce run-to-run drift (older autofeat versions use randomized selection runs).
+            try:
+                import random as _random
+                _random.seed(0)
+                np.random.seed(0)
+            except Exception:
+                pass
 
-            # 简单判断是否为分类任务（根据y的唯一值数量）
-            if len(np.unique(y)) <= 20:  # 假设唯一值<=20是分类任务
-                auto_feat = AutoFeatClassifier(
-                    categorical_cols=False,
-                    feateng_steps=2,  # 使用2步特征工程，避免过于复杂
-                    transformations=('1/', '^2', 'abs', 'log', 'sqrt'),  # 添加更多变换类型，移除^3避免复杂度过高
-                    n_jobs=1,
-                    verbose=1
-                )
-            else:
-                auto_feat = AutoFeatRegressor(
-                    categorical_cols=False,
-                    feateng_steps=2,  # 使用2步特征工程
-                    transformations=('1/', '^2', 'abs', 'log', 'sqrt'),  # 添加更多变换类型
-                    n_jobs=1,
-                    verbose=1
-                )
+            # Best-effort sympy compatibility shim for older autofeat versions
+            try:
+                import types
+                import sympy as _sp
+                # Older autofeat versions may reference `sympy.add.Add` (module + class).
+                # Newer sympy versions may not expose `sympy.add` as a module.
+                if hasattr(_sp, "Add"):
+                    add_obj = getattr(_sp, "add", None)
+                    if add_obj is None or not hasattr(add_obj, "Add"):
+                        setattr(_sp, "add", types.SimpleNamespace(Add=_sp.Add))
+            except Exception:
+                pass
+
+            # Instantiate first so we know the installed version (used by preprocessing guards)
+            auto_feat = self._instantiate_autofeat()
+            X_numeric = self._prepare_autofeat_input(X, fit=True)
 
             # 使用fit_transform而不是分开的fit和transform（更高效，减少NaN问题）
             print(f"[AutoFeat] Starting feature generation with {X_numeric.shape[1]} features...")
-            X_generated = auto_feat.fit_transform(X_numeric, y)
+            X_numeric_aligned, y_arr = self._align_xy_for_autofeat(X_numeric, y)
+            X_generated = auto_feat.fit_transform(X_numeric_aligned, y_arr)
 
             # 保存fitted的AutoFeat模型，用于后续的transform
             self.fitted_autofeat = auto_feat
@@ -570,7 +1089,10 @@ class AutoFeatMethod(ComparisonMethod):
                 "new_feature_names": self.feateng_cols,
                 "generated_features": self.generated_features,
                 "description": description,
-                "success": len(self.feateng_cols) > 0
+                "success": len(self.feateng_cols) > 0,
+                "autofeat_version": self.autofeat_version,
+                "autofeat_params": self.autofeat_params,
+                "enable_numerical_stability_preprocessing": self.enable_numerical_stability_preprocessing,
             }
         return {
             "original_feature_count": 0,
@@ -580,7 +1102,10 @@ class AutoFeatMethod(ComparisonMethod):
             "new_feature_names": [],
             "generated_features": None,
             "description": "AutoFeat feature generation failed.",
-            "success": False
+            "success": False,
+            "autofeat_version": self.autofeat_version,
+            "autofeat_params": self.autofeat_params,
+            "enable_numerical_stability_preprocessing": self.enable_numerical_stability_preprocessing,
         }
 
 
@@ -1275,7 +1800,7 @@ class CAAFEMethod(ComparisonMethod):
         timed_base_clf = _TimedEstimator(base_clf)
 
         # Keep iterations/splits small by default for cost/time; can be overridden via env vars.
-        iterations = int(os.environ.get("CAAFE_ITERATIONS", "30"))
+        iterations = int(os.environ.get("CAAFE_ITERATIONS", "15"))
         n_splits = int(os.environ.get("CAAFE_N_SPLITS", "5"))
         n_repeats = int(os.environ.get("CAAFE_N_REPEATS", "1"))
 
@@ -1528,10 +2053,24 @@ class CAAFEMethod(ComparisonMethod):
 class ComparisonEngine:
     """特征工程框架对比引擎"""
 
-    def __init__(self, db_config=None):
+    def __init__(self, db_config=None, autofeat_params=None):
+        # 设置 AutoFeat 参数
+        autofeat_kwargs = autofeat_params or {}
+
+        # 从环境变量获取 featsel_runs，默认值从5增加到20
+        if 'featsel_runs' not in autofeat_kwargs:
+            env_featsel_runs = os.environ.get('AUTOFEAT_FEATSEL_RUNS')
+            if env_featsel_runs:
+                try:
+                    autofeat_kwargs['featsel_runs'] = int(env_featsel_runs)
+                except ValueError:
+                    autofeat_kwargs['featsel_runs'] = 5  # 默认20次运行
+            else:
+                autofeat_kwargs['featsel_runs'] = 5  # 默认20次运行
+
         self.methods = {
             "Baseline": BaselineMethod(),
-            "AutoFeat": AutoFeatMethod(),
+            "AutoFeat": AutoFeatMethod(**autofeat_kwargs),
             "PGML": PGMLMethod(db_config),
             "MADlib": MadlibMethod(db_config),
             "CAAFE": CAAFEMethod()
@@ -1568,14 +2107,19 @@ class ComparisonEngine:
                 "rmse": [] if task_type != "classify" else None,
                 "mse": [] if task_type != "classify" else None,
                 "mae": [] if task_type != "classify" else None,
-                "r2": [] if task_type != "classify" else None
+                "r2": [] if task_type != "classify" else None,
+                # Paper-style regression score: 1 - RAE
+                "rae": [] if task_type != "classify" else None,
+                "one_minus_rae": [] if task_type != "classify" else None,
             },
             "time_data": {
                 "methods": [],
                 "totalTime": [],
                 "preprocessingTime": [],
                 "featureGenerationTime": [],
+                "featureTransformTime": [],
                 "trainingTime": [],
+                "predictionTime": [],
                 "evaluationTime": []
             },
             "feature_data": {
@@ -1627,7 +2171,7 @@ class ComparisonEngine:
                         else:
                             results["performance_data"][metric].append(0.0)
                 else:
-                    for metric in ["rmse", "mse", "mae", "r2"]:
+                    for metric in ["one_minus_rae", "rae", "rmse", "mse", "mae", "r2"]:
                         if metric in metrics:
                             results["performance_data"][metric].append(metrics[metric])
                         else:
@@ -1639,18 +2183,30 @@ class ComparisonEngine:
                     "totalTime": "total_time",
                     "preprocessingTime": "preprocessing_time",
                     "featureGenerationTime": "feature_generation_time",
+                    "featureTransformTime": "feature_transform_time",
                     "trainingTime": "training_time",
+                    "predictionTime": "prediction_time",
                     "evaluationTime": "evaluation_time",
                 }
                 # total_time 在少数方法里会遗漏（保持 0），这里用各阶段时间求和兜底，避免返回 0 导致前端被过滤
                 computed_total = (
                     float(time_breakdown.get("preprocessing_time", 0.0))
                     + float(time_breakdown.get("feature_generation_time", 0.0))
+                    + float(time_breakdown.get("feature_transform_time", 0.0))
                     + float(time_breakdown.get("training_time", 0.0))
+                    + float(time_breakdown.get("prediction_time", 0.0))
                     + float(time_breakdown.get("evaluation_time", 0.0))
                 )
 
-                for time_metric in ["totalTime", "preprocessingTime", "featureGenerationTime", "trainingTime", "evaluationTime"]:
+                for time_metric in [
+                    "totalTime",
+                    "preprocessingTime",
+                    "featureGenerationTime",
+                    "featureTransformTime",
+                    "trainingTime",
+                    "predictionTime",
+                    "evaluationTime",
+                ]:
                     mapped_key = time_key_map.get(time_metric, time_metric.lower())
                     value = time_breakdown.get(mapped_key, 0.0)
 
@@ -1674,7 +2230,11 @@ class ComparisonEngine:
                 }
 
                 print(f"✅ {method_name} completed:")
-                print(f"   - AUC: {metrics.get('auc', 0):.4f}" if task_type == "classify" else f"   - RMSE: {metrics.get('rmse', 0):.4f}")
+                print(
+                    f"   - AUC: {metrics.get('auc', 0):.4f}"
+                    if task_type == "classify"
+                    else f"   - 1-RAE: {metrics.get('one_minus_rae', 0):.4f} (RMSE: {metrics.get('rmse', 0):.4f})"
+                )
                 print(f"   - Feature generation time: {time_breakdown.get('feature_generation_time', 0):.2f}s")
                 print(f"   - Generated features: {feature_info.get('generated_feature_count', 0)}")
 
@@ -1690,10 +2250,18 @@ class ComparisonEngine:
                     for metric in ["auc", "accuracy", "f1", "precision", "recall"]:
                         results["performance_data"][metric].append(0.0)
                 else:
-                    for metric in ["rmse", "mse", "mae", "r2"]:
+                    for metric in ["one_minus_rae", "rae", "rmse", "mse", "mae", "r2"]:
                         results["performance_data"][metric].append(0.0)
 
-                for time_metric in ["totalTime", "preprocessingTime", "featureGenerationTime", "trainingTime", "evaluationTime"]:
+                for time_metric in [
+                    "totalTime",
+                    "preprocessingTime",
+                    "featureGenerationTime",
+                    "featureTransformTime",
+                    "trainingTime",
+                    "predictionTime",
+                    "evaluationTime",
+                ]:
                     results["time_data"][time_metric].append(0.0)
 
                 results["feature_data"]["original_feature_count"].append(0)
