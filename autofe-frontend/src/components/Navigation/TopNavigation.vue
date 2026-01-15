@@ -30,18 +30,19 @@
         @click="handleAgentStop"
         :disabled="isStopping || agentSearchStatus === 'idle' || agentSearchStatus === 'clear'"
       >
-        <span v-if="isStopping" class="stop-spinner" aria-hidden="true"></span>
+        <span v-if="isStopping" class="action-spinner" aria-hidden="true"></span>
         {{ stopLabel }}
       </button>
-      <button v-else class="action-btn primary" type="button" @click="handleRunAction">
-        Run
+      <button v-else class="action-btn primary" type="button" @click="handleRunAction" :disabled="isPerformanceRunning">
+        <span v-if="isPerformanceRunning" class="action-spinner" aria-hidden="true"></span>
+        {{ isPerformanceRunning ? 'Running...' : 'Run' }}
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useTaskStore } from '@/stores/task'
@@ -79,6 +80,13 @@ watch(() => route.path, (path) => {
 }, { immediate: true })
 
 const isAgentPage = computed(() => currentRoute.value === 'agent-feature-generation')
+const isPerformancePage = computed(() => currentRoute.value === 'performance')
+
+// Performance 页面 Run 按钮的本地 loading：保证“按下就转圈”
+const isPerformanceRunLoading = ref(false)
+const isPerformanceRunning = computed(() =>
+  isPerformancePage.value && (isPerformanceRunLoading.value || taskStore.isRunning)
+)
 
 type AgentRunState = 'run' | 'pause' | 'resume' | 'clear'
 const agentRunState = computed<AgentRunState>(() => {
@@ -117,8 +125,13 @@ async function handleAgentStop() {
 
 async function handleRunAction() {
   if (currentRoute.value === 'performance') {
-    if (taskStore.isRunning) return
-    await taskStore.autoStep(true)
+    if (isPerformanceRunning.value) return
+    isPerformanceRunLoading.value = true
+    try {
+      await taskStore.autoStep(true)
+    } finally {
+      isPerformanceRunLoading.value = false
+    }
     return
   }
   workspaceStore.triggerExecution()
@@ -189,7 +202,7 @@ onMounted(() => {
   min-width: 40px;
 }
 
-.stop-spinner {
+.action-spinner {
   display: inline-block;
   width: 0.6rem;
   height: 0.6rem;
@@ -197,11 +210,11 @@ onMounted(() => {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: stop-spin 0.8s linear infinite;
+  animation: action-spin 0.8s linear infinite;
   vertical-align: middle;
 }
 
-@keyframes stop-spin {
+@keyframes action-spin {
   to {
     transform: rotate(360deg);
   }
