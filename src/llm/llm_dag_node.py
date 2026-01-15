@@ -78,6 +78,9 @@ class LLMDAGNODE():
     # planner给出的拓展建议
     planner_suggest: str = ""
 
+    # 节点操作的简短自然语言描述（用于前端展示/摘要）
+    operation_desc_brief: str = ""
+
     def __hash__(self):
         """哈希函数，用于在集合和字典中使用节点"""
         return hash(self.node_id)
@@ -104,7 +107,9 @@ class LLMDAGNODE():
             self.finished, 
             self.utility, 
             self.attr_imp_order, 
-            self.attr_embs.clone().detach()
+            self.attr_embs.clone().detach() if self.attr_embs is not None else None,
+            self.planner_suggest,
+            self.operation_desc_brief,
         )
     
     def __lt__(self, other):

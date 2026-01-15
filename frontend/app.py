@@ -1827,7 +1827,8 @@ def auto_step():
                         print(f"Performance testing completed in {training_execution_time:.2f}s")
 
                         if performance_result.get("success", False):
-                            # 性能测试成功
+                            # 性能测试成功（分类=AUC，回归=1-RAE；与 run_multimodel_type/pg UDF 一致）
+                            metric_name = "AUC" if task_type == "classify" else "1-RAE"
                             auc = performance_result.get("auc", 0.0)
                             exec_time = performance_result.get("execution_time", 0.0)
 
@@ -1876,7 +1877,7 @@ def auto_step():
                             # 更新training_result
                             response_data["data"]["training_result"] = {
                                 "success": True,
-                                "message": f"端到端流程完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
+                                "message": f"端到端流程完成！{metric_name}: {auc:.4f}, 耗时: {exec_time:.2f}s",
                                 "model_type": ml_model_type,
                                 "method": "in_database_ml"
                             }
@@ -2028,12 +2029,12 @@ def auto_step():
                             if astar_time_data is not None and training_execution_time is not None:
                                 total_exec_time = astar_time_data["feature_generation_time"] + training_execution_time
                                 notifications.append({
-                                    "notice_description": f"🎉 端到端流程完成！AUC: {auc:.4f}, 搜索深度: {max_search_depth}, 特征生成: {astar_time_data['feature_generation_time']:.1f}s, 训练: {training_execution_time:.1f}s, 总计: {total_exec_time:.1f}s",
+                                    "notice_description": f"🎉 端到端流程完成！{metric_name}: {auc:.4f}, 搜索深度: {max_search_depth}, 特征生成: {astar_time_data['feature_generation_time']:.1f}s, 训练: {training_execution_time:.1f}s, 总计: {total_exec_time:.1f}s",
                                     "notice_type": "success"
                                 })
                             else:
                                 notifications.append({
-                                    "notice_description": f"🎉 端到端流程完成！AUC: {auc:.4f}, 搜索深度: {max_search_depth}, 耗时: {exec_time:.2f}s",
+                                    "notice_description": f"🎉 端到端流程完成！{metric_name}: {auc:.4f}, 搜索深度: {max_search_depth}, 耗时: {exec_time:.2f}s",
                                     "notice_type": "success"
                                 })
                         else:
@@ -2128,9 +2129,33 @@ def auto_step():
                                 response_data["data"]["performanceData"]["precision"][method_idx] = comparison_results["performance_data"]["precision"][i]
                                 response_data["data"]["performanceData"]["recall"][method_idx] = comparison_results["performance_data"]["recall"][i]
                             else:
-                                # 对于回归任务，使用RMSE作为主要指标
-                                if "auc" not in response_data["data"]["performanceData"] or response_data["data"]["performanceData"]["auc"][method_idx] == 0.0:
-                                    response_data["data"]["performanceData"]["auc"][method_idx] = 1.0 / (1.0 + comparison_results["performance_data"]["rmse"][i])  # 转换RMSE为类似AUC的指标
+                                # 对于回归任务，统一使用 1-RAE（越大越好）
+                                perf = comparison_results.get("performance_data", {})
+                                score = None
+                                if isinstance(perf, dict):
+                                    one_minus_rae = perf.get("one_minus_rae")
+                                    if isinstance(one_minus_rae, list):
+                                        score = one_minus_rae[i] if i < len(one_minus_rae) else None
+                                    elif one_minus_rae is not None:
+                                        score = one_minus_rae
+
+                                    if score is None:
+                                        rae_val = perf.get("rae")
+                                        if isinstance(rae_val, list):
+                                            rae_val = rae_val[i] if i < len(rae_val) else None
+                                        if rae_val is not None:
+                                            score = 1.0 - float(rae_val)
+
+                                    if score is None:
+                                        rmse_val = perf.get("rmse")
+                                        if isinstance(rmse_val, list):
+                                            rmse_val = rmse_val[i] if i < len(rmse_val) else None
+                                        if rmse_val is not None:
+                                            # 兜底兼容旧实现：没有 1-RAE 时退回历史映射
+                                            score = 1.0 / (1.0 + float(rmse_val))
+
+                                if score is not None:
+                                    response_data["data"]["performanceData"]["auc"][method_idx] = float(score)
 
                             # 填充时间数据（前端TimeComparisonChart需要非零totalTime才会展示）
                             while len(response_data["data"]["timeData"]["totalTime"]) <= method_idx:
@@ -2439,6 +2464,7 @@ def performance_evaluation():
                     training_execution_time = training_end_time - training_start_time
 
                     if performance_result.get("success", False):
+                        metric_name = "AUC" if task_type == "classify" else "1-RAE"
                         auc = performance_result.get("auc", 0.0)
                         exec_time = performance_result.get("execution_time", 0.0)
 
@@ -2475,7 +2501,7 @@ def performance_evaluation():
 
                         response_data["data"]["training_result"] = {
                             "success": True,
-                            "message": f"性能评估完成！AUC: {auc:.4f}, 耗时: {exec_time:.2f}s",
+                            "message": f"性能评估完成！{metric_name}: {auc:.4f}, 耗时: {exec_time:.2f}s",
                             "model_type": ml_model_type,
                             "method": "in_database_ml"
                         }
@@ -2609,8 +2635,33 @@ def performance_evaluation():
                                 response_data["data"]["performanceData"]["precision"][method_idx] = comparison_results["performance_data"]["precision"][i]
                                 response_data["data"]["performanceData"]["recall"][method_idx] = comparison_results["performance_data"]["recall"][i]
                             else:
-                                if "auc" not in response_data["data"]["performanceData"] or response_data["data"]["performanceData"]["auc"][method_idx] == 0.0:
-                                    response_data["data"]["performanceData"]["auc"][method_idx] = 1.0 / (1.0 + comparison_results["performance_data"]["rmse"][i])
+                                # 对于回归任务，统一使用 1-RAE（越大越好）
+                                perf = comparison_results.get("performance_data", {})
+                                score = None
+                                if isinstance(perf, dict):
+                                    one_minus_rae = perf.get("one_minus_rae")
+                                    if isinstance(one_minus_rae, list):
+                                        score = one_minus_rae[i] if i < len(one_minus_rae) else None
+                                    elif one_minus_rae is not None:
+                                        score = one_minus_rae
+
+                                    if score is None:
+                                        rae_val = perf.get("rae")
+                                        if isinstance(rae_val, list):
+                                            rae_val = rae_val[i] if i < len(rae_val) else None
+                                        if rae_val is not None:
+                                            score = 1.0 - float(rae_val)
+
+                                    if score is None:
+                                        rmse_val = perf.get("rmse")
+                                        if isinstance(rmse_val, list):
+                                            rmse_val = rmse_val[i] if i < len(rmse_val) else None
+                                        if rmse_val is not None:
+                                            # 兜底兼容旧实现：没有 1-RAE 时退回历史映射
+                                            score = 1.0 / (1.0 + float(rmse_val))
+
+                                if score is not None:
+                                    response_data["data"]["performanceData"]["auc"][method_idx] = float(score)
 
                             while len(response_data["data"]["timeData"]["totalTime"]) <= method_idx:
                                 response_data["data"]["timeData"]["totalTime"].append(0.0)

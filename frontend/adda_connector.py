@@ -467,9 +467,27 @@ class AddaConnector:
                 # 添加节点信息（使用原始node_id）
                 if current.node_id != 1:  # 跳过已添加的根节点
                     original_node = drawn_node_map.get(current)
-                    op_desc = getattr(original_node, "operation_desc", None) if original_node else None
-                    if isinstance(op_desc, list):
-                        op_desc = "; ".join([str(item) for item in op_desc if item])
+                    # 前端的 Description 字段优先展示简略描述（operation_desc_brief）。
+                    # 兼容旧pickle/旧节点：如果没有 brief，则从 detailed 自动截断生成 brief。
+                    op_desc_brief = getattr(original_node, "operation_desc_brief", None) if original_node else None
+                    if isinstance(op_desc_brief, list):
+                        op_desc_brief = "; ".join([str(item) for item in op_desc_brief if item])
+
+                    op_desc_full = getattr(original_node, "operation_desc", None) if original_node else None
+                    if isinstance(op_desc_full, list):
+                        op_desc_full = "; ".join([str(item) for item in op_desc_full if item])
+
+                    op_desc = op_desc_brief or ""
+                    if not op_desc and op_desc_full:
+                        # 取第一句/第一段作为 brief，并限制长度
+                        first = str(op_desc_full).strip().splitlines()[0].strip()
+                        for sep in ("。", ".", "；", ";", "!", "?", "，", ","):
+                            if sep in first:
+                                first = first.split(sep)[0].strip()
+                                break
+                        max_len = 80
+                        op_desc = first if len(first) <= max_len else (first[:max_len].rstrip() + "...")
+
                     if not op_desc:
                         print(termcolor.colored(
                             f"[tree] node {current.node_id} missing operation_desc, fallback to _generate_desc",

@@ -309,9 +309,9 @@ class NLAgent():
                             # 填充节点信息
                             next_node.op_type = op_type
                             next_node.operation_desc = operation_desc
+                            next_node.operation_desc_brief = operation_desc_brief
                             next_node.write_set = set(out_attr)
                             next_node.read_set = set(rel_cols) - next_node.write_set
-                            operation_desc_brief = operation_desc_brief
                             
                             # 更新列信息
                             for attr in next_node.write_set - set(next_node.column_info.keys()):

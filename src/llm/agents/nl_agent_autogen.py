@@ -179,6 +179,7 @@ class NLAgent():
                             next_node = LLMDAGNODE(allocate_node_id(), "", set(), set(), None, None, cur_node.column_info.copy(), "", op_type, pd.DataFrame(), -1, "", [], [], None, cur_node.alive, False, cur_node.utility, None, cur_node.attr_embs.clone().detach() if cur_node.attr_embs is not None else None)
 
                             next_node.operation_desc = [operation_desc]
+                            next_node.operation_desc_brief = operation_desc_brief
                             next_node.write_set = set(out_attr)
                             next_node.read_set = set(rel_cols) - next_node.write_set
                             for attr in next_node.write_set:
