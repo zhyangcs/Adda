@@ -477,16 +477,8 @@ class AddaConnector:
                     if isinstance(op_desc_full, list):
                         op_desc_full = "; ".join([str(item) for item in op_desc_full if item])
 
-                    op_desc = op_desc_brief or ""
-                    if not op_desc and op_desc_full:
-                        # 取第一句/第一段作为 brief，并限制长度
-                        first = str(op_desc_full).strip().splitlines()[0].strip()
-                        for sep in ("。", ".", "；", ";", "!", "?", "，", ","):
-                            if sep in first:
-                                first = first.split(sep)[0].strip()
-                                break
-                        max_len = 80
-                        op_desc = first if len(first) <= max_len else (first[:max_len].rstrip() + "...")
+                    # 不做任何截断：优先 brief，缺失则回退 full。
+                    op_desc = op_desc_brief or (op_desc_full or "")
 
                     if not op_desc:
                         print(termcolor.colored(

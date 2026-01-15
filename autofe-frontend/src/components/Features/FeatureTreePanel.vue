@@ -130,7 +130,7 @@ function renderD3Tree(data: any) {
   const nodeHeight = 38
   const nodePaddingX = 10
   const minNodeWidth = 140
-  const maxNodeWidth = 420
+  const maxNodeWidth = 2000
   const horizontalSpacing = 34
   const verticalSpacing = 44
 
@@ -151,23 +151,6 @@ function renderD3Tree(data: any) {
     return ctx.measureText(text).width
   }
 
-  const truncateToWidth = (text: string, maxWidthPx: number, font: string) => {
-    if (measure(text, font) <= maxWidthPx) return text
-    const ellipsis = '...'
-    const ellipsisW = measure(ellipsis, font)
-    if (ellipsisW >= maxWidthPx) return ellipsis
-
-    let lo = 0
-    let hi = text.length
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2)
-      const slice = text.slice(0, mid) + ellipsis
-      if (measure(slice, font) <= maxWidthPx) lo = mid
-      else hi = mid - 1
-    }
-    return text.slice(0, lo) + ellipsis
-  }
-
   root.descendants().forEach((d: any) => {
     const fullName = d.data.feature_name || 'Unknown'
     const idText = `id: ${d.data.node_id}`
@@ -181,7 +164,7 @@ function renderD3Tree(data: any) {
     const boxW = Math.max(minNodeWidth, Math.min(maxNodeWidth, contentW + nodePaddingX * 2))
     d._boxWidth = boxW
     d._fullName = fullName
-    d._displayName = truncateToWidth(fullName, boxW - nodePaddingX * 2, titleFont)
+    d._displayName = fullName
     d._scoreText = scoreText
   })
 
