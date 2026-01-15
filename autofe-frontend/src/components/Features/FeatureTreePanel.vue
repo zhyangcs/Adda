@@ -49,13 +49,14 @@ import * as d3 from 'd3'
 
 const featureTreeStore = useFeatureTreeStore()
 const treeContainer = ref<HTMLElement>()
-const isPerformanceLoading = ref(false)
 
 // 缩放行为引用（滚轮/拖拽），以及当前变换（用于保持用户缩放/平移）
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
 let svgRootSelection: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let currentTransform: d3.ZoomTransform = d3.zoomIdentity
 let hasUserTransform = false
+let resizeObserver: ResizeObserver | null = null
+let lastTreeSignature: string | null = null
 
 const isScoreReady = (score: unknown) => {
   return typeof score === 'number' && score >= 0
@@ -72,6 +73,14 @@ function renderTree(treeStructure: any) {
 
   const { root_id, parent_child_relations, node_info } = treeStructure
   const selectedNodeId = featureTreeStore.selectedNode?.node_id
+
+  // 若树结构发生变化（例如节点数/关系变化），重置用户变换，确保新树自动居中并按容器 fit
+  const treeSignature = `${root_id}|${parent_child_relations?.length ?? 0}|${node_info?.length ?? 0}`
+  if (lastTreeSignature !== treeSignature) {
+    lastTreeSignature = treeSignature
+    hasUserTransform = false
+    currentTransform = d3.zoomIdentity
+  }
 
   // 将节点信息转换为字典
   const nodeInfoMap = node_info.reduce((map: any, info: any) => {
@@ -176,7 +185,8 @@ function renderD3Tree(data: any) {
     d._scoreText = scoreText
   })
 
-  const layoutNodeWidth = d3.max(root.descendants() as any, (d: any) => d._boxWidth) || minNodeWidth
+  const layoutNodeWidth =
+    d3.max(root.descendants() as any, (d: any) => Number(d._boxWidth)) ?? minNodeWidth
 
   // 使用 nodeSize 而不是 size，这样树可以根据内容自动扩展
   const treeLayout = d3.tree()
@@ -184,65 +194,77 @@ function renderD3Tree(data: any) {
   
   treeLayout(root)
 
-  // 计算边界以设置 SVG 大小
+  // ---- auto-fit to container by content bounds (use real per-node width) ----
+  const containerWidth = treeContainer.value.clientWidth || 1
+  const containerHeight = treeContainer.value.clientHeight || 1
+
+  // 计算实际内容边界：x 需要考虑节点宽度，y 需要考虑节点高度
   let xMin = Infinity
   let xMax = -Infinity
   let yMin = Infinity
   let yMax = -Infinity
 
   root.descendants().forEach((d: any) => {
-    if (d.x < xMin) xMin = d.x
-    if (d.x > xMax) xMax = d.x
-    if (d.y < yMin) yMin = d.y
-    if (d.y > yMax) yMax = d.y
+    const w = d._boxWidth ?? layoutNodeWidth
+    const left = d.x - w / 2
+    const right = d.x + w / 2
+    const top = d.y
+    const bottom = d.y + nodeHeight
+
+    if (left < xMin) xMin = left
+    if (right > xMax) xMax = right
+    if (top < yMin) yMin = top
+    if (bottom > yMax) yMax = bottom
   })
 
-  // 加上边距
-  const margin = { top: 40, right: 20, bottom: 40, left: 20 }
-  const widthNeeded = (xMax - xMin) + layoutNodeWidth + margin.left + margin.right
-  const heightNeeded = (yMax - yMin) + nodeHeight + margin.top + margin.bottom
-  const containerWidth = treeContainer.value.clientWidth || widthNeeded
-  const containerHeight = treeContainer.value.clientHeight || heightNeeded
-
-  const depth = root.height + 1
-  // 根据层级设置填充比例，尽量填满容器但保留留白
-  // 3 层场景放大展示，填充比例更高
-  const fillRatio = depth >= 5 ? 0.7 : depth === 4 ? 0.78 : depth === 3 ? 0.95 : 0.9
-  const targetScaleX = (containerWidth * fillRatio) / widthNeeded
-  const targetScaleY = (containerHeight * fillRatio) / heightNeeded
-  let scale = Math.min(targetScaleX, targetScaleY)
-
-  // 3 层特例：整体再放大 2 倍
-  if (depth === 3) {
-    scale *= 2
+  // 内容很少时避免 Infinity
+  if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+    xMin = 0
+    xMax = minNodeWidth
+    yMin = 0
+    yMax = nodeHeight
   }
 
-  // 不同层数的放大/缩小限制，保持既不太小也不撑满
-  const maxScale = depth <= 2 ? 1.4 : depth === 3 ? 2.2 : depth === 4 ? 1.15 : 1.0
-  const minScale = depth >= 5 ? 0.5 : depth === 4 ? 0.55 : depth === 3 ? 0.65 : 0.75
-  scale = Math.max(minScale, Math.min(maxScale, scale))
-  const needsScale = scale !== 1
+  const padding = 24
+  const contentWidth = Math.max(1, xMax - xMin)
+  const contentHeight = Math.max(1, yMax - yMin)
+  const availableWidth = Math.max(1, containerWidth - padding * 2)
+  const availableHeight = Math.max(1, containerHeight - padding * 2)
 
-  const svgWidth = Math.max(containerWidth, widthNeeded)
-  const svgHeight = Math.max(containerHeight, heightNeeded)
-  const translateX = svgWidth / 2 - (xMin + xMax) / 2
-  const translateY = margin.top - yMin
+  // fit 内容到容器，保留 padding。
+  // 1 节点时容易过度放大，这里用 maxScale 限制。
+  const maxScale = 2.4
+  const minScale = 0.4
+  let scale = Math.min(availableWidth / contentWidth, availableHeight / contentHeight)
+  scale = Math.max(minScale, Math.min(maxScale, scale))
+
+  // 特殊情况：只有一个节点时，不做 auto-fit 放大，保持原始尺寸（scale=1）
+  if (root.descendants().length === 1) {
+    scale = 1
+  }
+
+  // 计算平移：让内容中心对齐容器中心
+  const cx = (xMin + xMax) / 2
+  const cy = (yMin + yMax) / 2
+  const translateX = containerWidth / 2 - scale * cx
+  const translateY = containerHeight / 2 - scale * cy
 
   // 创建SVG容器
   svgRootSelection = d3.select(treeContainer.value)
     .append("svg")
     .attr("width", "100%")
     .attr("height", "100%")
-    .attr("viewBox", `0 0 ${svgWidth} ${svgHeight}`)
+    // 让坐标系直接等于容器尺寸，这样 fit/居中计算更直观
+    .attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`)
     .attr("preserveAspectRatio", "xMidYMid meet")
 
-  // 平移到居中位置
+  // 平移到居中位置（初始 auto-fit）
   const zoomGroup = svgRootSelection.append("g")
     .attr("transform", `translate(${translateX}, ${translateY}) scale(${scale})`)
 
   // 设置缩放行为（包含拖拽平移）
   zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.4, 3])
+    .scaleExtent([minScale, 3])
     .on("zoom", (event) => {
       zoomGroup.attr("transform", event.transform)
       currentTransform = event.transform
@@ -398,11 +420,30 @@ watch(() => featureTreeStore.treeData, (newData) => {
 }, { deep: true })
 
 onMounted(() => {
+  // 容器尺寸变化时：如果用户没手动缩放/平移，则重新 fit；否则保持用户视角
+  if (treeContainer.value && !resizeObserver) {
+    resizeObserver = new ResizeObserver(() => {
+      if (!featureTreeStore.treeData) return
+      if (hasUserTransform) return
+      nextTick(() => {
+        renderTree(featureTreeStore.treeData)
+      })
+    })
+    resizeObserver.observe(treeContainer.value)
+  }
+
   if (featureTreeStore.treeData && treeContainer.value) {
     nextTick(() => {
       renderTree(featureTreeStore.treeData)
     })
   }
+})
+
+onUnmounted(() => {
+  if (resizeObserver && treeContainer.value) {
+    resizeObserver.unobserve(treeContainer.value)
+  }
+  resizeObserver = null
 })
 </script>
 
