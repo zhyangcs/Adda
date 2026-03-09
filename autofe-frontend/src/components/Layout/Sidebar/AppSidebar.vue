@@ -17,7 +17,7 @@
         <div class="component-header">
           <h6 class="component-title">
             <Settings :size="16" class="me-1" />
-            Settings
+            Configuration
           </h6>
         </div>
 
@@ -47,6 +47,7 @@
               <option value="4">Diabetes</option>
               <option value="5">Bike</option>
               <option value="6">House</option>
+              <option value="7">Adult</option>
             </select>
           </div>
 

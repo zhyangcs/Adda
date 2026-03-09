@@ -71,7 +71,9 @@ class APIService {
       '3': 'Bank',
       '4': 'Diabetes',
       '5': 'Bike',
-      '6': 'House'
+      '6': 'House',
+      '7': 'Adult',
+      '7': 'Adult'
     }
 
     const modelMap: Record<string, string> = {
