@@ -72,8 +72,9 @@ except ImportError:
 
 PGML_AVAILABLE = PGML_DB_AVAILABLE or PGML_SDK_AVAILABLE
 
-# 暂时标记PGML为不可用（根据用户要求）
-PGML_AVAILABLE = False
+# PGML SDK may fail to import on some systems; DB path is sufficient.
+if not PGML_DB_AVAILABLE:
+    PGML_AVAILABLE = False
 
 # MADlib插件依赖数据库连接即可
 MADLIB_AVAILABLE = PGML_DB_AVAILABLE
@@ -1346,108 +1347,98 @@ class PGMLMethod(ComparisonMethod):
             return X_final
 
     def _generate_features_with_db(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
-        """使用PostgreSQL数据库连接生成特征"""
+        """使用PostgreSQL数据库连接 + pgml.train 生成特征"""
+        table_name = f"pgml_feat_{int(time.time())}"
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
 
-            # 创建临时表存储数据
-            table_name = f"temp_features_{int(time.time())}"
-
-            # 构建CREATE TABLE语句
-            columns = []
+            # ---- 1. 上传数据到临时表 ----
+            safe_cols = []
+            col_defs = ["id SERIAL PRIMARY KEY"]
             for col in X.columns:
-                dtype = 'FLOAT' if X[col].dtype in [np.float64, np.float32] else 'INTEGER'
-                columns.append(f"{col} {dtype}")
-
+                safe = re.sub(r'[^a-zA-Z0-9_]', '_', str(col)).lower()
+                safe_cols.append(safe)
+                dt = 'DOUBLE PRECISION' if pd.api.types.is_numeric_dtype(X[col]) else 'TEXT'
+                col_defs.append(f"{safe} {dt}")
             if y is not None:
-                target_dtype = 'INTEGER' if y.dtype in ['int64', 'int32'] else 'FLOAT'
-                columns.append(f"target {target_dtype}")
+                target_dt = 'INTEGER' if pd.api.types.is_integer_dtype(y) else 'DOUBLE PRECISION'
+                col_defs.append(f"target {target_dt}")
 
-            cursor.execute(f"""
-                CREATE TABLE {table_name} (
-                    id SERIAL PRIMARY KEY,
-                    {', '.join(columns)}
-                )
-            """)
-
-            # 批量插入数据（更高效的方式）
-            data_rows = []
-            for i, (_, row) in enumerate(X.iterrows()):
-                values = [float(row[col]) if pd.api.types.is_numeric_dtype(row[col]) else str(row[col]) for col in X.columns]
-                if y is not None:
-                    values.append(int(y.iloc[i]) if pd.api.types.is_integer_dtype(y) else float(y.iloc[i]))
-                data_rows.append(tuple(values))
-
-            # 使用 executemany 批量插入
-            insert_query = f"""
-                INSERT INTO {table_name} ({', '.join(X.columns.tolist() + (['target'] if y is not None else []))})
-                VALUES ({', '.join(['%s'] * len(data_rows[0]))})
-            """
-            cursor.executemany(insert_query, data_rows)
-            conn.commit()
-
-            # 使用pgml进行训练（这会自动进行特征工程）
-            if y is not None:
-                try:
-                    # 确定任务类型
-                    unique_y = len(np.unique(y))
-                    task_type = 'classification' if unique_y <= 20 else 'regression'
-
-                    # 创建项目
-                    project_name = f"auto_comparison_{int(time.time())}"
-                    # 使用正确的pgml.train_joint函数，它支持y_column_name数组
-                    cursor.execute("""
-                        SELECT pgml.train_joint(%s, %s, %s, ARRAY['target'], 'random_forest'::text, %s)
-                    """, (project_name, task_type, table_name, '{"n_estimators": 100, "random_state": 42}'))
-
-                    # 获取训练结果，pgml已经完成了特征工程和模型训练
-                    # 由于pgml在训练过程中已经生成了新特征，我们可以直接使用原始特征
-                    # pgml的train函数内部会进行特征选择和工程
-                    print(f"[PGML DB] Successfully trained model with project: {project_name}")
-
-                    # 查询训练数据作为特征（pgml内部已经进行了特征工程）
-                    cursor.execute(f"SELECT * FROM {table_name}")
-                    rows = cursor.fetchall()
-                    columns = [desc[0] for desc in cursor.description]
-
-                    # 移除target列，只保留特征
-                    feature_columns = [col for col in columns if col != 'target' and col != 'id']
-                    feature_data = []
-                    for row in rows:
-                        feature_row = []
-                        for col in feature_columns:
-                            col_index = columns.index(col)
-                            feature_row.append(row[col_index])
-                        feature_data.append(feature_row)
-
-                    X_final = pd.DataFrame(feature_data, columns=feature_columns)
-                    print(f"[PGML DB] Generated features: {X_final.shape[1]} columns")
-
-                except Exception as pgml_error:
-                    print(f"PGML training failed: {str(pgml_error)}")
-                    # 回退到原始特征
-                    X_final = X.copy()
-            else:
-                # 如果没有目标变量，返回原始特征
-                X_final = X.copy()
-
-            # 清理临时表
             cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+            cursor.execute(f"CREATE TABLE {table_name} ({', '.join(col_defs)})")
+
+            # 批量插入
+            insert_cols = safe_cols + (['target'] if y is not None else [])
+            records = []
+            for idx, (_, row) in enumerate(X.iterrows()):
+                vals = []
+                for c in X.columns:
+                    v = row[c]
+                    if pd.isna(v):
+                        vals.append(None)
+                    elif pd.api.types.is_numeric_dtype(type(v)):
+                        vals.append(float(v))
+                    else:
+                        vals.append(str(v))
+                if y is not None:
+                    yv = y.iloc[idx]
+                    vals.append(int(yv) if pd.api.types.is_integer_dtype(y) else float(yv))
+                records.append(tuple(vals))
+
+            from psycopg2.extras import execute_values
+            placeholders = ', '.join(insert_cols)
+            execute_values(cursor, f"INSERT INTO {table_name} ({placeholders}) VALUES %s", records)
             conn.commit()
 
+            # ---- 2. 使用 pgml.train 训练模型 ----
+            if y is not None:
+                unique_y = len(np.unique(y.dropna()))
+                task_type = 'classification' if unique_y <= 20 else 'regression'
+                project_name = f"pgml_cmp_{int(time.time())}"
+
+                try:
+                    cursor.execute(
+                        "SELECT * FROM pgml.train(%s, %s, %s, %s, %s, %s::jsonb)",
+                        (
+                            project_name,
+                            task_type,
+                            table_name,
+                            'target',
+                            'random_forest',
+                            json.dumps({"n_estimators": 100, "random_state": 42}),
+                        ),
+                    )
+                    train_result = cursor.fetchone()
+                    conn.commit()
+                    print(f"[PGML DB] pgml.train result: {train_result}")
+                except Exception as pgml_err:
+                    conn.rollback()
+                    print(f"[PGML DB] pgml.train failed: {pgml_err}")
+
+            # ---- 3. 读回特征（pgml 不显式生成新列，返回原始特征） ----
+            cursor.execute(f"SELECT {', '.join(safe_cols)} FROM {table_name} ORDER BY id")
+            rows = cursor.fetchall()
+            X_final = pd.DataFrame(rows, columns=safe_cols, index=X.index)
+
+            # 确保数值类型
+            X_final = X_final.apply(pd.to_numeric, errors='coerce')
+            X_final = X_final.fillna(0.0)
+
+            self.generated_features = X_final
+            print(f"[PGML DB] Returned {X_final.shape[1]} feature columns")
             return X_final
 
         except Exception as e:
-            print(f"PGML database feature generation failed: {str(e)}")
-            if 'cursor' in locals():
-                try:
+            print(f"PGML database feature generation failed: {e}")
+            return X.copy()
+        finally:
+            try:
+                if 'cursor' in locals():
                     cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                     conn.commit()
-                except:
-                    pass
-            # 如果PGML失败，返回原始特征
-            return X.copy()
+            except Exception:
+                pass
 
     def _get_connection(self):
         """获取PostgreSQL连接"""
@@ -2303,6 +2294,234 @@ class CAAFEMethod(ComparisonMethod):
         }
 
 
+class SmartFeatMethod(ComparisonMethod):
+    """SmartFeat: 智能统计特征生成 + 特征选择"""
+
+    def __init__(self, model_type: str = "RF", *, max_new_features: int = 30):
+        super().__init__("SmartFeat", model_type)
+        self.available = True  # pure sklearn, always available
+        self.max_new_features = max_new_features
+        self.fitted_selector = None
+        self.fitted_scaler = None
+        self.selected_feature_names: List[str] = []
+        self._original_feature_count_input = 0
+
+    # ------------------------------------------------------------------
+    def generate_features(self, X: pd.DataFrame, y: pd.Series = None) -> pd.DataFrame:
+        """Generate statistical interaction & aggregate features, then select top-K."""
+        from sklearn.preprocessing import StandardScaler
+        self._original_feature_count_input = X.shape[1]
+
+        # Encode categoricals
+        X_num = X.copy()
+        for col in X_num.select_dtypes(include=['object', 'category', 'bool']).columns:
+            X_num[col] = pd.Categorical(X_num[col]).codes
+
+        X_num = X_num.apply(pd.to_numeric, errors='coerce').fillna(0.0)
+        X_num = X_num.replace([np.inf, -np.inf], 0.0)
+
+        num_cols = list(X_num.columns)
+        new_features: Dict[str, pd.Series] = {}
+
+        # --- pairwise interactions (top pairs by variance) ---
+        # limit to first 15 columns to keep cost manageable
+        sel_cols = num_cols[:15]
+        for i in range(len(sel_cols)):
+            for j in range(i + 1, len(sel_cols)):
+                ci, cj = sel_cols[i], sel_cols[j]
+                ai, aj = X_num[ci], X_num[cj]
+                new_features[f"{ci}__x__{cj}"] = ai * aj
+                new_features[f"{ci}__sub__{cj}"] = ai - aj
+                denom = aj.replace(0, np.nan)
+                ratio = ai / denom
+                new_features[f"{ci}__div__{cj}"] = ratio.fillna(0.0).replace([np.inf, -np.inf], 0.0)
+
+        # --- unary transforms ---
+        for c in sel_cols:
+            s = X_num[c]
+            if (s >= 0).all():
+                new_features[f"{c}__sqrt"] = np.sqrt(s)
+            new_features[f"{c}__sq"] = s ** 2
+            new_features[f"{c}__abs"] = s.abs()
+
+        if not new_features:
+            self.generated_features = X_num
+            self.selected_feature_names = list(X_num.columns)
+            return X_num
+
+        new_df = pd.DataFrame(new_features, index=X_num.index)
+        # drop constant or all-NaN cols
+        new_df = new_df.loc[:, new_df.nunique() > 1]
+        new_df = new_df.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        combined = pd.concat([X_num, new_df], axis=1)
+
+        # --- feature selection ---
+        if y is not None and combined.shape[1] > self.max_new_features:
+            from sklearn.feature_selection import SelectKBest, f_classif, f_regression, mutual_info_classif, mutual_info_regression
+
+            unique_y = len(np.unique(y.dropna()))
+            if unique_y <= 20:
+                score_func = mutual_info_classif
+            else:
+                score_func = mutual_info_regression
+
+            k = min(self.max_new_features, combined.shape[1])
+            selector = SelectKBest(score_func, k=k)
+            try:
+                y_clean = pd.to_numeric(y, errors='coerce').fillna(0).values
+                selector.fit(combined.values, y_clean)
+                mask = selector.get_support()
+                combined = combined.loc[:, mask]
+                self.fitted_selector = selector
+            except Exception as sel_err:
+                print(f"[SmartFeat] Feature selection failed: {sel_err}, keeping all")
+
+        self.generated_features = combined
+        self.selected_feature_names = list(combined.columns)
+        return combined
+
+    # ------------------------------------------------------------------
+    def fit_predict(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
+        start_time = time.time()
+
+        prep_start = time.time()
+        X_full, y_full, complete_mask = self._encode_and_mark_complete_adda_standard(X, y)
+        self.preprocessing_time = time.time() - prep_start
+
+        self._original_feature_count_input = X_full.shape[1]
+
+        # Split
+        if task_type == "classify":
+            X_train, X_test, y_train, y_test = train_test_split(
+                X_full, y_full, test_size=0.2, random_state=0, stratify=y_full
+            )
+        else:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X_full, y_full, test_size=0.2, random_state=0
+            )
+
+        # Feature generation on train
+        feat_start = time.time()
+        X_train_gen = self.generate_features(X_train, y_train)
+        self.feature_generation_time = time.time() - feat_start
+
+        # Apply same columns to test
+        gen_cols = list(X_train_gen.columns)
+        X_test_gen = self._apply_same_features(X_test, gen_cols)
+
+        # Train & evaluate
+        train_start = time.time()
+        model = self._build_model(task_type)
+        model.fit(X_train_gen.values, y_train.values)
+        self.training_time = time.time() - train_start
+
+        pred_start = time.time()
+        metrics = self._evaluate(model, X_test_gen, y_test, task_type)
+        self.prediction_time = time.time() - pred_start
+
+        self.execution_time = time.time() - start_time
+        return metrics
+
+    def _apply_same_features(self, X: pd.DataFrame, gen_cols: List[str]) -> pd.DataFrame:
+        """Re-create the same generated columns for test data."""
+        X_num = X.copy()
+        for col in X_num.select_dtypes(include=['object', 'category', 'bool']).columns:
+            X_num[col] = pd.Categorical(X_num[col]).codes
+        X_num = X_num.apply(pd.to_numeric, errors='coerce').fillna(0.0)
+        X_num = X_num.replace([np.inf, -np.inf], 0.0)
+
+        existing = set(X_num.columns)
+        for col_name in gen_cols:
+            if col_name in existing:
+                continue
+            if '__x__' in col_name:
+                parts = col_name.split('__x__')
+                if len(parts) == 2 and parts[0] in X_num.columns and parts[1] in X_num.columns:
+                    X_num[col_name] = X_num[parts[0]] * X_num[parts[1]]
+            elif '__sub__' in col_name:
+                parts = col_name.split('__sub__')
+                if len(parts) == 2 and parts[0] in X_num.columns and parts[1] in X_num.columns:
+                    X_num[col_name] = X_num[parts[0]] - X_num[parts[1]]
+            elif '__div__' in col_name:
+                parts = col_name.split('__div__')
+                if len(parts) == 2 and parts[0] in X_num.columns and parts[1] in X_num.columns:
+                    denom = X_num[parts[1]].replace(0, np.nan)
+                    X_num[col_name] = (X_num[parts[0]] / denom).fillna(0.0).replace([np.inf, -np.inf], 0.0)
+            elif '__sqrt' in col_name:
+                base = col_name.replace('__sqrt', '')
+                if base in X_num.columns:
+                    X_num[col_name] = np.sqrt(X_num[base].clip(lower=0))
+            elif '__sq' in col_name:
+                base = col_name.replace('__sq', '')
+                if base in X_num.columns:
+                    X_num[col_name] = X_num[base] ** 2
+            elif '__abs' in col_name:
+                base = col_name.replace('__abs', '')
+                if base in X_num.columns:
+                    X_num[col_name] = X_num[base].abs()
+
+        X_num = X_num.reindex(columns=gen_cols, fill_value=0.0)
+        X_num = X_num.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        return X_num
+
+    def _evaluate(self, model, X_test: pd.DataFrame, y_test: pd.Series, task_type: str) -> Dict[str, float]:
+        y_pred = model.predict(X_test.values)
+        if task_type == "classify":
+            y_prob = None
+            try:
+                probs = model.predict_proba(X_test.values)
+                y_prob = probs[:, 1] if probs.shape[1] == 2 else probs
+            except Exception:
+                pass
+            auc = roc_auc_score(y_test, y_prob) if y_prob is not None else accuracy_score(y_test, y_pred)
+            return {
+                "auc": float(auc),
+                "accuracy": float(accuracy_score(y_test, y_pred)),
+                "f1": float(f1_score(y_test, y_pred, average="weighted")),
+                "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
+                "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
+            }
+        else:
+            y_mean = np.mean(y_test)
+            rae = np.sum(np.abs(y_test - y_pred)) / (np.sum(np.abs(y_test - y_mean)) + 1e-12)
+            return {
+                "rmse": float(np.sqrt(mean_squared_error(y_test, y_pred))),
+                "mse": float(mean_squared_error(y_test, y_pred)),
+                "mae": float(mean_absolute_error(y_test, y_pred)),
+                "r2": float(r2_score(y_test, y_pred)),
+                "rae": float(rae),
+                "one_minus_rae": float(1.0 - rae),
+            }
+
+    # ------------------------------------------------------------------
+    def get_feature_info(self) -> Dict[str, Any]:
+        if self.generated_features is not None:
+            orig = int(self._original_feature_count_input)
+            gen = len(self.generated_features.columns)
+            return {
+                "original_feature_count": orig,
+                "generated_feature_count": gen,
+                "new_features_count": max(0, gen - orig),
+                "feature_names": list(self.generated_features.columns),
+                "new_feature_names": [c for c in self.generated_features.columns
+                                      if '__' in str(c)],
+                "generated_features": self.generated_features,
+                "description": f"SmartFeat: statistical interaction features + mutual-info selection. {gen} features ({max(0, gen - orig)} new).",
+                "success": True,
+            }
+        return {
+            "original_feature_count": 0,
+            "generated_feature_count": 0,
+            "new_features_count": 0,
+            "feature_names": [],
+            "new_feature_names": [],
+            "generated_features": None,
+            "description": "SmartFeat feature generation did not run.",
+            "success": False,
+        }
+
+
 class ComparisonEngine:
     """特征工程框架对比引擎"""
 
@@ -2326,7 +2545,8 @@ class ComparisonEngine:
             "AutoFeat": AutoFeatMethod(**autofeat_kwargs),
             "PGML": PGMLMethod(db_config),
             "MADlib": MadlibMethod(db_config),
-            "CAAFE": CAAFEMethod()
+            "CAAFE": CAAFEMethod(),
+            "SmartFeat": SmartFeatMethod()
         }
 
     def run_comparison(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify",
@@ -2346,7 +2566,7 @@ class ComparisonEngine:
             对比结果字典
         """
         if methods is None:
-            methods = ["Baseline", "AutoFeat", "PGML", "MADlib", "CAAFE"]
+            methods = ["Baseline", "AutoFeat", "PGML", "MADlib", "CAAFE", "SmartFeat"]
 
         results = {
             "methods": [],
@@ -2542,7 +2762,8 @@ class ComparisonEngine:
             "AutoFeat": "Automated feature engineering with mathematical transformations.",
             "PGML": "PostgreSQL ML extension (in-database feature processing / AutoML-style pipeline).",
             "MADlib": "PostgreSQL MADlib plugin for categorical encoding and preprocessing.",
-            "CAAFE": "LLM-driven feature engineering with iterative verification (CAAFE)."
+            "CAAFE": "LLM-driven feature engineering with iterative verification (CAAFE).",
+            "SmartFeat": "Statistical interaction features with intelligent mutual-information selection."
         }
 
 

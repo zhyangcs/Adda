@@ -174,11 +174,13 @@ const isEndToEnd = computed(() => route.path.includes('performance'))
 const comparisonOptions = [
   { value: 'AutoFeat', label: 'AutoFeat' },
   { value: 'MADlib', label: 'MADlib' },
-  { value: 'CAAFE', label: 'CAAFE' }
+  { value: 'CAAFE', label: 'CAAFE' },
+  { value: 'PGML', label: 'PGML' },
+  { value: 'SmartFeat', label: 'SmartFeat' }
 ]
 
 const REQUIRED_COMPARISON_METHOD = 'Adda'
-const DISALLOWED_COMPARISON_METHODS = new Set(['Baseline', 'PGML'])
+const DISALLOWED_COMPARISON_METHODS = new Set(['Baseline'])
 
 function normalizeComparisonMethods() {
   const list = taskStore.config.comparisonMethods
