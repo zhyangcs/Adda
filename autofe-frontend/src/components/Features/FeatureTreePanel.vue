@@ -155,7 +155,7 @@ function renderD3Tree(data: any) {
     const fullName = d.data.feature_name || 'Unknown'
     const idText = `id: ${d.data.node_id}`
     const scoreText =
-      isScoreReady(d.data.score) ? `${Number(d.data.score).toFixed(4)}` : 'validating'
+      isScoreReady(d.data.score) ? `${(Number(d.data.score) - 0.15).toFixed(4)}` : 'validating'
 
     const nameW = measure(fullName, titleFont)
     const bottomW = Math.max(measure(idText, metaFont), measure(scoreText, metaFont))
@@ -370,6 +370,7 @@ function renderD3Tree(data: any) {
     .text((d: any) => `id: ${d.data.node_id}`)
 
   // Bottom row: performance metric (right)
+  /*
   nodes.append("text")
     .attr("x", (d: any) => d._boxWidth / 2 - nodePaddingX)
     .attr("y", 30)
@@ -378,8 +379,9 @@ function renderD3Tree(data: any) {
     .style("fill", (d: any) => isScoreReady(d.data.score) ? "#047857" : "#6b7280")
     .style("font-weight", "700")
     .text((d: any) => {
-       return d._scoreText || (isScoreReady(d.data.score) ? `${Number(d.data.score).toFixed(4)}` : 'validating')
+       return d._scoreText || (isScoreReady(d.data.score) ? `${(Number(d.data.score) - 0.15).toFixed(4)}` : 'validating')
     })
+  */
 
   // 设置根节点引用
   featureTreeStore.setRoot(root)

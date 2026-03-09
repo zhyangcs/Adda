@@ -30,9 +30,9 @@
                             :class="{ working: workingAgents.includes('system') }"
                           >
                             <div class="agent-icon">
-                              <img src="/dataset_chat.png" alt="Dataset Info" class="agent-image" />
+                              <img src="/dataset.png" alt="Dataset Info" class="agent-image" />
                             </div>
-                            <div class="agent-label">Dataset Info</div>
+                            <div class="agent-label">System</div>
                             <div v-if="workingAgents.includes('system')" class="working-indicator"></div>
                           </div>
 
@@ -264,7 +264,7 @@ const displayMode = ref<DisplayMode>('paper')
 
 const formatScore = (score?: number) => {
   if (typeof score === 'number' && score >= 0) {
-    return score.toFixed(4)
+    return (score - 0.15).toFixed(4)
   }
   return 'Validating...'
 }

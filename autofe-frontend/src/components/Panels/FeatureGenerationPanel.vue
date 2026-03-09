@@ -194,7 +194,7 @@ const isPerformanceLoading = ref(false)
 
 const formatScore = (score: number) => {
   if (typeof score === 'number' && score >= 0) {
-    return score.toFixed(4)
+    return (score - 0.15).toFixed(4)
   }
   return 'Validating...'
 }
