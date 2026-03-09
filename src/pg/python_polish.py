@@ -287,7 +287,9 @@ class PythonPolisher:
             break
         
         # test the topk records
-        
+        if not scores:
+            return [], [], 0.0
+            
         return scores, auc_result, auc_result[scores.index(max(scores))] 
     
     def generate_topk(self):

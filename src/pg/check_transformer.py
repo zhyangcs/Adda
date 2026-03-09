@@ -49,7 +49,10 @@ class CheckTransformer(ast.NodeTransformer):
         # print("func_string:" + func_string)
         # only make effect on the circumnstance of the function on the variable, which func has the ast.Attribute type
         if isinstance(node.func, ast.Attribute):
-            module_info = eval("inspect.getmodule({})".format(func_string), self.script_scope)
+            try:
+                module_info = eval("inspect.getmodule({})".format(func_string), self.script_scope)
+            except Exception:
+                module_info = None
             # print("func_string:" + func_string, module_info.__name__)
             # node.func.value.id is the name of the variable
             # node.func.attr is the name of the function

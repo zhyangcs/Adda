@@ -92,6 +92,16 @@ def split_code_for_comment(python_code: list[str], split_start:str, tb_name:str,
             cur_code += line
     if cur_code != '':
         code_block.append(cur_code)
+    
+    if not code_block:
+        # Handle empty code case
+        pre_code = cleandoc("""
+        import inspect
+        from pandas_to_sql import wrap_df
+        from src.pg.df_wrapper import DataFrameWrapper
+        """)
+        return pre_code, [], [], []
+
     pre_code = cleandoc("""
     import inspect
     from pandas_to_sql import wrap_df
