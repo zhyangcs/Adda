@@ -239,7 +239,7 @@ class FeatureSearchManager:
             if self.status == "running":
                 return False, "已有搜索在运行"
 
-            task_name, target_col, task_type = task_config(dataset.lower())
+            task_name, target_col, task_type = task_config(_normalize_dataset_name(dataset))
             from src.llm.tests.test_util import read_data_info
             from src.pg.import_table import importTable_with_split
             from src.pg.sql_utils import get_conn
@@ -384,7 +384,18 @@ def _read_feature_search_time(store_dir: str):
 def _normalize_dataset_name(dataset: str) -> str:
     if not dataset:
         return ""
-    return str(dataset).strip().lower()
+    d = str(dataset).strip().lower()
+    # ID mapping compatible with frontend
+    mapping = {
+        '1': 'titanic',
+        '2': 'heart',
+        '3': 'bank',
+        '4': 'diabetes',
+        '5': 'bike',
+        '6': 'house',
+        '7': 'adult'
+    }
+    return mapping.get(d, d)
 
 
 def _resolve_pipeline_file(dataset: str, ml_model: str, pipeline_hint: str = None):
@@ -422,7 +433,14 @@ def _resolve_pipeline_file(dataset: str, ml_model: str, pipeline_hint: str = Non
                 break
     if pipeline_path is None:
         pipelines = sorted(pipelines, key=os.path.getmtime, reverse=True)
-        pipeline_path = pipelines[0]
+        # 逐个检查，返回第一个非空文件
+        for p in pipelines:
+             if os.path.exists(p) and os.path.getsize(p) > 0:
+                 pipeline_path = p
+                 break
+        
+        if pipeline_path is None:
+             raise FileNotFoundError("未找到任何非空的pipeline文件")
 
     return pipeline_path, candidate_dir
 
@@ -436,6 +454,7 @@ def _candidate_store_dirs(dataset: str, ml_model: str):
     candidates = [
         os.path.join(test_save_path, f"{dataset_key}_{ml_model_key}_Full"),
         os.path.join(test_save_path, dataset_key),
+        os.path.join(test_save_path, f"{dataset_key}_o"),
     ]
     pattern = os.path.join(test_save_path, f"{dataset_key}*{ml_model_key}*")
     for p in glob.glob(pattern):
@@ -456,13 +475,15 @@ def _load_pipe_ctor(store_dir: str):
     尝试从指定目录加载cur_states.pkl。
     """
     cur_states_path = os.path.join(store_dir, "cur_states.pkl")
+    error = None
     if os.path.isfile(cur_states_path):
         try:
             with open(cur_states_path, "rb") as f:
-                return pickle.load(f), cur_states_path
+                return pickle.load(f), cur_states_path, None
         except Exception as e:
+            error = str(e)
             print(f"Failed to load cur_states from {cur_states_path}: {e}")
-    return None, None
+    return None, None, error
 
 
 def _resolve_code_path(code_path: str, store_dir: str, dataset_key: str, ml_model_key: str):
@@ -510,6 +531,7 @@ def _select_pipeline_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, da
 def _select_pipe_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, dataset_key: str, ml_model_key: str):
     """
     Choose a pipe object from cur_states, prefer matching pipeline_hint.
+    Also checks if the code file is not empty.
     """
     if not pipe_ctor or not hasattr(pipe_ctor, "pipes"):
         return None, None
@@ -517,7 +539,7 @@ def _select_pipe_from_ctor(pipe_ctor, pipeline_hint: str, store_dir: str, datase
     for p in pipe_ctor.pipes or []:
         code_path = getattr(p, "code_path", None)
         resolved = _resolve_code_path(code_path, store_dir, dataset_key, ml_model_key)
-        if resolved:
+        if resolved and os.path.exists(resolved) and os.path.getsize(resolved) > 0:
             valid_pipes.append((p, resolved))
             if pipeline_hint and pipeline_hint in os.path.basename(resolved):
                 return p, resolved
@@ -690,9 +712,12 @@ def _build_pipeline_dag_preview(dataset_key: str, ml_model_key: str, pipe_obj, p
 
         polisher.polish_code()
         if not polisher.DagCons:
-            raise Exception("无法构建pipeline DAG")
-
+            raise Exception("无法构建pipeline DAG (DagCons is empty)")
+        
         dag_ctor = polisher.DagCons[0]
+        if dag_ctor is None:
+             raise Exception("无法构建pipeline DAG (DagCons[0] is None). 可能因为pipeline代码解析失败.")
+            
         import_code = polisher.import_codes[0] if polisher.import_codes else []
         collector = {"nodes": {}}
         dag_ctor.bfs_dag(
@@ -1172,7 +1197,7 @@ def py2sql_ast():
     pipeline_from_pipes = False
     ctor_loaded = False
     for cand_dir in _candidate_store_dirs(dataset, ml_model):
-        pipe_ctor, cur_states_path = _load_pipe_ctor(cand_dir)
+        pipe_ctor, cur_states_path, _ = _load_pipe_ctor(cand_dir)
         if pipe_ctor:
             ctor_loaded = True
             store_dir = cand_dir
@@ -1319,22 +1344,61 @@ def py2sql_dag():
     pipeline_hint = payload.get('pipelineId') or payload.get('pipelineName')
     dataset_key = _normalize_dataset_name(dataset)
     ml_model_key = (ml_model or "RF").strip()
+    
+    print(f"[py2sql-dag] Request: dataset={dataset}, key={dataset_key}, model={ml_model}, key={ml_model_key}, hint={pipeline_hint}")
 
     pipe_ctor = None
     store_dir = None
     pipe_obj = None
     resolved_code_path = None
-    for cand_dir in _candidate_store_dirs(dataset, ml_model):
-        pipe_ctor, _ = _load_pipe_ctor(cand_dir)
+    load_errors = []
+    
+    candidates = _candidate_store_dirs(dataset, ml_model)
+    print(f"[py2sql-dag] Candidate dirs: {candidates}")
+    
+    for cand_dir in candidates:
+        pipe_ctor, _, load_err = _load_pipe_ctor(cand_dir)
+        if load_err:
+            print(f"[py2sql-dag] Load error for {cand_dir}: {load_err}")
+            load_errors.append(f"{os.path.basename(cand_dir)}: {load_err}")
+        
         if not pipe_ctor:
+            print(f"[py2sql-dag] No pipe_ctor for {cand_dir}")
             continue
+            
+        print(f"[py2sql-dag] Loaded pipe_ctor for {cand_dir}. Pipes: {len(getattr(pipe_ctor, 'pipes', []) or [])}")
         pipe_obj, resolved_code_path = _select_pipe_from_ctor(pipe_ctor, pipeline_hint, cand_dir, dataset_key, ml_model_key)
+        
         if pipe_obj and resolved_code_path:
             store_dir = cand_dir
+            print(f"[py2sql-dag] Selected pipe {resolved_code_path} from {cand_dir}")
             break
+        else:
+            print(f"[py2sql-dag] Failed to select pipe from {cand_dir}")
 
     if not pipe_obj:
-        return jsonify({"status": "fail", "message": "未找到可用的pipeline（cur_states.pkl不存在或无有效pipes）"}), 404
+        print("[py2sql-dag] pipe_obj is None. Attempting fallback...")
+        try:
+            pipeline_path, fallback_store_dir = _resolve_pipeline_file(dataset, ml_model, pipeline_hint)
+            print(f"[py2sql-dag] Fallback resolved: {pipeline_path}, {fallback_store_dir}")
+            if pipeline_path:
+                class DummyPipe:
+                    def __init__(self, c_path):
+                        self.code_path = c_path
+                        self.parameters = {} # Ensure parameters exists
+                pipe_obj = DummyPipe(pipeline_path)
+                store_dir = fallback_store_dir
+                print(f"[py2sql-dag] Created DummyPipe with {pipeline_path}")
+        except Exception as e:
+            print(f"[py2sql-dag] Fallback scan failed: {e}")
+            load_errors.append(f"Fallback: {str(e)}")
+
+    if not pipe_obj:
+        msg = "未找到可用的pipeline（cur_states.pkl不存在或无有效pipes）"
+        if load_errors:
+            msg += f"; Errors: {'; '.join(load_errors)}"
+        print(f"[py2sql-dag] Returning 404: {msg}")
+        return jsonify({"status": "fail", "message": msg}), 404
 
     result = _build_pipeline_dag_preview(dataset_key, ml_model_key, pipe_obj, pipe_ctor, store_dir or "")
     if result.get("error"):
@@ -1493,7 +1557,7 @@ def auto_step():
         # 1. 导入所有需要的模块
         from src.llm.tests.test_util import task_config
         from src.env import test_save_path, dataset_path, proj_path
-        task_name, target_col, task_type = task_config(dataset.lower())
+        task_name, target_col, task_type = task_config(_normalize_dataset_name(dataset))
 
         # 2. 导入并分割数据集
         from src.pg.import_table import importTable_with_split
@@ -2304,7 +2368,7 @@ def performance_evaluation():
         paper_top_k = 7
 
         # 获取任务配置
-        task_name, target_col, task_type = task_config(dataset.lower())
+        task_name, target_col, task_type = task_config(_normalize_dataset_name(dataset))
 
         # 导入并分割数据集，确保表存在
         from src.pg.import_table import importTable_with_split
@@ -2323,7 +2387,7 @@ def performance_evaluation():
         pipe_ctor = None
         cur_states_path = None
         for cand_dir in _candidate_store_dirs(task_name, ml_model_type):
-            pipe_ctor, cur_states_path = _load_pipe_ctor(cand_dir)
+            pipe_ctor, cur_states_path, _ = _load_pipe_ctor(cand_dir)
             if pipe_ctor:
                 store_dir = cand_dir
                 break

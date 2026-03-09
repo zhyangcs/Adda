@@ -4,6 +4,7 @@ import sys
 import pickle
 import re
 import json
+import glob
 from collections import deque
 import pandas as pd
 import networkx as nx
@@ -548,6 +549,63 @@ class AddaConnector:
             return "应用自定义函数"
         return "特征转换操作"
 
+    def _resolve_pipe_code_path(self, code_path: str, store_dir: str, task_name: str, model_type: str):
+        """
+        Resolve a pipe's code_path by searching known store directories.
+        Returns a valid path or None.
+        """
+        if code_path and os.path.isfile(code_path):
+            return code_path
+
+        basename = os.path.basename(code_path) if code_path else None
+        if not basename:
+            return None
+
+        candidate_dirs = []
+        if store_dir:
+            candidate_dirs.append(os.path.join(store_dir, "pycodes"))
+
+        if task_name:
+            candidate_dirs.extend([
+                os.path.join(test_save_path, f"{task_name}_{model_type}_Full", "pycodes"),
+                os.path.join(test_save_path, task_name, "pycodes"),
+                os.path.join(test_save_path, f"{task_name}_o", "pycodes"),
+            ])
+
+        # Include any matching historical stores
+        if task_name and model_type:
+            pattern = os.path.join(test_save_path, f"{task_name}*{model_type}*")
+            for p in glob.glob(pattern):
+                candidate_dirs.append(os.path.join(p, "pycodes"))
+
+        seen = set()
+        ordered_dirs = []
+        for d in candidate_dirs:
+            if d not in seen:
+                ordered_dirs.append(d)
+                seen.add(d)
+
+        # First pass: direct basename match
+        for d in ordered_dirs:
+            cand = os.path.join(d, basename)
+            if os.path.isfile(cand):
+                return cand
+
+        # Second pass: if basename not found, pick newest pipeline_*.py in any candidate dir
+        for d in ordered_dirs:
+            if not os.path.isdir(d):
+                continue
+            pipelines = sorted(
+                glob.glob(os.path.join(d, "pipeline_*.py")),
+                key=os.path.getmtime,
+                reverse=True
+            )
+            for p in pipelines:
+                if os.path.isfile(p) and os.path.getsize(p) > 0:
+                    return p
+
+        return None
+
     def _run_multimodal_performance(self, model_type="RF", task_name=None, store_dir=None):
         """
         直接模仿 run_multimodel_type.py 的做法来执行性能测试
@@ -664,25 +722,18 @@ class AddaConnector:
             # 9. 设置表名
             pipeCtor.tb_name = db_tb_name
 
-            # 9.1 当使用store_dir时，重写pipe的code_path，避免指向旧的任务目录
-            if store_dir and hasattr(pipeCtor, 'pipes') and pipeCtor.pipes:
-                pycode_dir = os.path.join(store_dir, "pycodes")
-                if os.path.isdir(pycode_dir):
-                    for idx, pipe in enumerate(pipeCtor.pipes):
-                        if pipe is None or not getattr(pipe, 'code_path', None):
-                            continue
-                        code_basename = os.path.basename(pipe.code_path)
-                        candidate_path = os.path.join(pycode_dir, code_basename)
-                        if os.path.exists(candidate_path):
-                            pipe.code_path = candidate_path
-                        else:
-                            # 保留原始路径，后续由polisher过滤无效管道
-                            print(
-                                f"Warning: Remapped code path not found for pipe {idx}: {candidate_path}. "
-                                f"Keeping original: {pipe.code_path}"
-                            )
-                else:
-                    print(f"Warning: pycodes directory not found under store_dir: {pycode_dir}")
+            # 9.1 Resolve pipe code_path across possible store directories
+            if hasattr(pipeCtor, 'pipes') and pipeCtor.pipes:
+                for idx, pipe in enumerate(pipeCtor.pipes):
+                    if pipe is None or not getattr(pipe, 'code_path', None):
+                        continue
+                    resolved = self._resolve_pipe_code_path(pipe.code_path, store_dir, actual_task_name, model_type)
+                    if resolved:
+                        pipe.code_path = resolved
+                    else:
+                        print(
+                            f"Warning: Failed to resolve code path for pipe {idx}: {pipe.code_path}"
+                        )
 
             # 10. 检查是否有有效的pipes（关键修复）
             if not hasattr(pipeCtor, 'pipes') or not pipeCtor.pipes:
@@ -708,12 +759,40 @@ class AddaConnector:
                         "sql_code": {}
                     }
 
-            # 过滤掉None pipes
-            valid_pipes = [pipe for pipe in pipeCtor.pipes if pipe is not None]
+            # 过滤掉None pipes或无效code_path
+            valid_pipes = [
+                pipe for pipe in pipeCtor.pipes
+                if pipe is not None and getattr(pipe, 'code_path', None) and os.path.isfile(pipe.code_path)
+            ]
+
+            # 若code_path均失效，尝试重写pipeline代码再解析
+            if not valid_pipes:
+                print("Debug: No valid code_path found, attempting to recompute pipelines via compute_best_code")
+                try:
+                    pipeCtor.compute_best_code()
+                except Exception as e:
+                    print(f"Warning: compute_best_code failed: {e}")
+
+                # 重新解析code_path
+                if hasattr(pipeCtor, 'pipes') and pipeCtor.pipes:
+                    for idx, pipe in enumerate(pipeCtor.pipes):
+                        if pipe is None or not getattr(pipe, 'code_path', None):
+                            continue
+                        resolved = self._resolve_pipe_code_path(pipe.code_path, store_dir, actual_task_name, model_type)
+                        if resolved:
+                            pipe.code_path = resolved
+                        else:
+                            print(f"Warning: Failed to resolve code path after recompute for pipe {idx}: {pipe.code_path}")
+
+                valid_pipes = [
+                    pipe for pipe in pipeCtor.pipes
+                    if pipe is not None and getattr(pipe, 'code_path', None) and os.path.isfile(pipe.code_path)
+                ]
+
             if not valid_pipes:
                 return {
                     "success": False,
-                    "error": "所有特征管道都无效。这可能是由于数据质量问题或搜索深度不足导致的。",
+                    "error": "所有特征管道都无效或找不到代码文件。请确认特征生成目录包含pycodes，并重跑特征搜索。",
                     "auc": 0.0,
                     "execution_time": 0.0,
                     "sql_code": {}
@@ -722,7 +801,7 @@ class AddaConnector:
             print(f"Debug: Found {len(valid_pipes)} valid pipes out of {len(pipeCtor.pipes)} total pipes")
 
             # 11. 初始化PythonPolisher（完全按照run_multimodel_type.py的参数）
-            pipes = pipeCtor.pipes
+            pipes = valid_pipes
             polisher = PythonPolisher(
                 db_tb_name,
                 target_col,

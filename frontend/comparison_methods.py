@@ -126,18 +126,33 @@ class ComparisonMethod:
         )
 
     def fit_predict(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
-        """完整的特征生成+评估流程（避免数据泄露） - 符合系统标准划分方式"""
+        """完整的特征生成+评估流程（避免数据泄露）"""
         start_time = time.time()
 
         # Expose task type to subclasses that need it (e.g., AutoFeatClassifier vs AutoFeatRegressor)
         self._task_type = task_type
 
-        # Split BEFORE preprocessing to avoid leakage.
-        # IMPORTANT: to align with Adda's DB import (`importTable_with_split`), we split on a *single* dataframe
-        # that includes the target column, with the same random_state/stratify semantics.
+        # IMPORTANT: per user request, remove all in-module data preprocessing.
+        # That means:
+        # - No categorical encoding.
+        # - No dropping rows for feature search.
+        # - No train-time statistics computed from the full dataset.
+        #
+        # Downstream training still requires a numeric matrix; later we will keep only numeric
+        # columns (non-numeric columns are ignored) and apply a strict NaN/inf guard right before
+        # model.fit/predict to avoid runtime errors.
+        prep_start = time.time()
+        X_full = X.copy()
+        # Keep y as a pandas Series for consistent indexing/stratify behavior.
+        y_full = pd.Series(y, index=X_full.index)
+        # Feature-search mask is kept for API compatibility but does nothing under "no preprocessing".
+        complete_mask = pd.Series(True, index=X_full.index)
+        self.preprocessing_time = time.time() - prep_start
+
+        # Split on a *single* dataframe that includes the target column (same random_state/stratify semantics).
         _target_key = "__target__"
-        df_all = X.copy()
-        df_all[_target_key] = np.asarray(y)
+        df_all = X_full.copy()
+        df_all[_target_key] = np.asarray(y_full)
         if task_type == "classify":
             df_train, df_test = train_test_split(
                 df_all, test_size=0.2, random_state=0, stratify=df_all[_target_key]
@@ -145,7 +160,7 @@ class ComparisonMethod:
         else:
             df_train, df_test = train_test_split(df_all, test_size=0.2, random_state=0)
 
-        y_train = df_train[_target_key]
+        y_train_full = df_train[_target_key]
         y_test = df_test[_target_key]
         X_train_raw = df_train.drop(columns=[_target_key])
         X_test_raw = df_test.drop(columns=[_target_key])
@@ -154,32 +169,40 @@ class ComparisonMethod:
         self._X_train_raw = X_train_raw
         self._X_test_raw = X_test_raw
 
-        # Preprocess TRAIN split only (learn statistics from train).
-        prep_start = time.time()
-        X_train = self._preprocess_data(X_train_raw)
-        self.preprocessing_time = time.time() - prep_start
+        # Feature-search subset (complete-case rows) inside the TRAIN split only.
+        # These rows are used to fit feature generation / feature selection logic.
+        try:
+            train_complete_mask = complete_mask.loc[X_train_raw.index]
+        except Exception:
+            # Fallback if index alignment fails for any reason.
+            train_complete_mask = pd.Series(True, index=X_train_raw.index)
+
+        X_train_search = X_train_raw.loc[train_complete_mask]
+        y_train_search = y_train_full.loc[train_complete_mask]
+
+        # Save for transparency/debugging.
+        self._train_rows_full = int(len(X_train_raw))
+        self._train_rows_search = int(len(X_train_search))
+        self._test_rows_full = int(len(X_test_raw))
 
         # 保存训练集信息供子类使用
-        self._X_train = X_train
-        # NOTE: We intentionally do NOT preprocess X_test yet, because some methods (AutoFeat)
-        # need to apply additional preprocessing (e.g., scaling) *after* they are fitted.
-        self._y_train = y_train
+        self._X_train = X_train_search
+        self._y_train = y_train_search
         self._y_test = y_test
 
         # Feature generation (TRAIN split only)
         feat_fit_start = time.time()
-        X_train_generated = self.generate_features(X_train, y_train)
+        X_train_generated = self.generate_features(X_train_search, y_train_search)
         self.feature_generation_time = time.time() - feat_fit_start
         self.generated_features = X_train_generated
 
         # Apply the learned feature transformation to TEST split (tracked separately)
         feat_transform_start = time.time()
-        # Preprocess TEST split using TRAIN stats (no leakage). Done after feature generation so
-        # AutoFeat-specific preprocessing can reuse fitted state (scaler/shift) if present.
-        X_test_basic = self._preprocess_test_data(X_test_raw, X_train_raw)
+        # Preprocessing is already applied globally above; test split is ready.
+        X_test_basic = X_test_raw
         self._X_test = X_test_basic
         if hasattr(self, 'fitted_autofeat') and self.fitted_autofeat is not None:
-            X_test_processed = self._preprocess_test_data(X_test_raw, X_train_raw)
+            X_test_processed = X_test_raw.copy()
             # AutoFeat is usually fitted on numeric-only columns (and possibly scaled);
             # make sure test-time transform sees the exact same columns in the same order.
             autofeat_cols = getattr(self, "_autofeat_input_columns", None)
@@ -197,11 +220,90 @@ class ComparisonMethod:
             X_test_generated = X_test_basic
         self.feature_transform_time = time.time() - feat_transform_start
 
+        # Build the feature matrix for final downstream model training.
+        # Requirement:
+        # - Feature search / fitting uses X_train_search only.
+        # - Final model training uses the FULL training split (X_train_raw / y_train_full).
+        #
+        # For methods that expose a fitted transformer (e.g. AutoFeat), apply that transformer to
+        # the full training split. Otherwise, fall back to using the generated features from the
+        # search subset (best-effort; some methods have no reusable transform API).
+        X_train_full_generated = None
+
+        if hasattr(self, "fitted_autofeat") and getattr(self, "fitted_autofeat", None) is not None:
+            # Mirror the test-time transform logic for the full training split.
+            X_train_full_processed = X_train_raw.copy()
+            autofeat_cols = getattr(self, "_autofeat_input_columns", None)
+            if isinstance(autofeat_cols, (list, tuple)) and len(autofeat_cols) > 0:
+                for c in autofeat_cols:
+                    if c not in X_train_full_processed.columns:
+                        X_train_full_processed[c] = 0.0
+                X_train_full_processed = X_train_full_processed[list(autofeat_cols)]
+            else:
+                X_train_full_processed = X_train_full_processed.select_dtypes(include=[np.number])
+            try:
+                X_train_full_generated = self.fitted_autofeat.transform(X_train_full_processed)
+            except Exception:
+                X_train_full_generated = None
+        elif (self.__class__.__name__ == "BaselineMethod") or str(getattr(self, "name", "")).lower().startswith("baseline"):
+            # Baseline has no fitted transformer; it is identity.
+            X_train_full_generated = X_train_raw
+        elif hasattr(self, "fitted_scaler") and getattr(self, "fitted_scaler", None) is not None:
+            # Some methods learn a scaler/transform; apply it to the full training split.
+            try:
+                X_train_full_generated = self._transform_test_features(X_train_raw)
+            except Exception:
+                X_train_full_generated = None
+
+        # Ensure numeric matrix and align columns.
+        def _drop_id_like_columns(df_in: pd.DataFrame) -> pd.DataFrame:
+            # In Adda's in-DB pipeline, `id` is a join key, not a model feature.
+            # Drop common id-like columns to avoid leakage / unfair baselines.
+            cols = list(df_in.columns)
+            drop_cols = []
+            for c in cols:
+                cl = str(c).strip().lower()
+                if cl == "id" or cl.endswith("_id") or cl == "index":
+                    drop_cols.append(c)
+            return df_in.drop(columns=drop_cols, errors="ignore")
+
+        def _to_numeric_frame(obj: Any) -> pd.DataFrame:
+            if isinstance(obj, pd.DataFrame):
+                df_obj = obj
+            else:
+                df_obj = pd.DataFrame(obj)
+            df_num = df_obj.select_dtypes(include=[np.number])
+            return _drop_id_like_columns(df_num)
+
+        if X_train_full_generated is None:
+            X_train_fit = _to_numeric_frame(X_train_generated)
+            y_train_fit = y_train_search
+        else:
+            X_train_fit = _to_numeric_frame(X_train_full_generated)
+            y_train_fit = y_train_full
+
+        X_train_generated = _to_numeric_frame(X_train_generated)
+        X_test_generated = _to_numeric_frame(X_test_generated)
+
+        if X_train_fit.shape[1] == 0:
+            return {"error": "No numeric features available after minimal preprocessing (cannot train downstream model)."}
+
+        # Align test columns to train columns (fill missing engineered columns with 0).
+        try:
+            X_test_generated = X_test_generated.reindex(columns=list(X_train_fit.columns), fill_value=0.0)
+        except Exception:
+            pass
+
+        # Adda PL/Python UDF path applies a strict NaN guard before training/prediction:
+        #   replace inf/-inf with NaN, then fill NaN with 0.
+        X_train_fit = X_train_fit.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        X_test_generated = X_test_generated.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
         # Train and evaluate (timed as: fit-only, then predict-only, then metric-only/overhead)
         model = self._build_model(task_type)
 
         fit_start = time.time()
-        model.fit(X_train_generated, y_train)
+        model.fit(X_train_fit, y_train_fit)
         self.training_time = time.time() - fit_start
 
         pred_start = time.time()
@@ -271,81 +373,66 @@ class ComparisonMethod:
         if not hasattr(self, '_X_train') or not hasattr(self, '_X_test'):
             raise RuntimeError("Data leakage protection: Must call fit_predict() first")
 
+    @staticmethod
+    def _prepare_df_for_train_adda_standard(
+        df: pd.DataFrame,
+        label: Optional[pd.Series] = None,
+    ) -> tuple[pd.DataFrame, Optional[pd.Series]]:
+        """
+        Legacy helper. Per user request, this is now a no-op (except for copying and
+        preserving label alignment).
+        """
+        if label is not None:
+            return df.copy(), label.copy()
+        return df.copy(), None
+
+    @staticmethod
+    def _encode_and_mark_complete_adda_standard(
+        df: pd.DataFrame,
+        label: pd.Series,
+    ) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+        """
+        No-preprocessing variant:
+        - Keeps the original columns unchanged (no categorical encoding).
+        - Drops rows where label is NaN (cannot stratify/evaluate).
+        - Returns a "complete-case" mask computed after inf->NaN replacement (best-effort).
+        """
+        X_raw = df.copy()
+        y_raw = pd.Series(label, index=df.index)
+
+        combined = X_raw.copy()
+        combined["__target__"] = y_raw
+        combined = combined.replace([float("inf"), float("-inf")], float("nan"))
+
+        # If label has NaN, it cannot be used for stratification/metrics; drop those rows globally.
+        label_ok = combined["__target__"].notna()
+        combined = combined.loc[label_ok]
+
+        complete_mask = ~combined.isna().any(axis=1)
+
+        X_full = combined.drop(columns=["__target__"])
+        y_full = combined["__target__"]
+
+        return X_full, y_full, complete_mask
+
     def _preprocess_data(self, X: pd.DataFrame) -> pd.DataFrame:
-        """数据预处理"""
-        X_processed = X.copy()
-
-        # 处理缺失值
-        numeric_columns = X_processed.select_dtypes(include=[np.number]).columns
-        X_processed[numeric_columns] = X_processed[numeric_columns].fillna(X_processed[numeric_columns].median())
-
-        categorical_columns = X_processed.select_dtypes(include=['object']).columns
-        for col in categorical_columns:
-            X_processed[col] = X_processed[col].fillna(X_processed[col].mode()[0] if not X_processed[col].mode().empty else 'unknown')
-            le = LabelEncoder()
-            X_processed[col] = le.fit_transform(X_processed[col].astype(str))
-
-        return X_processed
+        """
+        No-op preprocessing (per user request).
+        """
+        return X.copy()
 
     def _preprocess_test_data(self, X_test: pd.DataFrame, X_train: pd.DataFrame) -> pd.DataFrame:
-        """使用训练集的统计信息预处理测试集（避免数据泄露）"""
-        X_test_processed = X_test.copy()
-
-        # 使用训练集的统计信息填充缺失值
-        numeric_columns = X_test_processed.select_dtypes(include=[np.number]).columns
-        for col in numeric_columns:
-            if col in X_train.columns:
-                train_median = X_train[col].median()
-                X_test_processed[col] = X_test_processed[col].fillna(train_median)
-
-        # 处理分类变量（使用训练集的标签编码器）
-        categorical_columns = X_test_processed.select_dtypes(include=['object']).columns
-        for col in categorical_columns:
-            if col in X_train.columns:
-                # 填充训练集的众数
-                train_mode = X_train[col].mode()[0] if not X_train[col].mode().empty else 'unknown'
-                X_test_processed[col] = X_test_processed[col].fillna(train_mode)
-
-                # 使用训练集的标签编码器
-                le = LabelEncoder()
-                le.fit(X_train[col].astype(str))  # 在训练集上拟合
-                X_test_processed[col] = le.transform(X_test_processed[col].astype(str))
-
-        # AutoFeat特定的预处理（如果存在fitted_scaler）
-        if hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
-            # 确保数值为正（用于log变换）
-            X_test_numeric = X_test_processed.copy()
-            shift_by_col = getattr(self, "_positive_shift_by_col", None)
-            for col in X_test_numeric.select_dtypes(include=[np.number]).columns:
-                if (X_test_numeric[col] <= 0).any():
-                    # Use the same shift learned from the training split when available.
-                    shift = None
-                    if isinstance(shift_by_col, dict) and str(col) in shift_by_col:
-                        shift = shift_by_col[str(col)]
-                    elif col in X_train.columns:
-                        train_min = X_train[col].min()
-                        if train_min <= 0:
-                            shift = 1e-6 - float(train_min)
-
-                    if shift is not None:
-                        X_test_numeric[col] = X_test_numeric[col] + shift
-
-            # 使用训练集的scaler进行标准化
-            X_test_scaled = pd.DataFrame(
-                self.fitted_scaler.transform(X_test_numeric),
-                columns=X_test_numeric.columns,
-                index=X_test_numeric.index
-            )
-            X_test_processed = X_test_scaled
-
-        return X_test_processed
+        # Adda-original path does not use a separate "test preprocessing" mapping.
+        # Keep the signature for legacy callers, but apply the same encoding-only behavior.
+        return self._preprocess_data(X_test)
 
     def _transform_test_features(self, X_test: pd.DataFrame) -> pd.DataFrame:
         """使用训练时保存的组件转换测试集特征（适用于PGML等）"""
         X_test_processed = X_test.copy()
 
-        # 使用训练集的统计信息填充缺失值和编码分类变量
+        # Minimal test preprocessing (no categorical encoding here).
         X_test_processed = self._preprocess_data(X_test_processed)
+        X_test_processed = X_test_processed.select_dtypes(include=[np.number])
 
         # 使用保存的scaler进行标准化
         if hasattr(self, 'fitted_scaler') and self.fitted_scaler is not None:
@@ -1721,6 +1808,51 @@ class CAAFEMethod(ComparisonMethod):
             # Fallback model name (may not be usable without a valid key/base URL)
             return os.environ.get("CAAFE_LLM_MODEL", "deepseek-chat")
 
+    @staticmethod
+    def _patch_openai_legacy_chatcompletion():
+        """
+        Patch openai>=1.x to provide legacy ChatCompletion.create used by caafe<=0.1.x.
+        """
+        try:
+            import openai
+        except Exception:
+            return
+
+        # If legacy API is already available without errors, keep it.
+        try:
+            _ = getattr(openai, "ChatCompletion", None)
+        except Exception:
+            _ = None
+
+        def _get_base_url():
+            return (
+                getattr(openai, "base_url", None)
+                or getattr(openai, "api_base", None)
+                or os.environ.get("OPENAI_BASE_URL")
+                or os.environ.get("OPENAI_API_BASE")
+                or None
+            )
+
+        def _chatcompletion_create(**kwargs):
+            client = openai.OpenAI(
+                api_key=getattr(openai, "api_key", None) or os.environ.get("OPENAI_API_KEY"),
+                base_url=_get_base_url(),
+            )
+            resp = client.chat.completions.create(**kwargs)
+            # caafe expects a dict-like response with choices[0].message["content"]
+            if hasattr(resp, "model_dump"):
+                return resp.model_dump()
+            return resp
+
+        try:
+            openai.ChatCompletion = type(
+                "ChatCompletion",
+                (),
+                {"create": staticmethod(_chatcompletion_create)},
+            )
+        except Exception:
+            pass
+
     def fit_predict(self, X: pd.DataFrame, y: pd.Series, task_type: str = "classify") -> Dict[str, float]:
         """
         Run CAAFE in the "official" way (CAAFEClassifier.fit_pandas + predict/predict_proba),
@@ -1734,19 +1866,50 @@ class CAAFEMethod(ComparisonMethod):
         if not self.available:
             return {"error": "CAAFE not available. Install via: pip install caafe"}
 
-        # Preprocess (numeric-only; CAAFE expects a DataFrame and will run its own safe code execution)
+        # Keep preprocessing consistent with Adda-original standard:
+        # - encode categoricals with pandas category codes
+        # - do NOT drop NaNs for evaluation
+        # - only complete-case rows participate in feature search/fitting
         prep_start = time.time()
-        X_processed = self._preprocess_caafe_data(X, y)
+        X_full, y_full, complete_mask = self._encode_and_mark_complete_adda_standard(X, y)
         self.preprocessing_time = time.time() - prep_start
 
         # Holdout split (same policy as other methods)
         X_train, X_test, y_train, y_test = train_test_split(
-            X_processed, y, test_size=0.2, random_state=0, stratify=y
+            X_full, y_full, test_size=0.2, random_state=0, stratify=y_full
         )
         self._original_feature_count_input = int(X_train.shape[1])
 
+        # Feature-search subset for fitting CAAFE (complete-case rows within training split only)
+        try:
+            train_complete_mask = complete_mask.loc[X_train.index]
+        except Exception:
+            train_complete_mask = pd.Series(True, index=X_train.index)
+
+        X_train_search = X_train.loc[train_complete_mask]
+        y_train_search = y_train.loc[train_complete_mask]
+
+        # CAAFE expects numeric data; cast to float and apply NaN guard on the matrices we pass in.
+        def _drop_id_like_columns(df_in: pd.DataFrame) -> pd.DataFrame:
+            cols = list(df_in.columns)
+            drop_cols = []
+            for c in cols:
+                cl = str(c).strip().lower()
+                if cl == "id" or cl.endswith("_id") or cl == "index":
+                    drop_cols.append(c)
+            return df_in.drop(columns=drop_cols, errors="ignore")
+
+        X_train_search = _drop_id_like_columns(
+            X_train_search.select_dtypes(include=[np.number]).astype(float)
+        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        X_test_eval = _drop_id_like_columns(
+            X_test.select_dtypes(include=[np.number]).astype(float)
+        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
         # Configure LLM endpoint
         model_name = self._configure_openai()
+        # Ensure legacy ChatCompletion API is available for older caafe versions.
+        self._patch_openai_legacy_chatcompletion()
         if not os.environ.get("OPENAI_API_KEY"):
             return {"error": "OPENAI_API_KEY is not set (required by CAAFE / openai client)."}
 
@@ -1806,13 +1969,45 @@ class CAAFEMethod(ComparisonMethod):
 
         dataset_description = (
             f"Tabular dataset for a classification task. "
-            f"Rows: {len(X_train)} train / {len(X_test)} test. "
-            f"Features: {X_train.shape[1]} numeric columns."
+            f"Rows: {len(X_train_search)} train (feature search) / {len(X_test_eval)} test (evaluation). "
+            f"Features: {X_train_search.shape[1]} numeric columns."
         )
 
         # Train CAAFEClassifier
         feature_start = time.time()
+        _restore_ipy_display = None
+        _alarm_handler = None
+        _alarm_active = False
         try:
+            # Silence IPython Markdown display spam in non-notebook runs.
+            try:
+                import IPython.display as _ipd
+
+                _restore_ipy_display = _ipd.display
+                _ipd.display = lambda *args, **kwargs: None
+            except Exception:
+                _restore_ipy_display = None
+
+            # Hard timeout guard: avoid endless retry loops inside caafe.
+            timeout_seconds = int(os.environ.get("CAAFE_TIMEOUT_SECONDS", "600"))
+            if timeout_seconds > 0:
+                try:
+                    import signal
+                    import threading
+
+                    if threading.current_thread() is threading.main_thread():
+                        def _timeout_handler(_signum, _frame):
+                            raise TimeoutError(
+                                f"CAAFE fit exceeded {timeout_seconds}s (likely repeated LLM failures)."
+                            )
+
+                        _alarm_handler = signal.getsignal(signal.SIGALRM)
+                        signal.signal(signal.SIGALRM, _timeout_handler)
+                        signal.alarm(timeout_seconds)
+                        _alarm_active = True
+                except Exception:
+                    _alarm_active = False
+
             # Compatibility shim:
             # Some versions of `caafe` access `tabpfn.scripts.tabular_metrics` as an attribute
             # after importing `tabpfn.scripts` only, which can raise:
@@ -1841,8 +2036,8 @@ class CAAFEMethod(ComparisonMethod):
             )
 
             target_column_name = "target"
-            df_train = X_train.copy()
-            df_train[target_column_name] = y_train.values
+            df_train = X_train_search.copy()
+            df_train[target_column_name] = np.asarray(y_train_search)
 
             caafe_clf.fit_pandas(
                 df_train,
@@ -1854,6 +2049,20 @@ class CAAFEMethod(ComparisonMethod):
         except Exception as e:
             return {"error": f"CAAFE failed during fit: {type(e).__name__}: {e}"}
         finally:
+            if _alarm_active:
+                try:
+                    import signal
+                    signal.alarm(0)
+                    if _alarm_handler is not None:
+                        signal.signal(signal.SIGALRM, _alarm_handler)
+                except Exception:
+                    pass
+            if _restore_ipy_display is not None:
+                try:
+                    import IPython.display as _ipd
+                    _ipd.display = _restore_ipy_display
+                except Exception:
+                    pass
             total_fit_seconds = time.time() - feature_start
             # Split fit_pandas() time into "feature generation" vs "model training"
             # based on the measured base estimator fit time.
@@ -1866,16 +2075,16 @@ class CAAFEMethod(ComparisonMethod):
             from caafe.preprocessing import make_datasets_numeric, split_target_column, make_dataset_numeric
 
             # Apply generated code on train (without target), then rebuild numeric mappings like upstream
-            df_train_no_target = X_train.copy()
+            df_train_no_target = X_train_search.copy()
             df_train_fe = run_llm_code(self.generated_feature_code, df_train_no_target)
-            df_train_fe[target_column_name] = y_train.values
+            df_train_fe[target_column_name] = np.asarray(y_train_search)
             df_train_fe, _, mappings = make_datasets_numeric(
                 df_train_fe, df_test=None, target_column=target_column_name, return_mappings=True
             )
             df_train_x, _ = split_target_column(df_train_fe, target_column_name)
 
             # Apply same transformation + mappings on test (for preview only)
-            df_test_fe = run_llm_code(self.generated_feature_code, X_test.copy())
+            df_test_fe = run_llm_code(self.generated_feature_code, X_test_eval.copy())
             df_test_fe = make_dataset_numeric(df_test_fe, mappings=mappings)
 
             # Keep a small preview payload in memory (train features only)
@@ -1886,17 +2095,62 @@ class CAAFEMethod(ComparisonMethod):
             self.generated_features = X_train.copy()
             self._feature_names_after_caafe = list(self.generated_features.columns)
 
-        # Predict + evaluate
+        # Final model training on FULL train split + evaluate on FULL test split.
+        # Feature code is generated/fitted using X_train_search only (above).
         eval_start = time.time()
         try:
-            y_pred = self.fitted_caafe.predict(X_test)
+            from caafe.run_llm_code import run_llm_code
+            from caafe.preprocessing import make_datasets_numeric, split_target_column, make_dataset_numeric
+
+            # Build mappings from the feature-search subset (consistent with upstream caafe preprocessing)
+            target_column_name = "target"
+            df_search_fe = run_llm_code(self.generated_feature_code, X_train_search.copy())
+            df_search_fe[target_column_name] = np.asarray(y_train_search)
+            df_search_fe, _, mappings = make_datasets_numeric(
+                df_search_fe, df_test=None, target_column=target_column_name, return_mappings=True
+            )
+
+            # Apply to FULL train
+            X_train_full_eval = (
+                X_train.select_dtypes(include=[np.number])
+                .astype(float)
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(0.0)
+            )
+            df_train_full_fe = run_llm_code(self.generated_feature_code, X_train_full_eval.copy())
+            df_train_full_fe[target_column_name] = np.asarray(y_train)
+            df_train_full_fe = make_dataset_numeric(df_train_full_fe, mappings=mappings)
+            df_train_full_x, _ = split_target_column(df_train_full_fe, target_column_name)
+
+            # Apply to FULL test
+            df_test_full_fe = run_llm_code(self.generated_feature_code, X_test_eval.copy())
+            df_test_full_fe[target_column_name] = np.asarray(y_test)
+            df_test_full_fe = make_dataset_numeric(df_test_full_fe, mappings=mappings)
+            df_test_full_x, _ = split_target_column(df_test_full_fe, target_column_name)
+
+            # NaN/inf guard (Adda-style)
+            df_train_full_x = df_train_full_x.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            df_test_full_x = df_test_full_x.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+            # Align columns
+            df_test_full_x = df_test_full_x.reindex(columns=list(df_train_full_x.columns), fill_value=0.0)
+
+            # Train downstream model on FULL train split
+            model = self._build_model(task_type="classify")
+            fit_start = time.time()
+            model.fit(df_train_full_x, y_train)
+            self.training_time = time.time() - fit_start
+
+            pred_start = time.time()
+            y_pred = model.predict(df_test_full_x)
             y_prob = None
             try:
-                y_prob_full = self.fitted_caafe.predict_proba(X_test)
+                y_prob_full = model.predict_proba(df_test_full_x)
                 if y_prob_full is not None:
                     y_prob = y_prob_full[:, 1] if y_prob_full.shape[1] == 2 else y_prob_full
             except Exception:
                 y_prob = None
+            self.prediction_time = time.time() - pred_start
 
             if y_prob is None:
                 auc = accuracy_score(y_test, y_pred)
@@ -1916,7 +2170,6 @@ class CAAFEMethod(ComparisonMethod):
         except Exception as e:
             return {"error": f"CAAFE failed during predict/eval: {type(e).__name__}: {e}"}
         finally:
-            # Evaluation time (predict + metric computation)
             self.evaluation_time = time.time() - eval_start
 
         self.execution_time = time.time() - start_time
@@ -2064,9 +2317,9 @@ class ComparisonEngine:
                 try:
                     autofeat_kwargs['featsel_runs'] = int(env_featsel_runs)
                 except ValueError:
-                    autofeat_kwargs['featsel_runs'] = 5  # 默认20次运行
+                    autofeat_kwargs['featsel_runs'] = 1  # 默认20次运行
             else:
-                autofeat_kwargs['featsel_runs'] = 5  # 默认20次运行
+                autofeat_kwargs['featsel_runs'] = 1  # 默认20次运行
 
         self.methods = {
             "Baseline": BaselineMethod(),

@@ -11,6 +11,7 @@ import numpy as np
 import pickle
 import re
 import warnings
+import glob
 
 # 添加项目根目录到Python路径
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -171,6 +172,16 @@ class PaperMetricsCalculatorSimplified:
             dag = dag_constructor.dag
             print(f"Scanning {len(dag.nodes())} DAG nodes for complete data...")
 
+            # 使用真实数据集列作为原始特征集合
+            original_features = set()
+            try:
+                _, target_col, _ = task_config(task_name.lower())
+                data_agenda, desc, csv_path = read_data_info(task_name)
+                original_csv_data = pd.read_csv(csv_path)
+                original_features = set(original_csv_data.columns) - {target_col}
+            except Exception as e:
+                print(f"Warning: Failed to load original feature list: {e}")
+
             best_data = None
             max_features = 0
 
@@ -190,8 +201,11 @@ class PaperMetricsCalculatorSimplified:
                         print(f"Found base data: {num_features} features from node {getattr(node, 'node_id', 'unknown')}")
 
                     # 收集所有生成特征的数据
-                    original_features = {'gender', 'age', 'education', 'currentsmoker', 'cigsperday', 'bpmeds', 'prevalentstroke', 'prevalenthyp', 'diabetes', 'totchol', 'sysbp', 'diabp', 'bmi', 'heartrate', 'glucose', 'id'}
-                    generated_features = [col for col in out_cur_df.columns if col not in original_features and col != 'tenyearchd']
+                    generated_features = [
+                        col for col in out_cur_df.columns
+                        if col not in original_features
+                        and col != target_col
+                    ]
 
                     for feature in generated_features:
                         if feature not in all_feature_data:
@@ -214,6 +228,15 @@ class PaperMetricsCalculatorSimplified:
             print(f"Final aggregated data with {len(best_data.columns)} features and {len(best_data)} rows")
             print(f"Generated features found: {list(all_generated_features)}")
             print(f"All features: {list(best_data.columns)}")
+
+            # 基于pipeline代码补充可能缺失的生成特征（如 *_Label）
+            try:
+                added_cols = self._augment_data_with_pipeline_features(best_data, task_name, pickle_file)
+                if added_cols:
+                    print(f"Added {len(added_cols)} pipeline-derived features: {added_cols}")
+                    print(f"Post-augment columns: {list(best_data.columns)}")
+            except Exception as e:
+                print(f"Warning: Failed to augment features from pipeline: {e}")
 
             # 尝试从DAG构造器中获取对应的目标变量，确保完全一致
             _, target_col, _ = task_config(task_name.lower())
@@ -292,6 +315,63 @@ class PaperMetricsCalculatorSimplified:
         except Exception as e:
             print(f"Failed to extract complete DAG data: {str(e)}")
             return None
+
+    def _get_pipeline_file_from_pickle(self, pickle_file: str):
+        if not pickle_file:
+            return None
+        store_dir = os.path.dirname(pickle_file)
+        pycode_dir = os.path.join(store_dir, "pycodes")
+        if not os.path.isdir(pycode_dir):
+            return None
+        pipelines = [
+            p for p in glob.glob(os.path.join(pycode_dir, "pipeline_*.py"))
+            if not p.endswith("_old.py")
+        ]
+        if not pipelines:
+            return None
+        pipelines = sorted(pipelines, key=os.path.getmtime, reverse=True)
+        return pipelines[0]
+
+    def _augment_data_with_pipeline_features(self, data: pd.DataFrame, task_name: str, pickle_file: str):
+        """
+        从pipeline代码中提取生成特征列名，并尽可能补充到数据中。
+        当前仅对 *_Label 进行因子编码补齐。
+        """
+        pipeline_path = self._get_pipeline_file_from_pickle(pickle_file)
+        if not pipeline_path or not os.path.isfile(pipeline_path):
+            return []
+
+        with open(pipeline_path, "r", encoding="utf-8") as f:
+            code = f.read()
+
+        # 提取 df['col'] = ... 形式的列名
+        assign_pattern = re.compile(r"df\[['\"]([^'\"]+)['\"]\]\s*=")
+        target_cols = sorted(set(assign_pattern.findall(code)))
+
+        added_cols = []
+        base_fallback = None
+        try:
+            _, target_col, _ = task_config(task_name.lower())
+            data_agenda, desc, csv_path = read_data_info(task_name)
+            base_fallback = pd.read_csv(csv_path)
+        except Exception as e:
+            print(f"Warning: Failed to load fallback base data: {e}")
+        for col in target_cols:
+            if col in data.columns:
+                continue
+            # 仅处理 LabelEncoder 产生的 *_Label
+            if col.endswith("_Label"):
+                base_col = col.replace("_Label", "")
+                if base_col in data.columns:
+                    data[col] = pd.factorize(data[base_col].astype(str).fillna("NA"))[0]
+                    added_cols.append(col)
+                elif base_fallback is not None and base_col in base_fallback.columns:
+                    # 回退：使用原始数据前N行生成编码
+                    base_series = base_fallback[base_col].iloc[:len(data)].astype(str).fillna("NA")
+                    data[col] = pd.factorize(base_series)[0]
+                    added_cols.append(col)
+
+        return added_cols
 
     def _identify_original_vs_generated_features(self, task_name: str, data: pd.DataFrame):
         """
@@ -377,23 +457,27 @@ class PaperMetricsCalculatorSimplified:
             X = data[feature_cols]
             y = data[target_col]
 
+            # 处理类别型特征，统一转换为数值
+            X_numeric = self._prepare_numeric_features(X)
+
             print(f"Training data shape: {X.shape}")
+            print(f"Numeric training data shape: {X_numeric.shape}")
             print(f"Target distribution: {y.value_counts().to_dict()}")
 
             metrics_results = {}
 
             # 计算各种重要性指标
             if 'shap' in methods:
-                metrics_results['shap'] = self._calculate_shap_importance(X, y)
+                metrics_results['shap'] = self._calculate_shap_importance(X_numeric, y)
 
             if 'ig' in methods:
-                metrics_results['ig'] = self._calculate_ig_importance(X, y)
+                metrics_results['ig'] = self._calculate_ig_importance(X_numeric, y)
 
             if 'rfe' in methods:
-                metrics_results['rfe'] = self._calculate_rfe_importance(X, y, top_k, rfe_use_placeholder)
+                metrics_results['rfe'] = self._calculate_rfe_importance(X_numeric, y, top_k, rfe_use_placeholder)
 
             if 'fi' in methods:
-                metrics_results['fi'] = self._calculate_fi_importance(X, y)
+                metrics_results['fi'] = self._calculate_fi_importance(X_numeric, y)
 
             return metrics_results
 
@@ -401,9 +485,27 @@ class PaperMetricsCalculatorSimplified:
             print(f"Failed to calculate importance metrics: {str(e)}")
             return {}
 
+    def _prepare_numeric_features(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        将所有特征转换为数值型，处理类别特征和缺失值。
+        使用因子编码以保持特征列名不变。
+        """
+        X_numeric = X.copy()
+        for col in X_numeric.columns:
+            series = X_numeric[col]
+            if series.dtype == object or str(series.dtype).startswith("category"):
+                series = series.astype(str).fillna("NA")
+                X_numeric[col] = pd.factorize(series)[0]
+            else:
+                X_numeric[col] = pd.to_numeric(series, errors="coerce")
+
+        X_numeric = X_numeric.replace([np.inf, -np.inf], np.nan).fillna(0)
+        return X_numeric
+
     def _calculate_shap_importance(self, X, y):
         """计算SHAP重要性"""
         try:
+            X = self._prepare_numeric_features(X)
             # 使用简单的模型
             model = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=2)
             model.fit(X, y)
@@ -447,7 +549,7 @@ class PaperMetricsCalculatorSimplified:
         """计算信息增益重要性"""
         try:
             from sklearn.feature_selection import mutual_info_classif
-
+            X = self._prepare_numeric_features(X)
             mi_scores = mutual_info_classif(X, y, random_state=42)
             feature_importance = {feature: score for feature, score in zip(X.columns, mi_scores)}
 
@@ -467,6 +569,7 @@ class PaperMetricsCalculatorSimplified:
         3. 非Top-K特征给予极小的占位值（基于排名递减），以保证排序正确
         """
         try:
+            X = self._prepare_numeric_features(X)
             feature_importance = {}
             
             # 1. 使用RFE选出Top-K
@@ -527,6 +630,7 @@ class PaperMetricsCalculatorSimplified:
     def _calculate_fi_importance(self, X, y):
         """计算随机森林特征重要性"""
         try:
+            X = self._prepare_numeric_features(X)
             model = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=2)
             model.fit(X, y)
 
