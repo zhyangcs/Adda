@@ -69,3 +69,4 @@ cd demo && python app.py  # Runs on localhost:5000
 
 - Frontend UI must not display Chinese text; use English-only user-facing strings.
 - 显示在前端的消息和提示中永远不要包含中文
+- 默认使用conda的autofe进行测试运行，启动指令`conda activate autofe`
