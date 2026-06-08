@@ -1,9 +1,0 @@
-**/__pycache__/*
-**/.pytest_cache/*
-.vscode/
-**/env/*
-local/*
-build/*
-dist/*
-**.egg-info
-**.db
