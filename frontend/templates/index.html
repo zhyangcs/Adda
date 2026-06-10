@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Include Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Include Bootstrap JS (optional, for interactive features) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>DLBD II Connection</title>
+    <!-- Custom Styles -->
+    <style>
+        .schema-node {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 4px 0;
+        }
+
+        .bug-status {
+            min-width: 80px;
+        }
+
+        .stats-card {
+            height: calc(100vh - 150px);
+            overflow-y: auto;
+        }
+
+        /* 自定义红色删除按钮样式 */
+        .btn-del {
+            background-color: #dc3545;
+            /* 红色 */
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn-del:hover {
+            background-color: #c82333;
+            /* 更深的红色 */
+        }
+
+        .card-body {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        #notification-list {
+            overflow-y: auto;
+            /* Enable scrolling if content overflows */
+            flex-grow: 1;
+            /* Fill remaining space */
+        }
+
+        #pagination-controls {
+            flex-shrink: 0;
+            /* Prevent pagination from shrinking */
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            /* 将按钮分别放在容器的两端 */
+            margin-top: 10px;
+        }
+
+        .button-container button {
+            padding: 10px 20px;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+
+        .button-container button#nextStep {
+            background-color: #008CBA;
+            /* Green */
+        }
+
+        .button-container button#testeff {
+            background-color: #008CBA;
+            /* Blue */
+        }
+
+        .button-container button#generateModel {
+            background-color: #008CBA;
+            /* Blue */
+        }
+
+        .button-container .start {
+            background-color: #008CBA;
+            /* Green */
+        }
+
+        .button-container .end {
+            background-color: #B22222;
+            /* Blue */
+        }
+
+        .button-container .clear {
+            background-color: #008000;
+            /* Blue */
+        }
+
+        .button-container .download {
+            background-color: #008CBA;
+            /* Blue */
+        }
+
+        .current-features-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            /* 浅灰色背景 */
+            border: 1px solid #ddd;
+            /* 边框 */
+            border-radius: 8px;
+            /* 圆角 */
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #333;
+            /* 文字颜色 */
+        }
+
+        .current-features-container strong {
+            /* color: #4CAF50; */
+            color: #000000;
+            /* 强调文字颜色 */
+        }
+
+        .col-md-4 {
+            margin-top: 30px;
+            /* 根据需要调整数值 */
+        }
+
+        .features-list {
+            margin-left: 10px;
+            padding: 5px 10px;
+            background-color: #e9ecef;
+            /* 浅色背景 */
+            border-radius: 4px;
+            /* 圆角 */
+            color: #333333;
+            /* 文字颜色 */
+            font-weight: bold;
+        }
+
+        /* 新增：用于显示节点信息的固定区域样式 */
+        .node-info-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #333;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .node-info-container strong {
+            /* color: #4CAF50; */
+            color: #008CBA
+        }
+
+        .node_info {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .node {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tree-container {
+            background-color: #f0f0f0;
+            /* 浅灰色背景 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            border-radius: 8px;
+            /* 可选：添加圆角 */
+            height: 400px;
+        }
+
+        .pipeline-dag-container {
+            background-color: #f7f7f7;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            height: 320px;
+        }
+
+        .pipeline-node rect {
+            fill: #3a6ea5;
+            stroke: #27496d;
+            stroke-width: 2;
+            rx: 6;
+        }
+
+        .pipeline-node text {
+            fill: white;
+            font-size: 11px;
+            text-anchor: middle;
+        }
+
+        .pipeline-link {
+            fill: none;
+            stroke: #8a8a8a;
+            stroke-width: 1.2;
+        }
+
+        .pipeline-code-block {
+            margin-top: 10px;
+        }
+
+        .pipeline-block-title {
+            font-weight: bold;
+            color: #27496d;
+            margin-bottom: 4px;
+        }
+
+        .pipeline-code {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e1e1;
+            border-radius: 6px;
+            padding: 8px;
+            max-height: 180px;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+        }
+
+        .node rect {
+            /* fill: #4CAF50; */
+            stroke: #b4b4b4;
+            stroke-width: 2;
+            rx: 6;
+            transition: all 0.2s;
+        }
+
+        .node text {
+            fill: white;
+            font-size: 12px;
+            text-anchor: middle;
+        }
+
+        .node.selected rect {
+            /* fill: #FFC107; */
+            stroke: #27ae60;
+        }
+
+        .link {
+            fill: none;
+            stroke: #666;
+            stroke-width: 1.5;
+        }
+
+        .node-info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 300px;
+        }
+
+        .custom-width-5 {
+            flex: 0 0 55%;
+            /* 4/11 ≈ 36.36% */
+        }
+
+        .custom-width-3 {
+            flex: 0 0 25%;
+            /* 3/11 ≈ 27.27% */
+        }
+
+        .custom-width-2 {
+            flex: 0 0 20%;
+            /* 3/11 ≈ 27.27% */
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+    <!-- Left Navigation -->
+    <div class="d-flex">
+        <nav class="navbar navbar-dark bg-dark flex-column align-items-center border-right border-4"
+            style="height: 100vh; width: 330px;">
+            <span class="navbar-brand mb-4 text-center fs-2 fw-bold">
+                Adda System
+            </span>
+
+            <!-- 使用gap-4控制按钮间距 -->
+            <div class="d-flex flex-column align-items-center w-100 gap-4 button-container">
+                <button class="btn w-75 fw-bold fs-4 start" onclick="run_auto_pipeline()">Start</button>
+                <button class="btn w-75 fw-bold fs-4 end" onclick="stop_task()">End</button>
+                <button class="btn w-75 fw-bold fs-4 clear" onclick="clear_task()">Clear</button>
+                <button class="btn w-75 fw-bold fs-6 download">DownLoad Model</button>
+            </div>
+        </nav>
+
+
+        <!-- Main Content -->
+        <div class="container-fluid">
+            <div class="row g-3 align-items-stretch">
+                <!-- Dataset Information Preprocessing -->
+                <div class="col-md-4 custom-width-2">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="card-title fw-bold">① ML Analytics Tasks</h5>
+                        </div>
+                        <div class="card-body">
+                            <form>
+                                <!-- Task Description -->
+                                <div class="mb-4">
+                                    <label for="taskDescription" class="form-label fw-bold">Task Description</label>
+                                    <textarea class="form-control" id="taskDescription" rows="4"
+                                        placeholder="Enter detailed instructions for the ML Analytics Task"></textarea>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label for="Dataset" class="form-label fw-bold">Dataset</label>
+                                    <select class="form-select" aria-label="Dataset">
+                                        <option selected disabled>Choose Dataset of Task</option>
+                                        <option value="1">Titanic</option>
+                                        <option value="2">Heart</option>
+                                        <option value="3">Bank</option>
+                                        <option value="4">Diabetes</option>
+                                        <option value="5">Bike</option>
+                                        <option value="6">House</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label for="LLMModel" class="form-label fw-bold">Agent Model</label>
+                                    <select class="form-select" aria-label="LLMModel">
+                                        <option selected disabled>Foundation Model Agent</option>
+                                        <option value="1">Openai-gpt4-turbo</option>
+                                        <option value="2" selected>Openai-gpt4o</option>
+                                        <option value="3">Openai-gpt4o-mini</option>
+                                        <option value="4">Deepseek-v3</option>
+                                    </select>
+                                </div>
+
+                                <!-- Check Format -->
+                                <div class="mb-2 d-flex justify-content-end">
+                                    <button type="button" class="btn btn-secondary fw-bold"
+                                        onclick="checkFormat()">Check Format</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <!-- Feature Visualization -->
+                <div class="col-md-4 custom-width-5">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="card-title fw-bold">② Feature Generation</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="tree-container" id="treeContainer"></div>
+
+
+                            <div class="node-info-container">
+                                <strong class="fs-6">Current Feature Set:</strong>
+                                <span id="currentFeatures" class="features-list">No features selected (click node for choose/delete)</span>
+                            </div>
+                            <div class="node-info-container">
+                                <strong class="fs-6">Current Feature Set Performance(AUC/1-rae):</strong>
+                                <span id="currentFeaturesPerformance" class="features-list">Currently not computed</span>
+                            </div>
+                            
+                            <div class="button-container">
+                                <button id="nextStep" class="btn fw-bold" onclick="nextstep()">
+                                    Next Step
+                                    <span id="loadingSpinner" class="spinner-border spinner-border-sm d-none"
+                                        role="status"></span>
+                                </button>
+                                <button id="testeff" class="btn fw-bold" onclick="test_performance()">
+                                    Test Performance
+                                    <span id="loadingSpinner2" class="spinner-border spinner-border-sm d-none"
+                                        role="status"></span>
+                                </button>
+                                <button id="generateModel" class="btn fw-bold" onclick="gen_model()">
+                                    Generate&DownLoad Model
+                                    <span id="loadingSpinner3" class="spinner-border spinner-border-sm d-none"
+                                        role="status"></span>
+                                </button>
+                                <button id="showPipelineDag" class="btn fw-bold" onclick="fetchPipelineDag()">
+                                    Show Pipeline DAG
+                                </button>
+                            </div>
+                            
+                            <!-- 新增：用于显示节点信息的固定区域 -->
+                            <div id="nodeInfoContainer" class="node-info-container">
+                                <strong class="fs-6">Node Information:</strong><br>
+                                <span id="nodeInfoContent">Hover over a node to see details.</span>
+                            </div>
+
+                            <div class="node-info-container">
+                                <strong class="fs-6">Pipeline DAG:</strong>
+                                <div class="pipeline-dag-container" id="pipelineDagContainer"></div>
+                            </div>
+
+                            <div id="pipelineNodeInfoContainer" class="node-info-container">
+                                <strong class="fs-6">Pipeline Node Detail:</strong><br>
+                                <span id="pipelineNodeTitle">Hover over a pipeline node to see details.</span>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">Python</div>
+                                    <pre id="pipelinePythonCode" class="pipeline-code"></pre>
+                                </div>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">SQL</div>
+                                    <pre id="pipelineSqlCode" class="pipeline-code"></pre>
+                                </div>
+                                <div class="pipeline-code-block">
+                                    <div class="pipeline-block-title">UDF</div>
+                                    <pre id="pipelineUdfCode" class="pipeline-code"></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Notification -->
+                <div class="col-md-4 custom-width-3">
+                    <div class="card h-100 ">
+                        <div class="card-header">
+                            <h5 class="card-title fw-bold">Execution Logs</h5>
+                        </div>
+                        <div class="card-body d-flex flex-column">
+                            <!-- Notification List (flex-grow to fill remaining space) -->
+                            <div class="list-group flex-grow-1" id="notification-list">
+                                <!-- Dynamic content will be inserted here -->
+                            </div>
+                            <!-- Pagination Controls (fixed at the bottom) -->
+                            <nav aria-label="Page navigation" class="mt-3">
+                                <ul class="pagination justify-content-center" id="pagination-controls">
+                                    <!-- Pagination buttons will be inserted here -->
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- JavaScript 代码 -->
+    <script>
+        // 初始的 data_info
+        let data_info = [
+            // 初始没有通知
+        ];
+
+        // 每页显示的条目数
+        const itemsPerPage = 10;
+
+        // 当前页码
+        let currentPage = 1;
+
+        // 获取 notification-list 和 pagination-controls 元素
+        const notificationList = document.getElementById('notification-list');
+        const paginationControls = document.getElementById('pagination-controls');
+
+        // 渲染函数
+        function renderNotifications() {
+            // 清空当前内容
+            notificationList.innerHTML = '';
+
+            // 计算当前页的起始和结束索引
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+
+            // 获取当前页的数据
+            const currentPageData = data_info.slice(startIndex, endIndex);
+
+            // 遍历当前页数据并生成 HTML 内容
+            currentPageData.forEach(item => {
+                // 根据 notice_type 设置对应的 badge 样式
+                const badgeClass = item.notice_type === 'success' ? 'bg-success' : 'bg-danger';
+                const badgeText = item.notice_type === 'success' ? 'Success' : 'Fail';
+
+                // 创建 list-group-item 元素
+                const listItem = document.createElement('div');
+                listItem.className = 'list-group-item';
+
+                // 创建内部内容
+                listItem.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>${item.notice_description}</span>
+                    <span class="badge ${badgeClass}">${badgeText}</span>
+                </div>
+            `;
+
+                // 将 listItem 添加到 notificationList 中
+                notificationList.appendChild(listItem);
+            });
+
+            // 渲染分页控件
+            renderPaginationControls();
+        }
+
+        // 渲染分页控件
+        function renderPaginationControls() {
+            // 清空当前内容
+            paginationControls.innerHTML = '';
+
+            // 计算总页数
+            const totalPages = Math.ceil(data_info.length / itemsPerPage);
+
+            // 创建上一页按钮
+            const prevButton = document.createElement('li');
+            prevButton.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
+            paginationControls.appendChild(prevButton);
+
+            // 创建页码按钮
+            for (let i = 1; i <= totalPages; i++) {
+                const pageButton = document.createElement('li');
+                pageButton.className = `page-item ${currentPage === i ? 'active' : ''}`;
+                pageButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
+                paginationControls.appendChild(pageButton);
+            }
+
+            // 创建下一页按钮
+            const nextButton = document.createElement('li');
+            nextButton.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextButton.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
+            paginationControls.appendChild(nextButton);
+        }
+
+        // 改变页码的函数
+        function changePage(page) {
+            if (page < 1 || page > Math.ceil(data_info.length / itemsPerPage)) return;
+            currentPage = page;
+            renderNotifications();
+        }
+
+        // 使用 Proxy 监听 data_info 的变化
+        const dataInfoProxy = new Proxy(data_info, {
+            set(target, property, value) {
+                // 更新目标属性
+                target[property] = value;
+
+                // 重新渲染界面
+                renderNotifications();
+
+                // 返回 true 表示成功
+                return true;
+            }
+        });
+
+        // 初始化渲染
+        renderNotifications();
+
+        function checkFormat() {
+            // 获取表单数据
+            const taskDescription = document.getElementById('taskDescription').value;
+            const datasetSelect = document.querySelector('select[aria-label="Dataset"]');
+            const modelSelect = document.querySelector('select[aria-label="LLMModel"]');
+
+            // 获取选中的文本内容
+            const datasetText = datasetSelect.options[datasetSelect.selectedIndex].text;
+            const modelText = modelSelect.options[modelSelect.selectedIndex].text;
+
+            // 创建 FormData 对象
+            const formData = new FormData();
+            formData.append('taskDescription', taskDescription);
+            formData.append('dataset', datasetText); 
+            formData.append('model', modelText);
+
+            // 发送请求到 Flask 服务器
+            fetch('/check-format/', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 成功时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: 'Format check successful',
+                            notice_type: 'success'
+                        });
+                        // if success, fetch tree data
+                        fetchTreeData();
+                    } else {
+                        // 失败时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: `Format check failed: ${data.message}`,
+                            notice_type: 'fail'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while checking the format.');
+                });
+        }
+
+        function getCurrentDatasetModel() {
+            const datasetSelect = document.querySelector('select[aria-label="Dataset"]');
+            const modelSelect = document.querySelector('select[aria-label="LLMModel"]');
+            const datasetText = datasetSelect.options[datasetSelect.selectedIndex].text;
+            const modelText = modelSelect.options[modelSelect.selectedIndex].text;
+            return { dataset: datasetText, model: modelText };
+        }
+
+
+        let selectedNodeIds = []; // 全局变量，用于存储选中的节点 ID
+        let selectedNodeNames = []; // 存储选中节点的名称
+
+        function renderTree(treeStructure) {
+            // 清空 #treeContainer 中的内容
+            d3.select("#treeContainer").html("");
+
+            let { root_id, parent_child_relations, node_info, cur_selected_idx } = treeStructure;
+            console.log("tree", treeStructure);
+            console.log("root_id", root_id);
+            console.log("parent_child_relations", parent_child_relations);
+            console.log("node_info", node_info);
+            console.log("cur_selected_idx", cur_selected_idx);
+
+            // 将节点信息转换为字典以便快速查找
+            const nodeInfoMap = node_info.reduce((map, info) => {
+                map[info.node_id] = info;
+                return map;
+            }, {});
+
+            // 构建树结构
+            function buildTree(root_id, parent_child_relations, nodeInfoMap) {
+                const tree = {
+                    id: root_id,
+                    ...nodeInfoMap[root_id],
+                    children: [],
+                    selected: cur_selected_idx.includes(root_id) // 检查是否在列表中
+                };
+                const nodeMap = { [root_id]: tree };
+
+                parent_child_relations.forEach(([parent_id, child_id]) => {
+                    const parentNode = nodeMap[parent_id];
+                    const childNode = {
+                        id: child_id,
+                        ...nodeInfoMap[child_id],
+                        children: [],
+                        selected: cur_selected_idx.includes(child_id) // 检查是否在列表中
+                    };
+                    parentNode.children.push(childNode);
+                    nodeMap[child_id] = childNode;
+                });
+
+                return tree;
+            }
+
+            const data = buildTree(root_id, parent_child_relations, nodeInfoMap);
+
+            // 创建树布局
+            const treeLayout = d3.tree()
+                .size([800, 350])  // 设置树图尺寸
+                .separation(() => 1);  // 节点间距
+
+            // 创建 SVG 容器
+            const svg = d3.select("#treeContainer")
+                .append("svg")
+                .attr("width", 850)
+                .attr("height", 400)
+                .append("g")
+                .attr("transform", "translate(0, 25)");
+
+                // 创建图例
+                const legend = svg.append("g")
+                    .attr("class", "legend")
+                    .attr("transform", "translate(650, 10)"); // 将图例放置在右上角
+
+            // 绘制绿色块（选中）
+            legend.append("rect")
+                .attr("width", 20)
+                .attr("height", 20)
+                .attr("fill", "#2ecc71"); // 绿色
+
+            // 添加绿色块的文字说明
+            legend.append("text")
+                .attr("x", 30)
+                .attr("y", 15)
+                .style("font-size", "14px")
+                .style("font-weight", "bold")
+                .text("Selected");
+
+            // 绘制灰色块（未选中）
+            legend.append("rect")
+                .attr("width", 20)
+                .attr("height", 20)
+                .attr("y", 30)
+                .attr("fill", "#c8c8c8"); // 灰色
+
+            // 添加灰色块的文字说明
+            legend.append("text")
+                .attr("x", 30)
+                .attr("y", 45)
+                .style("font-weight", "bold")
+                .style("font-size", "14px")
+                .text("Not Selected");
+
+            // 创建层次结构
+            const root = d3.hierarchy(data);
+            treeLayout(root);
+
+            // 绘制连接线
+            const links = svg.selectAll(".link")
+                .data(root.links())
+                .enter()
+                .append("path")
+                .attr("class", "link")
+                .attr("d", d3.linkVertical()
+                    .x(d => d.x)
+                    .y(d => d.y));
+
+            // 创建节点组
+            const nodes = svg.selectAll(".node")
+                .data(root.descendants())
+                .enter()
+                .append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${d.x},${d.y})`)
+                .classed("selected", d => d.data.selected) // 根据 selected 属性设置初始选中状态
+                .on("click", function (event, d) {
+                    d.data.selected = !d.data.selected; // 切换选中状态
+                    if (d.data.selected) {
+                        cur_selected_idx.push(d.data.node_id); // 添加到选中列表
+                    } else {
+                        cur_selected_idx = cur_selected_idx.filter(id => id !== d.data.node_id); // 从选中列表中移除
+                    }
+                    d3.select(this).classed("selected", d.data.selected); // 更新样式
+                    updateSelectedFeatures(); // 更新选中节点显示
+                })
+                .on("mouseover", function (event, d) {
+                    showNodeInfo(d.data);
+                })
+                .on("mouseout", hideNodeInfo);
+
+            // 绘制节点矩形
+            nodes.append("rect")
+                .attr("width", 180)  // 增加宽度以适应更多信息
+                .attr("height", 35)  // 增加高度以适应更多信息
+                .attr("x", -90)
+                .attr("y", -20)
+                .attr("fill", d => d.data.selected ? "#2ecc71" : "#c8c8c8") // 根据 selected 属性设置初始颜色
+                .on("mouseover", function (event, d) {
+                    // 鼠标悬浮时改变颜色
+                    d3.select(this).attr("fill", d.data.selected ? "#27ae60" : "#b4b4b4");
+                    showNodeInfo(d.data);
+                })
+                .on("mouseout", function (event, d) {
+                    // 鼠标离开时恢复默认颜色
+                    d3.select(this).attr("fill", d.data.selected ? "#2ecc71" : "#c8c8c8");
+                    hideNodeInfo();
+                });
+
+            // 添加节点文字
+            nodes.append("text")
+                .attr("dy", -6)
+                .style("font-weight", "bold")
+                .style("font-size", "12px")
+                .text(d => `${d.data.feature_name}`);
+
+            nodes.append("text")
+                .attr("dy", 10)
+                .style("font-weight", "bold")
+                .text(d => `ID: ${d.data.node_id}`);
+
+            updateSelectedFeatures(); // 更新已选特征
+
+            // 显示节点信息的函数
+            function showNodeInfo(node) {
+                document.getElementById("nodeInfoContent").innerHTML = `
+                <text class="node_info">Node ID:</text> ${node.node_id}<br>
+                <text class="node_info">Feature Name:</text> ${node.feature_name}<br>
+                <text class="node_info">Task Code:</text> ${node.task_code}<br>
+                <text class="node_info">Operation:</text> ${node.op_type}<br>
+                <text class="node_info">Description:</text> ${node.operation_desc}<br>
+                `;
+            }
+
+            // 隐藏节点信息
+            function hideNodeInfo() {
+                document.getElementById("nodeInfoContent").textContent =
+                    "Hover over a node to see details";
+            }
+
+            // 更新已选特征
+            function updateSelectedFeatures() {
+                selectedNodeIds = []; // 清空之前的选中节点 ID
+                selectedNodeNames = []; // 清空之前的选中节点名称
+                root.each(d => {
+                    if (d.data.selected) {
+                        selectedNodeIds.push(d.data.node_id); // 使用节点 ID
+                        selectedNodeNames.push(d.data.feature_name); // 使用节点名称
+                    }
+                });
+
+                // 更新 currentFeatures 元素的内容
+                const currentFeaturesElement = document.getElementById("currentFeatures");
+                const currentFeaturesPerformance = document.getElementById("currentFeaturesPerformance");
+                currentFeaturesPerformance.textContent = "Currently not computed";
+                if (selectedNodeIds.length > 0) {
+                    currentFeaturesElement.textContent = selectedNodeNames.join(", ");
+                } else {
+                    currentFeaturesElement.textContent = "No features selected (click node for choose/delete)";
+                }
+            }
+        }
+
+        // 发送 POST 请求获取数据
+        function fetchTreeData() {
+            console.log("Fetching tree data...");
+            fetch('/get-treejson/', {
+                method: "POST",
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Network response was not ok");
+                    }
+                    return response.json();
+                })
+                .then(treeStructure => {
+                    if (treeStructure.status === 'success') {
+                        // 成功时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: 'Retrieved tree structure successfully',
+                            notice_type: 'success'
+                        });
+                        renderTree(treeStructure.json); // 渲染树结构
+                    } else {
+                        // 失败时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: `Get tree structure failed: ${treeStructure.message}`,
+                            notice_type: 'fail'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching tree data:", error);
+                });
+        }
+
+        function fetchPipelineDag() {
+            const current = getCurrentDatasetModel();
+            fetch('/py2sql-dag/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dataset: current.dataset,
+                    mlModel: current.model
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        dataInfoProxy.unshift({
+                            notice_description: 'Pipeline DAG loaded',
+                            notice_type: 'success'
+                        });
+                        renderPipelineDag(data.data);
+                    } else {
+                        dataInfoProxy.unshift({
+                            notice_description: `Pipeline DAG failed: ${data.message}`,
+                            notice_type: 'fail'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching pipeline DAG:", error);
+                    dataInfoProxy.unshift({
+                        notice_description: `Pipeline DAG failed: ${error.message}`,
+                        notice_type: 'fail'
+                    });
+                });
+        }
+
+        function renderPipelineDag(dagData) {
+            const container = document.getElementById("pipelineDagContainer");
+            container.innerHTML = "";
+            if (!dagData || !dagData.nodes || dagData.nodes.length === 0) {
+                container.textContent = "No pipeline DAG data.";
+                return;
+            }
+
+            const nodes = dagData.nodes;
+            const edges = dagData.edges || [];
+            const nodeMap = new Map(nodes.map(n => [n.nodeId, n]));
+            const inDegree = new Map(nodes.map(n => [n.nodeId, 0]));
+            const adjacency = new Map(nodes.map(n => [n.nodeId, []]));
+
+            edges.forEach(edge => {
+                if (adjacency.has(edge.from)) {
+                    adjacency.get(edge.from).push(edge.to);
+                }
+                if (inDegree.has(edge.to)) {
+                    inDegree.set(edge.to, inDegree.get(edge.to) + 1);
+                }
+            });
+
+            const level = new Map();
+            const queue = [];
+            nodes.forEach(n => {
+                if (inDegree.get(n.nodeId) === 0) {
+                    queue.push(n.nodeId);
+                    level.set(n.nodeId, 0);
+                }
+            });
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                const curLevel = level.get(cur) || 0;
+                (adjacency.get(cur) || []).forEach(next => {
+                    const nextLevel = Math.max(level.get(next) || 0, curLevel + 1);
+                    level.set(next, nextLevel);
+                    inDegree.set(next, inDegree.get(next) - 1);
+                    if (inDegree.get(next) === 0) {
+                        queue.push(next);
+                    }
+                });
+            }
+
+            nodes.forEach(n => {
+                if (!level.has(n.nodeId)) {
+                    level.set(n.nodeId, 0);
+                }
+            });
+
+            const levels = {};
+            nodes.forEach(n => {
+                const l = level.get(n.nodeId) || 0;
+                if (!levels[l]) {
+                    levels[l] = [];
+                }
+                levels[l].push(n);
+            });
+
+            const levelKeys = Object.keys(levels).map(Number).sort((a, b) => a - b);
+            const maxPerLevel = Math.max(...levelKeys.map(k => levels[k].length), 1);
+            const width = Math.max(700, maxPerLevel * 180);
+            const height = Math.max(260, levelKeys.length * 120);
+
+            const svg = d3.select("#pipelineDagContainer")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            const positions = new Map();
+            levelKeys.forEach((lvl, lvlIdx) => {
+                const row = levels[lvl];
+                row.forEach((node, idx) => {
+                    const x = (idx + 1) * (width / (row.length + 1));
+                    const y = (lvlIdx + 1) * 100;
+                    positions.set(node.nodeId, { x, y });
+                });
+            });
+
+            svg.selectAll(".pipeline-link")
+                .data(edges)
+                .enter()
+                .append("path")
+                .attr("class", "pipeline-link")
+                .attr("d", d => {
+                    const src = positions.get(d.from);
+                    const dst = positions.get(d.to);
+                    if (!src || !dst) return "";
+                    return `M${src.x},${src.y} L${dst.x},${dst.y}`;
+                });
+
+            const nodeGroups = svg.selectAll(".pipeline-node")
+                .data(nodes)
+                .enter()
+                .append("g")
+                .attr("class", "pipeline-node")
+                .attr("transform", d => {
+                    const pos = positions.get(d.nodeId);
+                    return `translate(${pos.x},${pos.y})`;
+                })
+                .on("mouseover", function (event, d) {
+                    showPipelineNodeInfo(d);
+                });
+
+            nodeGroups.append("rect")
+                .attr("width", 150)
+                .attr("height", 36)
+                .attr("x", -75)
+                .attr("y", -18);
+
+            nodeGroups.append("text")
+                .attr("dy", -2)
+                .text(d => `${d.opType || "NODE"}`);
+
+            nodeGroups.append("text")
+                .attr("dy", 12)
+                .text(d => `#${d.nodeId}`);
+        }
+
+        function showPipelineNodeInfo(node) {
+            const title = document.getElementById("pipelineNodeTitle");
+            const py = document.getElementById("pipelinePythonCode");
+            const sql = document.getElementById("pipelineSqlCode");
+            const udf = document.getElementById("pipelineUdfCode");
+
+            title.textContent = `${node.opType || "NODE"} #${node.nodeId} (${node.cteName || "cte"})`;
+
+            py.textContent = node.pythonCode && node.pythonCode.trim().length > 0
+                ? node.pythonCode
+                : "(no python code)";
+
+            const sqlBlocks = (node.sqlSnippets || []).map(item => {
+                const label = item.cte ? `-- cte: ${item.cte}` : "-- sql";
+                return `${label}\n${item.sql}`;
+            }).join("\n\n");
+            sql.textContent = sqlBlocks || "(no sql snippet)";
+
+            const udfBlocks = (node.udfSnippets || []).join("\n\n");
+            udf.textContent = udfBlocks || "(no udf snippet)";
+        }
+
+        function nextstep() {
+            // 显示加载动画
+            const spinner = document.getElementById('loadingSpinner');
+            spinner.classList.remove('d-none');
+
+            // 禁用按钮，防止重复点击
+            const button = document.getElementById('nextStep');
+            button.disabled = true;
+
+            fetch('/next-step/', {
+                method: 'POST',
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 成功时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: 'Next step successful',
+                            notice_type: 'success'
+                        });
+                        // success, fetch tree data
+                        fetchTreeData();
+                    } else {
+                        // 失败时显示通知
+                        dataInfoProxy.unshift({
+                            notice_description: `Next step failed: ${data.message}`,
+                            notice_type: 'fail'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while processing next step.');
+                })
+                .finally(() => {
+                    // 隐藏加载动画并启用按钮
+                    spinner.classList.add('d-none');
+                    button.disabled = false;
+                });
+        }
+
+
+        async function test_performance() {
+            const button = document.getElementById('testeff');
+            const spinner = document.getElementById('loadingSpinner2');
+
+            try {
+                // 显示加载状态
+                button.disabled = true;
+                spinner.classList.remove('d-none');
+
+                // 发送请求
+                const response = await fetch('/test-performance/', {
+                    method: 'POST',
+                    body: JSON.stringify({ selectedNodeIds: selectedNodeIds }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok.');
+                }
+
+                // 处理响应数据
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // 成功时显示通知
+                    dataInfoProxy.unshift({
+                        notice_description: 'Performance of Nodes [' + selectedNodeIds.join(", ") + "]: " + data.message,
+                        notice_type: 'success'
+                    });
+                    currentFeaturesPerformance = document.getElementById("currentFeaturesPerformance");
+                    currentFeaturesPerformance.textContent = data.message;
+                } else {
+                    // 失败时显示通知
+                    dataInfoProxy.unshift({
+                        notice_description: `Performance test failed: ${data.message}`,
+                        notice_type: 'fail'
+                    });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while testing performance.');
+            } finally {
+                // 恢复按钮状态
+                button.disabled = false;
+                spinner.classList.add('d-none');
+            }
+        }
+
+
+        async function gen_model() {
+            const button = document.getElementById('generateModel');
+            const spinner = document.getElementById('loadingSpinner3');
+
+            try {
+                // 显示加载状态
+                button.disabled = true;
+                spinner.classList.remove('d-none');
+
+                // 发送请求
+                const response = await fetch('/gen-model/', {
+                    method: 'POST',
+                    body: JSON.stringify({ selectedNodeIds: selectedNodeIds }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok.');
+                }
+
+                // 处理下载
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'model.pkl';  // 设置下载文件名
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                // 添加成功通知
+                dataInfoProxy.unshift({
+                    notice_description: `Generated and downloaded model successfully`,
+                    notice_type: 'success'
+                });
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while generating the model.');
+            } finally {
+                // 恢复按钮状态
+                button.disabled = false;
+                spinner.classList.add('d-none');
+            }
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 添加初始通知
+            dataInfoProxy.unshift({
+                notice_description: "Welcome to Adda System",
+                notice_type: "success"
+            });
+        });
+
+        async function stop_task() {
+            try {
+                const response = await fetch('/stop-task/', {method: 'POST'});
+                const data = await response.json();
+                dataInfoProxy.unshift({
+                    notice_description: data.message,
+                    notice_type: data.status === 'success' ? 'success' : 'fail'
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function clear_task() {
+            try {
+                const response = await fetch('/clear-task/', {method: 'POST'});
+                const data = await response.json();
+                dataInfoProxy.unshift({
+                    notice_description: data.message,
+                    notice_type: data.status === 'success' ? 'success' : 'fail'
+                });
+                // 清空前端的特征树显示
+                d3.select("#treeContainer").selectAll("*").remove();
+                document.getElementById("currentFeatures").innerHTML = "No features selected (click node for choose/delete)";
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function run_auto_pipeline() {
+            try {
+                // 检查任务是否初始化
+                const statusRes = await fetch('/check-task-status/', {method: 'POST'});
+                const statusData = await statusRes.json();
+                
+                if(statusData.status !== 'success' || !statusData.initialized) {
+                    dataInfoProxy.unshift({
+                        notice_description: "请先点击Check Format按钮初始化任务",
+                        notice_type: "fail"
+                    });
+                    return;
+                }
+
+                // 自动执行流程
+                let finished = false;
+                while(!finished) {
+                    const stepRes = await fetch('/auto-step/', {method: 'POST'});
+                    const stepData = await stepRes.json();
+                    
+                    if(stepData.tree) {
+                        renderTree(stepData.tree);
+                    }
+                    
+                    if(stepData.status === 'fail') {
+                        dataInfoProxy.unshift({
+                            notice_description: `自动流程出错: ${stepData.message}`,
+                            notice_type: "fail"
+                        });
+                        break;
+                    }
+                    
+                    finished = stepData.finished;
+                    
+                    // 安全机制
+                    if(!finished && stepData.tree?.node_info?.length > 50) {
+                        dataInfoProxy.unshift({
+                            notice_description: "安全机制触发：特征节点超过50个，已停止流程",
+                            notice_type: "warning"
+                        });
+                        break;
+                    }
+                }
+                
+                await fetch('/stop-task/', {method: 'POST'});
+            } catch(e) {
+                dataInfoProxy.unshift({
+                    notice_description: `自动化流程失败: ${e.message}`,
+                    notice_type: "fail"
+                });
+            }
+        }
+    </script>
+</body>
+
+</html> 

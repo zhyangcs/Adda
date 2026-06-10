@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Connection Test</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">连接状态: 未连接</div>
+    <div id="messages">
+        <h2>消息日志:</h2>
+        <div id="messageList"></div>
+    </div>
+
+    <button onclick="sendTestMessage()">发送测试消息</button>
+    <button onclick="subscribeToAgent()">订阅 Main Agent</button>
+    <button onclick="ping()">Ping 服务器</button>
+
+    <script>
+        let socket;
+
+        function log(message) {
+            const messageList = document.getElementById('messageList');
+            const timestamp = new Date().toLocaleTimeString();
+            messageList.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            messageList.scrollTop = messageList.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(status) {
+            document.getElementById('status').textContent = `连接状态: ${status}`;
+        }
+
+        // 连接到 WebSocket（通过代理）
+        socket = io('', {
+            autoConnect: true,
+            reconnection: true,
+            reconnectionDelay: 3000,
+            reconnectionAttempts: 10,
+            timeout: 60000,
+            pingTimeout: 60000,
+            pingInterval: 25000,
+            transports: ['websocket', 'polling']
+        });
+
+        // 连接事件
+        socket.on('connect', () => {
+            log('✅ WebSocket 连接成功! Socket ID: ' + socket.id);
+            updateStatus('已连接');
+        });
+
+        socket.on('disconnect', (reason) => {
+            log('❌ WebSocket 连接断开: ' + reason);
+            updateStatus('已断开连接');
+        });
+
+        socket.on('connect_error', (error) => {
+            log('❌ WebSocket 连接错误: ' + error.message);
+            updateStatus('连接错误');
+        });
+
+        // Agent 状态更新
+        socket.on('agent_status_update', (status) => {
+            log('🤖 Agent 状态更新: ' + JSON.stringify(status, null, 2));
+        });
+
+        // Agent 思考过程
+        socket.on('agent_thinking', (thinking) => {
+            log('💭 Agent 思考: ' + JSON.stringify(thinking, null, 2));
+        });
+
+        // 系统通知
+        socket.on('system_notification', (notification) => {
+            log('📢 系统通知: ' + JSON.stringify(notification, null, 2));
+        });
+
+        // 状态更新
+        socket.on('status', (status) => {
+            log('📊 状态更新: ' + JSON.stringify(status, null, 2));
+        });
+
+        // Pong 响应
+        socket.on('pong', (data) => {
+            log('🏓 Pong 响应: ' + JSON.stringify(data));
+        });
+
+        // 通用事件监听（调试用）
+        socket.onAny((eventName, ...args) => {
+            log(`🔍 收到事件: ${eventName}`);
+        });
+
+        // 测试功能
+        function sendTestMessage() {
+            log('📤 发送测试消息...');
+            socket.emit('test_message', {
+                type: 'test',
+                message: 'Hello from WebSocket test!',
+                timestamp: Date.now()
+            });
+        }
+
+        function subscribeToAgent() {
+            log('📝 订阅 Main Agent 状态更新...');
+            socket.emit('subscribe_agent', { agent: 'mainagent' });
+        }
+
+        function ping() {
+            log('🏓 发送 Ping...');
+            socket.emit('ping');
+        }
+
+        log('🚀 WebSocket 测试页面已加载，尝试连接...');
+    </script>
+</body>
+</html>

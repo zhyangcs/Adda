@@ -1,0 +1,84 @@
+# ===== Sensitive configuration =====
+.env
+.env.local
+.env.*.local
+src/env.py
+docker-compose.override.yml
+
+# ===== Python =====
+**/__pycache__/
+**/*.pyc
+**/.ipynb_checkpoints/
+*.egg-info/
+*.pkl
+
+# ===== Node / Vue =====
+autofe-frontend/node_modules/
+autofe-frontend/dist/
+
+# ===== Compiled libraries =====
+*.so
+src/clib/lib/
+
+# ===== Docker =====
+docker-compose.override.yml
+Dockerfile.*.override
+
+# ===== Logs and temp =====
+logs/
+*.log
+logfile
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
+.cursor/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Large external data/libs =====
+apache-madlib-*/
+postgresml/
+node_modules/
+mydb_data.sql
+
+# ===== Reports and docs (keep CLAUDE.md for reference) =====
+report/
+docs/
+img/*.png
+img/*.jpg
+*.png
+*.jpg
+!autofe-frontend/public/**/*.png
+!autofe-frontend/public/**/*.jpg
+
+# ===== Benchmark and mock =====
+benchmark/
+mock-backend/
+mock-performance/
+
+# ===== Dataset files (mounted as volume) =====
+dataset/
+
+# ===== Test output =====
+test/
+test/store/
+
+# ===== Root scripts not needed for Docker =====
+package.json
+package-lock.json
+calculate_rfe.py
+calculate_rfe_new.py
+plot_auc.py
+plot_rfe_static.py
+dataset_desc.md
+COLUMN_DATA_SPLIT_CONSISTENCY.md
+DEMO_APP_GUIDE.md
+ML_EXTENSIONS_INSTALLATION_REPORT.md
+README_resampling.md

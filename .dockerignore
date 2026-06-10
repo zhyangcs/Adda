@@ -1,0 +1,52 @@
+# Exclude from Docker build context
+# Keeps build context small and fast
+
+# Git
+.git/
+.gitignore
+
+# Docker files themselves
+.env
+docker-compose.override.yml
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.ipynb_checkpoints/
+*.egg-info/
+
+# Node
+autofe-frontend/node_modules/
+autofe-frontend/dist/
+
+# Datasets (mounted as volume at runtime)
+dataset/
+
+# Test output (mounted as volume)
+test/store/
+test/
+
+# Logs and reports
+logs/
+report/
+img/
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment (configured via .env → env vars)
+# src/env.py is still needed as a module — it reads from os.environ
+
+# Benchmark
+benchmark/
+
+# Large external libs
+postgresml/
+apache-madlib-*/

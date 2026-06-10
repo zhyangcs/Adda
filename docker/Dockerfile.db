@@ -1,0 +1,102 @@
+FROM postgres:14
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV NO_PROXY=$NO_PROXY
+
+# Install system build dependencies and ML libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    g++ \
+    libarmadillo-dev \
+    libopenblas-dev \
+    libmlpack-dev \
+    libpq-dev \
+    python3 \
+    python3-pip \
+    python3-dev \
+    postgresql-server-dev-14 \
+    postgresql-plpython3-14 \
+    cmake \
+    wget \
+    ca-certificates \
+    libstb-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for plpython3u UDFs
+RUN pip3 install --no-cache-dir --break-system-packages \
+    numpy \
+    pandas \
+    scikit-learn \
+    lightgbm \
+    xgboost \
+    psycopg2-binary
+
+# Symlink LightGBM and XGBoost C libraries for UDF compilation
+RUN LGB_DIR=$(python3 -c "import lightgbm, os; print(os.path.dirname(lightgbm.__file__))" 2>/dev/null) && \
+    find "$LGB_DIR" -name "lib_lightgbm.so" -exec ln -sf {} /usr/local/lib/lib_lightgbm.so \; 2>/dev/null; \
+    XGB_SO=$(find / -name "libxgboost.so" -not -path "*/proc/*" 2>/dev/null | head -1) && \
+    if [ -f "$XGB_SO" ]; then ln -sf "$XGB_SO" /usr/local/lib/libxgboost.so; fi && \
+    ldconfig
+
+# Create directories for UDF compilation and model storage
+RUN mkdir -p /adda/src/clib/lib-built /adda/src/clib/code /adda/src/clib/models && chmod 777 /adda/src/clib/models
+
+# Copy C++ UDF source files and compile them
+COPY src/clib/code/udf_ctemplate.cpp \
+     src/clib/code/udf_discrete.cpp \
+     src/clib/code/udf_lightgbm.cpp \
+     src/clib/code/udf_nothing.cpp \
+     src/clib/code/udf_rf.cpp \
+     src/clib/code/udf_xgboost.cpp \
+     /adda/src/clib/code/
+
+# Download missing C API headers for LightGBM and XGBoost
+# Fix mlpack stb bundled header issue
+RUN mkdir -p /usr/local/include/LightGBM && \
+    mkdir -p /usr/local/include/xgboost && \
+    mkdir -p /usr/include/mlpack/core/stb/bundled && \
+    wget -q -O /usr/local/include/LightGBM/c_api.h \
+        https://raw.githubusercontent.com/microsoft/LightGBM/master/include/LightGBM/c_api.h && \
+    wget -q -O /usr/local/include/LightGBM/arrow.h \
+        https://raw.githubusercontent.com/microsoft/LightGBM/master/include/LightGBM/arrow.h && \
+    wget -q -O /usr/local/include/LightGBM/export.h \
+        https://raw.githubusercontent.com/microsoft/LightGBM/master/include/LightGBM/export.h && \
+    wget -q -O /usr/local/include/LightGBM/arrow.tpp \
+        https://raw.githubusercontent.com/microsoft/LightGBM/master/include/LightGBM/arrow.tpp && \
+    wget -q -O /usr/local/include/xgboost/c_api.h \
+        https://raw.githubusercontent.com/dmlc/xgboost/master/include/xgboost/c_api.h && \
+    wget -q -O /usr/include/mlpack/core/stb/bundled/stb_image.h \
+        https://raw.githubusercontent.com/nothings/stb/master/stb_image.h && \
+    wget -q -O /usr/include/mlpack/core/stb/bundled/stb_image_write.h \
+        https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h && \
+    wget -q -O /usr/include/mlpack/core/stb/bundled/stb_image_resize2.h \
+        https://raw.githubusercontent.com/nothings/stb/master/stb_image_resize2.h && \
+    echo "Headers downloaded"
+
+RUN CPPFLAGS=$(pg_config --cppflags) && \
+    INCLUDEDIR=$(pg_config --includedir-server) && \
+    cd /adda/src/clib/code && \
+    for src in udf_ctemplate.cpp udf_discrete.cpp udf_lightgbm.cpp udf_nothing.cpp udf_rf.cpp udf_xgboost.cpp; do \
+        base=$(basename "$src" .cpp); \
+        echo "Compiling $src -> /adda/src/clib/lib-built/${base}.so"; \
+        g++ -g -O3 -shared -fPIC "$src" -o "/adda/src/clib/lib-built/${base}.so" \
+            -pthread $CPPFLAGS -I$INCLUDEDIR -I/usr/local/include \
+            -lstdc++ -larmadillo -lpq \
+            -l_lightgbm -lxgboost -larmadillo \
+            -fopenmp -lopenblas \
+            -L/usr/local/lib -Wl,-rpath,/usr/local/lib; \
+    done && \
+    echo "UDF compilation complete" && \
+    ls -la /adda/src/clib/lib-built/
+
+# Copy database initialization scripts
+COPY docker/db/init.sql /docker-entrypoint-initdb.d/01-init.sql
+COPY docker/db/entrypoint.sh /adda-entrypoint.sh
+RUN chmod +x /adda-entrypoint.sh
+
+ENTRYPOINT ["/adda-entrypoint.sh"]
+CMD ["postgres"]
