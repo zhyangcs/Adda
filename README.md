@@ -6,6 +6,36 @@ In this repo, we introduce Adda, an automated feature engineering tool supported
 <img src="./img/overview.png" alt="Overview" width="70%">
 </div>
 
+## 🐳 Docker Quick Start
+
+### Option 1: Pull Pre-built Images
+
+```bash
+# Download compose file and config
+wget https://raw.githubusercontent.com/zhyangcs/Adda/main/docker-compose.ghcr.yml -O docker-compose.yml
+wget https://raw.githubusercontent.com/zhyangcs/Adda/main/.env.example -O .env
+
+# Edit .env to set your OPENAI_API_KEY
+docker compose up -d
+# Visit http://localhost
+```
+
+**Package links:**
+- [adda-app](https://github.com/users/li-zhenyu0511/packages/container/adda-app)
+- [adda-db](https://github.com/users/li-zhenyu0511/packages/container/adda-db)
+
+### Option 2: Build from Source
+
+```bash
+git clone https://github.com/zhyangcs/Adda.git
+cd Adda
+cp .env.example .env
+# Edit .env to set your OPENAI_API_KEY
+docker compose build
+docker compose up -d
+# Visit http://localhost
+```
+
 ## Project Structure
 
 ```

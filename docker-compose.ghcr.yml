@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  adda-db:
+    image: ghcr.io/li-zhenyu0511/adda-db:latest
+    environment:
+      POSTGRES_USER: ${PG_USER:-myuser}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-addapass}
+      POSTGRES_DB: ${PG_DB:-mydb}
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - udf_lib:/adda/src/clib/lib
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-myuser} -d ${PG_DB:-mydb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  adda-app:
+    image: ghcr.io/li-zhenyu0511/adda-app:latest
+    ports:
+      - "${APP_PORT:-80}:80"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com/v1}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-deepseek-chat}
+      - RAG_MODEL_ID=${RAG_MODEL_ID:-Qwen/Qwen2-0.5B-Instruct}
+      - PG_USER=${PG_USER:-myuser}
+      - PG_PASSWORD=${PG_PASSWORD:-addapass}
+      - PG_DB=${PG_DB:-mydb}
+      - PG_HOST=adda-db
+      - PG_PORT=5432
+      - PROJ_PATH=/adda
+    volumes:
+      - ./dataset/task:/adda/dataset/task:ro
+      - adda_store:/adda/test/store
+      - udf_lib:/adda/src/clib/lib
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      adda-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  adda_store:
+  udf_lib:
+  hf_cache:
