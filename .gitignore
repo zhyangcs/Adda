@@ -71,8 +71,8 @@ test/
 test/store/
 
 # ===== Root scripts not needed for Docker =====
-package.json
-package-lock.json
+/package.json
+/package-lock.json
 calculate_rfe.py
 calculate_rfe_new.py
 plot_auc.py
