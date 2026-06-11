@@ -6,6 +6,12 @@ In this repo, we introduce Adda, an automated feature engineering tool supported
 <img src="./img/overview.png" alt="Overview" width="70%">
 </div>
 
+## 📄 Publications
+
+- **Demo Paper**: [Adda: An LLM-based Multi-agent System for Automatic Feature Engineering](https://dl.acm.org/doi/10.1145/3788853.3801606) — SIGMOD 2025
+- **Research Paper**: [Scaling Automatic Feature Engineering via In-Database Machine Learning](https://dl.acm.org/doi/10.1145/3725262) — SIGMOD 2026
+- **Poster**: [Download PDF](./img/Adda_SIGMOD_Demo_Poster_A0_ReportLab_0.54.pdf)
+
 ## 🐳 Docker Quick Start
 
 ### Option 1: Pull Pre-built Images
