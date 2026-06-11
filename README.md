@@ -2,10 +2,6 @@
 
 In this repo, we introduce Adda, an automated feature engineering tool supported by agent collaboration.
 
-<div style="text-align: center;">
-<img src="./img/overview.png" alt="Overview" width="70%">
-</div>
-
 ## 📄 Publications
 
 - **Demo Paper**: [Adda: An LLM-based Multi-agent System for Automatic Feature Engineering](https://dl.acm.org/doi/10.1145/3788853.3801606) — SIGMOD 2025
